@@ -20,8 +20,15 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Load prod env
+        run: |
+          env_file_dir="${ENV_FILE_DIR:-$HOME/prod-saasathon}"
+          echo "ENV_FILE_DIR=$env_file_dir" >> "$GITHUB_ENV"
+          port=$(grep -E '^BACKEND_PORT=' "$env_file_dir/backend/.env.prod" | tail -n1 | cut -d= -f2-)
+          echo "BACKEND_PORT=${port:-8000}" >> "$GITHUB_ENV"
+
       - name: Build and start backend
-        run: docker compose -f docker-compose.prod.yml up -d --build backend
+        run: docker compose --env-file "$ENV_FILE_DIR/backend/.env.prod" -f docker-compose.prod.yml up -d --build backend
 
       - name: Health check
         run: |
