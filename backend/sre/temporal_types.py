@@ -83,7 +83,10 @@ class AttemptResult:
 @dataclass
 class ApprovalDecision:
     approve: bool
-    user_id: int
+    user_id: int | None
+    # True when the PR was merged/closed on GitHub: the PR is already in its final state,
+    # so the workflow mustn't mark it ready or close it again.
+    via_github: bool = False
 
 
 @dataclass

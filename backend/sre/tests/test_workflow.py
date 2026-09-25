@@ -196,6 +196,21 @@ def test_draft_only_rejection_opens_no_pr():
     assert "record_playbook_outcome" not in s.calls
 
 
+def test_draft_only_merged_on_github_touches_no_pr():
+    s = Scenario(mode="draft_only")
+    assert run_workflow(s, ApprovalDecision(approve=True, user_id=None, via_github=True)) == "succeeded"
+    assert s.run_status == ["pending_approval", "succeeded"]
+    assert "open_pull_request" not in s.calls and "close_pull_request" not in s.calls
+    assert "record_playbook_outcome" in s.calls
+
+
+def test_draft_only_closed_on_github_is_rejected_without_closing_again():
+    s = Scenario(mode="draft_only")
+    assert run_workflow(s, ApprovalDecision(approve=False, user_id=None, via_github=True)) == "failed"
+    assert s.run_status == ["pending_approval", "rejected"]
+    assert "close_pull_request" not in s.calls and "open_pull_request" not in s.calls
+
+
 def test_advisory_writes_report_and_never_runs_agent():
     s = Scenario(mode="advisory_only")
     assert run_workflow(s) == "advisory_complete"

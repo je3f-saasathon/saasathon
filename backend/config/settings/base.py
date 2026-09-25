@@ -168,6 +168,8 @@ GITHUB_APP_PRIVATE_KEY_PATH = os.environ.get("GITHUB_APP_PRIVATE_KEY_PATH", "")
 GITHUB_APP_SLUG = os.environ.get("GITHUB_APP_SLUG", "")
 GITHUB_APP_CLIENT_ID = os.environ.get("GITHUB_APP_CLIENT_ID", "")
 GITHUB_APP_CLIENT_SECRET = os.environ.get("GITHUB_APP_CLIENT_SECRET", "")
+# Signs the App's webhook deliveries; draft-only runs are approved by merging the PR on GitHub.
+GITHUB_APP_WEBHOOK_SECRET = os.environ.get("GITHUB_APP_WEBHOOK_SECRET", "")
 
 SRE_FIELD_ENCRYPTION_KEY = os.environ.get("SRE_FIELD_ENCRYPTION_KEY", "")
 
