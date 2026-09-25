@@ -245,6 +245,8 @@ class LLMUsage(models.Model):
     step = models.CharField(max_length=64)
     provider = models.CharField(max_length=32, blank=True, default="")
     model = models.CharField(max_length=255, blank=True, default="")
+    # Whose credentials paid: "platform" (our keys, counts toward the monthly cap) or "user".
+    billed_to = models.CharField(max_length=16, default="user", db_index=True)
     input_tokens = models.PositiveIntegerField(default=0)
     output_tokens = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

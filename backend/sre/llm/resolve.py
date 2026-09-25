@@ -1,4 +1,5 @@
 from ..models import LLMProvider, LLMProviderConfig, LLMStepOverride, PipelineStep, Project
+from . import platform
 
 # Jev only answers choice questions, so it can't author or execute playbooks.
 JEV_STEPS = {
@@ -27,12 +28,20 @@ def get_llm_config(project: Project, step: PipelineStep) -> LLMProviderConfig:
     elif project.default_llm_config_id is not None:
         config = project.default_llm_config
     else:
-        raise NoLLMConfigError(
-            f"Project {project.id} has no LLM config for step '{step}' and no default config"
-        )
+        # Nothing picked: fall back to the company default, on our keys.
+        config = platform.config_for(step)
+        if config is None:
+            raise NoLLMConfigError(
+                f"Project {project.id} has no LLM config for step '{step}' and no default config"
+            )
     if not provider_supports_step(config.provider, step):
         raise NoLLMConfigError(
             f"LLM config '{config.name}' uses Jev, which can't run step '{step}'; "
             "set a step override with a chat model"
         )
+    if platform.billed_to(config) == platform.PLATFORM:
+        try:
+            platform.check_cap(project)
+        except platform.PlatformCapReached as exc:
+            raise NoLLMConfigError(str(exc)) from exc
     return config

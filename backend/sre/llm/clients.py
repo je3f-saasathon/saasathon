@@ -1,5 +1,8 @@
 import json
 import re
+from dataclasses import dataclass
+
+from django.conf import settings
 
 from jev.client import JevError, run_jev
 
@@ -117,24 +120,65 @@ class OpenAICompatibleClient(ChatClient):
         return text, usage
 
 
+@dataclass
+class JevChoice:
+    choice: str
+    confidence: float  # Jev's probability for the chosen option (1.0 if it didn't report one)
+
+
 class JevClient:
     """Jev only answers structured questions (choice/score), not free chat — so it can
-    serve the classification-style steps and nothing else (see JEV_STEPS)."""
+    serve the classification-style steps and nothing else (see JEV_STEPS).
+
+    Credentials: the config's API key is a Cloudflare API token and
+    `extra_config.account_id` its account; either falls back to the server's
+    CLOUDFLARE_* settings. An empty model falls back to CLOUDFLARE_JEV_MODEL."""
 
     def __init__(self, config: LLMProviderConfig):
         self.config = config
+        self.api_token = decrypt(config.api_key_encrypted) if config.api_key_encrypted else ""
+        self.account_id = str(config.extra_config.get("account_id") or "")
 
-    def choose(self, state: str, question: str, options: dict[str, str], name: str = "jev") -> str:
-        questions = {"answer": {"type": "choice", "instructions": question, "criteria": options}}
-        with trace_generation(name, model=self.config.model or "jev", input=questions) as generation:
+    def choose_many(
+        self, state: str, questions: dict[str, tuple[str, dict[str, str]]], name: str = "jev"
+    ) -> dict[str, JevChoice]:
+        """questions: {key: (instructions, {option: description})}; one Jev call answers all."""
+        payload = {
+            key: {"type": "choice", "instructions": instructions, "criteria": options}
+            for key, (instructions, options) in questions.items()
+        }
+        model = self.config.model or settings.CLOUDFLARE_JEV_MODEL
+        with trace_generation(name, model=model, input=payload) as generation:
             try:
-                result = run_jev(state, questions)
+                result = run_jev(
+                    state, payload,
+                    account_id=self.account_id, api_token=self.api_token, model=self.config.model,
+                )
             except JevError as exc:
                 retryable = exc.status_code >= 500 or exc.status_code == 429
                 raise LLMError(str(exc), retryable=retryable) from exc
-            generation.update(output=result.get("answers"))
-        record_usage(self.config, {})  # Jev doesn't report tokens; still record the model
-        return result["answers"]["answer"]["choice"]
+            answers = result.get("answers") or {}
+            raw_usage = result.get("usage") or {}
+            usage = {
+                "input": int(raw_usage.get("input_tokens") or 0),
+                "output": int(raw_usage.get("output_tokens") or 0),
+            }
+            generation.update(output=answers, usage_details=usage)
+        record_usage(self.config, usage)
+        choices = {}
+        for key in questions:
+            answer = answers.get(key) or {}
+            if "choice" not in answer:
+                raise LLMError(f"Jev returned no choice for '{key}': {answer}", retryable=True)
+            choice = str(answer["choice"])
+            probability = (answer.get("probabilities") or {}).get(choice)
+            choices[key] = JevChoice(choice, 1.0 if probability is None else float(probability))
+        return choices
+
+    def choose(
+        self, state: str, question: str, options: dict[str, str], name: str = "jev"
+    ) -> JevChoice:
+        return self.choose_many(state, {"answer": (question, options)}, name=name)["answer"]
 
 
 def client_for(config: LLMProviderConfig):

@@ -157,6 +157,7 @@ function UsageTable({ run }: { run: IncidentRun }) {
           <TableRow>
             <TableHead>Step</TableHead>
             <TableHead>Model</TableHead>
+            <TableHead>Paid by</TableHead>
             <TableHead className="text-right">Calls</TableHead>
             <TableHead className="text-right">Input</TableHead>
             <TableHead className="text-right">Output</TableHead>
@@ -167,6 +168,7 @@ function UsageTable({ run }: { run: IncidentRun }) {
             <TableRow key={`${s.step}-${s.model}`}>
               <TableCell>{s.step.replace(/_/g, " ")}</TableCell>
               <TableCell className="font-mono text-xs">{s.model || "unknown"}</TableCell>
+              <TableCell className="text-xs">{s.billed_to === "platform" ? "our key" : "your key"}</TableCell>
               <TableCell className="text-right">{s.calls}</TableCell>
               <TableCell className="text-right font-mono text-xs">
                 {s.input_tokens.toLocaleString()}
@@ -177,7 +179,10 @@ function UsageTable({ run }: { run: IncidentRun }) {
             </TableRow>
           ))}
           <TableRow className="font-medium">
-            <TableCell colSpan={2}>Total ({usage.total_tokens.toLocaleString()} tokens)</TableCell>
+            <TableCell colSpan={3}>
+              Total ({usage.total_tokens.toLocaleString()} tokens
+              {usage.platform_tokens > 0 && `, ${usage.platform_tokens.toLocaleString()} on our key`})
+            </TableCell>
             <TableCell className="text-right">{usage.calls}</TableCell>
             <TableCell className="text-right font-mono text-xs">
               {usage.input_tokens.toLocaleString()}

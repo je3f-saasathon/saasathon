@@ -88,14 +88,18 @@ class PlaybookJudge:
         if isinstance(self.client, JevClient):
             options = {f"pb_{p.id}": f"{p.title}: {p.description}"[:300] for p in candidates}
             options["none"] = "None of these playbooks would fix this bug"
-            choice = self.client.choose(
+            answer = self.client.choose(
                 context, "Which playbook would fix this bug?", options,
                 name="playbook_similarity_judge",
             )
+            choice, confidence = answer.choice, answer.confidence
+            reasoning = f"Jev answered '{choice}' (p={confidence:.2f})"
             playbook_id = int(choice[3:]) if choice.startswith("pb_") and choice[3:].isdigit() else None
             if playbook_id not in by_id:
-                return JudgeResult(None, 0.0, f"Jev answered '{choice}'")
-            return JudgeResult(playbook_id, 1.0, f"Jev answered '{choice}'")
+                return JudgeResult(None, 0.0, reasoning)
+            if confidence < MATCH_CONFIDENCE_THRESHOLD:
+                return JudgeResult(None, confidence, f"below threshold: {reasoning}")
+            return JudgeResult(playbook_id, confidence, reasoning)
 
         # Unconfirmed playbooks were LLM-written from telemetry, so they're untrusted too.
         prompt = context + "\n\nCandidate playbooks:\n" + untrusted(

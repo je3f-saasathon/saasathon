@@ -171,6 +171,17 @@ GITHUB_APP_CLIENT_ID = os.environ.get("GITHUB_APP_CLIENT_ID", "")
 GITHUB_APP_CLIENT_SECRET = os.environ.get("GITHUB_APP_CLIENT_SECRET", "")
 
 SRE_FIELD_ENCRYPTION_KEY = os.environ.get("SRE_FIELD_ENCRYPTION_KEY", "")
+
+# Company default model: what a project uses when it hasn't picked its own config, on
+# our API keys. Triage steps run on Jev (server CLOUDFLARE_*) when that's configured and
+# SRE_PLATFORM_TRIAGE_USES_JEV is on, else on the fast model; writing and running
+# playbooks use the strong model. Blank key = no company default (projects must bring
+# their own). The monthly cap counts every token billed to us, per project (0 = no cap).
+SRE_PLATFORM_OPENAI_API_KEY = os.environ.get("SRE_PLATFORM_OPENAI_API_KEY", "")
+SRE_PLATFORM_FAST_MODEL = os.environ.get("SRE_PLATFORM_FAST_MODEL", "gpt-5.4-mini")
+SRE_PLATFORM_STRONG_MODEL = os.environ.get("SRE_PLATFORM_STRONG_MODEL", "gpt-5.5")
+SRE_PLATFORM_TRIAGE_USES_JEV = env_bool("SRE_PLATFORM_TRIAGE_USES_JEV", default=True)
+SRE_PLATFORM_MONTHLY_TOKEN_CAP = int(os.environ.get("SRE_PLATFORM_MONTHLY_TOKEN_CAP", "2000000"))
 SRE_ALLOW_PRIVATE_LLM_URLS = env_bool("SRE_ALLOW_PRIVATE_LLM_URLS", default=False)
 SRE_SANDBOX_IMAGE = os.environ.get("SRE_SANDBOX_IMAGE", "saasathon-sre-sandbox:latest")
 SRE_SANDBOX_NETWORK = os.environ.get("SRE_SANDBOX_NETWORK", "none")

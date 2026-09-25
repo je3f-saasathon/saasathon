@@ -340,7 +340,7 @@ def test_incident_run_without_playbook_run_reports_created_playbook(api_for, mak
     assert body["playbook"]["id"] == playbook.id and body["playbook"]["source"] == "created"
     assert body["pr_url"] == "" and body["playbook_run_status"] is None
     assert body["usage"] == {"calls": 0, "input_tokens": 0, "output_tokens": 0,
-                             "total_tokens": 0, "models": [], "by_step": []}
+                             "total_tokens": 0, "platform_tokens": 0, "models": [], "by_step": []}
 
 
 def test_viewer_cannot_approve_admin_can(api_for, make_user, make_project, add_member, temporal_calls):

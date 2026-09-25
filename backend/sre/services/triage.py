@@ -15,7 +15,12 @@ CATEGORIES = {
     "logic_error": "Wrong behavior in application code",
     "other": "None of the above",
 }
-SEVERITIES = ("low", "medium", "high", "critical")
+SEVERITIES = {
+    "low": "Cosmetic or rare; no real user impact",
+    "medium": "Some users hit errors, workarounds exist",
+    "high": "A core feature is broken for many users",
+    "critical": "Outage, data loss or security impact",
+}
 
 
 class AnomalyChecker:
@@ -35,13 +40,16 @@ class AnomalyChecker:
     def check(self) -> AnomalyResult:
         context = incident_context(self.run)
         if isinstance(self.client, JevClient):
-            choice = self.client.choose(
+            answer = self.client.choose(
                 context,
                 "Is this a real, actionable production anomaly rather than noise?",
                 {"yes": "Real, actionable problem", "no": "Noise or expected behavior"},
                 name="anomaly_double_check",
             )
-            return AnomalyResult(is_anomaly=choice == "yes", reasoning=f"Jev answered '{choice}'")
+            return AnomalyResult(
+                is_anomaly=answer.choice == "yes",
+                reasoning=f"Jev answered '{answer.choice}' (p={answer.confidence:.2f})",
+            )
         data = self.client.complete_json(self.SYSTEM, context, name="anomaly_double_check")
         return AnomalyResult(
             is_anomaly=bool(data.get("is_anomaly")), reasoning=str(data.get("reasoning", ""))
@@ -66,14 +74,19 @@ class BugClassifier:
     def classify(self) -> Classification:
         context = incident_context(self.run)
         if isinstance(self.client, JevClient):
-            category = self.client.choose(
-                context, "Which category best describes this bug?", CATEGORIES,
-                name="bug_classification",
-            )
+            answers = self.client.choose_many(context, {
+                "category": ("Which category best describes this bug?", CATEGORIES),
+                "severity": ("How severe is this bug for users of the service?", SEVERITIES),
+            }, name="bug_classification")
+            category = answers["category"].choice
+            severity = answers["severity"].choice
             return Classification(
                 category=category if category in CATEGORIES else "other",
-                severity="medium",
-                summary=f"Classified by Jev as {category}",
+                severity=severity if severity in SEVERITIES else "medium",
+                summary=(
+                    f"Classified by Jev as {category} (p={answers['category'].confidence:.2f}), "
+                    f"severity {severity}"
+                ),
                 keywords=heuristic_keywords(self.run),
             )
         data = self.client.complete_json(self.SYSTEM, context, name="bug_classification")

@@ -100,7 +100,8 @@ def test_step_override_beats_default(monkeypatch, incident, project):
     assert get_llm_config(project, "anomaly_double_check") == project.default_llm_config
 
 
-def test_missing_llm_config_is_non_retryable(incident, project):
+def test_missing_llm_config_is_non_retryable(incident, project, settings):
+    settings.SRE_PLATFORM_OPENAI_API_KEY = ""  # no company default to fall back to
     project.default_llm_config = None
     project.save()
     with pytest.raises(ApplicationError) as exc:
@@ -214,20 +215,117 @@ def test_unapproved_success_does_not_confirm(project):
 
 # ---- Jev ---------------------------------------------------------------------------
 
+JEV_URL = "https://api.cloudflare.com/client/v4/accounts/{}/ai/run"
+
+
+def jev_choice(choice, probabilities=None):
+    answer = {"type": "choice", "choice": choice}
+    if probabilities is not None:
+        answer["probabilities"] = probabilities
+    return answer
+
+
+def jev_reply(answers, usage=None):
+    return {"success": True, "errors": [], "result": {"result": {
+        "model": "jev-1.13.0", "answers": answers,
+        "usage": usage or {"input_tokens": 0, "output_tokens": 0},
+    }}}
+
+
+def jev_config(project, step, **fields):
+    config = LLMProviderConfig.objects.create(owner=project.memberships.get().user, name="jev",
+                                              provider="jev_cloudflare", **fields)
+    LLMStepOverride.objects.create(project=project, step=step, llm_config=config)
+    return config
+
+
 @responses.activate
 def test_jev_config_answers_anomaly_check(settings, incident, project):
     settings.CLOUDFLARE_ACCOUNT_ID = "acct"
     settings.CLOUDFLARE_API_TOKEN = "tok"
-    jev = LLMProviderConfig.objects.create(owner=project.memberships.get().user, name="jev",
-                                           provider="jev_cloudflare", model="typesafe/jev")
-    LLMStepOverride.objects.create(project=project, step="anomaly_double_check", llm_config=jev)
-    responses.add(responses.POST, "https://api.cloudflare.com/client/v4/accounts/acct/ai/run", json={
-        "success": True, "errors": [],
-        "result": {"result": {"model": "jev", "usage": {},
-                              "answers": {"answer": {"type": "choice", "choice": "yes"}}}},
-    })
+    jev_config(project, "anomaly_double_check", model="typesafe/jev")
+    responses.add(responses.POST, JEV_URL.format("acct"),
+                  json=jev_reply({"answer": jev_choice("yes", {"yes": 0.9, "no": 0.1})}))
     result = activities.confirm_anomaly(IncidentInput(incident.id, incident.project_id))
     assert result.is_anomaly is True
+    assert "p=0.90" in result.reasoning
+
+
+@responses.activate
+def test_jev_uses_the_configs_own_credentials(settings, incident, project):
+    settings.CLOUDFLARE_ACCOUNT_ID = "server-acct"
+    settings.CLOUDFLARE_API_TOKEN = "server-tok"
+    settings.CLOUDFLARE_JEV_MODEL = "typesafe/jev"
+    jev_config(project, "anomaly_double_check", model="", api_key_encrypted=encrypt("user-tok"),
+               extra_config={"account_id": "user-acct"})
+    responses.add(responses.POST, JEV_URL.format("user-acct"),
+                  json=jev_reply({"answer": jev_choice("no")}))
+    result = activities.confirm_anomaly(IncidentInput(incident.id, incident.project_id))
+    assert result.is_anomaly is False
+    request = responses.calls[0].request
+    assert request.headers["Authorization"] == "Bearer user-tok"
+    assert json.loads(request.body)["model"] == "typesafe/jev"  # empty model -> server default
+
+
+def test_jev_without_any_credentials_is_non_retryable(settings, incident, project):
+    settings.CLOUDFLARE_ACCOUNT_ID = ""
+    settings.CLOUDFLARE_API_TOKEN = ""
+    jev_config(project, "anomaly_double_check")
+    with pytest.raises(ApplicationError) as exc:
+        activities.confirm_anomaly(IncidentInput(incident.id, incident.project_id))
+    assert exc.value.non_retryable
+    assert "not configured" in str(exc.value)
+
+
+@responses.activate
+def test_jev_classifies_category_and_severity_in_one_call(settings, incident, project):
+    settings.CLOUDFLARE_ACCOUNT_ID = "acct"
+    settings.CLOUDFLARE_API_TOKEN = "tok"
+    jev_config(project, "bug_classification")
+    responses.add(responses.POST, JEV_URL.format("acct"), json=jev_reply(
+        {"category": jev_choice("database", {"database": 0.8}), "severity": jev_choice("high")},
+        usage={"input_tokens": 290, "output_tokens": 23},
+    ))
+    result = activities.classify_bug(IncidentInput(incident.id, incident.project_id))
+    assert (result.category, result.severity) == ("database", "high")
+    assert result.keywords  # Jev can't emit keywords: heuristics fill them
+    assert len(responses.calls) == 1
+    usage = LLMUsage.objects.get(incident_run=incident)
+    assert (usage.provider, usage.input_tokens, usage.output_tokens) == ("jev_cloudflare", 290, 23)
+
+
+@responses.activate
+def test_jev_judge_applies_the_confidence_threshold(settings, incident, project):
+    settings.CLOUDFLARE_ACCOUNT_ID = "acct"
+    settings.CLOUDFLARE_API_TOKEN = "tok"
+    jev_config(project, "playbook_similarity_judge")
+    playbook = Playbook.objects.create(project=project, title="Pool", description="db pool",
+                                       keywords=["pool"], steps=[])
+    choice = f"pb_{playbook.id}"
+    responses.add(responses.POST, JEV_URL.format("acct"),
+                  json=jev_reply({"answer": jev_choice(choice, {choice: 0.4, "none": 0.6})}))
+    responses.add(responses.POST, JEV_URL.format("acct"),
+                  json=jev_reply({"answer": jev_choice(choice, {choice: 0.85, "none": 0.15})}))
+    judge = lambda: activities.judge_playbook_match(JudgeInput(incident.id, [playbook.id]))  # noqa: E731
+    low = judge()
+    assert low.matched_playbook_id is None and "below threshold" in low.reasoning
+    high = judge()
+    assert high.matched_playbook_id == playbook.id and high.confidence == 0.85
+
+
+@responses.activate
+def test_jev_billing_error_is_non_retryable(settings, incident, project):
+    settings.CLOUDFLARE_ACCOUNT_ID = "acct"
+    settings.CLOUDFLARE_API_TOKEN = "tok"
+    jev_config(project, "anomaly_double_check")
+    responses.add(responses.POST, JEV_URL.format("acct"), status=402, json={
+        "success": False, "result": {}, "messages": [],
+        "errors": [{"code": 2021, "message": "Insufficient balance; add money to your gateway or use BYOK"}],
+    })
+    with pytest.raises(ApplicationError) as exc:
+        activities.confirm_anomaly(IncidentInput(incident.id, incident.project_id))
+    assert exc.value.non_retryable
+    assert "Insufficient balance" in str(exc.value)
 
 
 # ---- agent executor (GitHub + sandbox faked) ------------------------------------------

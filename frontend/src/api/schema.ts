@@ -441,6 +441,23 @@ export interface paths {
         patch: operations["sre_api_update_member"];
         trace?: never;
     };
+    "/api/sre/platform": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform Default */
+        get: operations["sre_api_platform_default"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sre/llm-configs": {
         parameters: {
             query?: never;
@@ -798,6 +815,8 @@ export interface components {
             default_llm_config_id: number | null;
             /** Generate Tests */
             generate_tests: boolean;
+            /** Platform Tokens This Month */
+            platform_tokens_this_month: number;
             /**
              * Created At
              * Format: date-time
@@ -833,6 +852,8 @@ export interface components {
             default_llm_config_id: number | null;
             /** Generate Tests */
             generate_tests: boolean;
+            /** Platform Tokens This Month */
+            platform_tokens_this_month: number;
             /**
              * Created At
              * Format: date-time
@@ -955,6 +976,17 @@ export interface components {
         /** MemberUpdateIn */
         MemberUpdateIn: {
             role: components["schemas"]["ProjectRole"];
+        };
+        /** PlatformOut */
+        PlatformOut: {
+            /** Available */
+            available: boolean;
+            /** Triage Model */
+            triage_model: string;
+            /** Strong Model */
+            strong_model: string;
+            /** Monthly Token Cap */
+            monthly_token_cap: number;
         };
         /** LLMConfigOut */
         LLMConfigOut: {
@@ -1205,6 +1237,8 @@ export interface components {
             provider: string;
             /** Model */
             model: string;
+            /** Billed To */
+            billed_to: string;
             /** Calls */
             calls: number;
             /** Input Tokens */
@@ -1222,6 +1256,8 @@ export interface components {
             output_tokens: number;
             /** Total Tokens */
             total_tokens: number;
+            /** Platform Tokens */
+            platform_tokens: number;
             /** Models */
             models: string[];
             /** By Step */
@@ -2128,6 +2164,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    sre_api_platform_default: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformOut"];
                 };
             };
         };

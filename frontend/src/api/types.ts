@@ -47,3 +47,4 @@ export type GitHubStatus = Schemas["GitHubStatusOut"];
 export type GitHubConnect = Schemas["GitHubConnectOut"];
 export type GitHubInstallation = Schemas["GitHubInstallationOut"];
 export type GitHubRepo = Schemas["GitHubRepoOut"];
+export type Platform = Schemas["PlatformOut"];

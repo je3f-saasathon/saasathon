@@ -55,14 +55,22 @@ export function PrLink({ run }: { run: IncidentRun }) {
   );
 }
 
-/** Whether the fix agent wrote tests on this run (frozen per run), for comparing token costs. */
+/** Whose key paid for a run's LLM calls: ours (company default), the user's, or both. */
+export function billedLabel(run: IncidentRun): string | null {
+  const { calls, platform_tokens, total_tokens } = run.usage;
+  if (calls === 0) return null;
+  if (platform_tokens === 0) return "your key";
+  return platform_tokens >= total_tokens ? "our key" : "our + your key";
+}
+
+/** Under the token count: whether tests were written (frozen per run) and whose key paid. */
 export function TestsNote({ run }: { run: IncidentRun }) {
-  if (run.generate_tests == null) return null;
-  return (
-    <div className="text-[11px] text-muted-foreground">
-      tests {run.generate_tests ? "on" : "off"}
-    </div>
-  );
+  const parts = [
+    run.generate_tests == null ? null : `tests ${run.generate_tests ? "on" : "off"}`,
+    billedLabel(run),
+  ].filter(Boolean);
+  if (!parts.length) return null;
+  return <div className="text-[11px] text-muted-foreground">{parts.join(" · ")}</div>;
 }
 
 function SortableHeader({ column, title }: { column: Column<IncidentRun>; title: string }) {
