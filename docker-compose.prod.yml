@@ -26,12 +26,33 @@ services:
       - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/backend/.env.prod
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      # GitHub App private key (GITHUB_APP_PRIVATE_KEY_PATH=/secrets/<file>.pem): the
+      # backend lists an installation's repos when a project is created.
+      - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/secrets:/secrets:ro
     depends_on:
       - postgres
     command: sh -c "uv run python manage.py migrate --noinput && uv run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
 
-  # SRE agent Temporal worker. TEMPORAL_ADDRESS / LANGFUSE_* come from
-  # .env.prod (your prod Temporal and Langfuse, see docs/DEPLOYMENT.md).
+  # Temporal for the SRE agent's workflows: a single-node dev server persisted
+  # to a volume, fine for one box. Only reachable on the compose network
+  # (TEMPORAL_ADDRESS=temporal:7233); inspect it with
+  # `docker compose -f docker-compose.prod.yml exec temporal temporal workflow list`.
+  temporal:
+    image: temporalio/temporal:latest
+    restart: unless-stopped
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/data/temporal.db"]
+    user: "0:0"  # the sqlite volume is root-owned
+    volumes:
+      - temporal_data_prod:/data
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # SRE agent Temporal worker. TEMPORAL_ADDRESS (temporal:7233) and the optional
+  # LANGFUSE_* come from .env.prod, see docs/DEPLOYMENT.md.
   sre-worker:
     build:
       context: ./backend
@@ -45,9 +66,14 @@ services:
       SRE_WORKDIR: /sre-work
     volumes:
       - sre_work:/sre-work
+      - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/secrets:/secrets:ro
     depends_on:
-      - postgres
-      - sre-docker
+      postgres:
+        condition: service_started
+      sre-docker:
+        condition: service_started
+      temporal:
+        condition: service_healthy
     command: uv run python -m sre.worker
 
   # Docker daemon the worker runs sandboxes on, so a sandbox escape lands in
@@ -101,3 +127,4 @@ volumes:
   postgres_data_prod:
   sre_work:
   sre_docker_data:
+  temporal_data_prod:

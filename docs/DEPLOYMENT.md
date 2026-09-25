@@ -31,18 +31,36 @@ on `main`. Backend and frontend deploy independently via `deploy-backend.yml` /
 
 ## SRE agent in production
 
-`docker-compose.prod.yml` adds two services:
-- `sre-worker` — the Temporal worker (`python -m sre.worker`), same image as the backend.
-- `sre-docker` — a privileged `docker:dind` sidecar the worker starts sandbox containers on (`DOCKER_HOST=tcp://sre-docker:2375`, reachable only on the compose network). Sandboxes never run on the host's Docker. After the first deploy, and whenever `backend/sre/sandbox/Dockerfile` changes, run `make sandbox-image-prod` on the prod host.
+`docker-compose.prod.yml` runs the SRE agent next to the backend:
+- `temporal`: a single-node Temporal server (`start-dev`, persisted to the `temporal_data_prod` volume). It's only reachable on the compose network, and no host port is published. Inspect it with `docker compose -f docker-compose.prod.yml exec temporal temporal workflow list`. For more than one box, move to a real Temporal cluster. The client doesn't do TLS or API keys yet, so Temporal Cloud needs a code change.
+- `sre-worker`: the Temporal worker (`python -m sre.worker`), built from the backend image.
+- `sre-docker`: a privileged `docker:dind` sidecar that the worker starts sandbox containers on (`DOCKER_HOST=tcp://sre-docker:2375`, reachable only on the compose network). Sandboxes never run on the host's Docker.
 
-Temporal and Langfuse are **not** part of the prod compose file. Point the backend at them in `backend/.env.prod`:
-- `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, `TEMPORAL_TASK_QUEUE` — Temporal Cloud, or a self-hosted cluster (`docker-compose.infra.yml`'s `start-dev` server is fine for a single box but isn't a production Temporal).
-- `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` — Langfuse Cloud, or a self-hosted Langfuse. If you self-host with `docker-compose.infra.yml`, override every `CHANGEME` value there through env vars first.
+`deploy-backend.yml` handles all three. After the backend's health check passes, it runs `up -d --build temporal sre-docker sre-worker` and rebuilds the sandbox image inside `sre-docker` (layers are cached, so it's quick). To build the sandbox image by hand on the host, run `ENV_FILE_DIR=~/prod-saasathon make sandbox-image-prod`.
 
-Required in `backend/.env.prod`:
-- `SRE_FIELD_ENCRYPTION_KEY` — encrypts users' LLM API keys. Losing it makes the stored keys unreadable; rotating it needs a re-encryption.
-- `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH` — the GitHub App the agent pushes and opens PRs as (permissions: Contents read/write, Pull requests read/write). Mount the key file into the `sre-worker` container.
-- `SRE_ALLOW_PRIVATE_LLM_URLS=false` — otherwise users can point LLM configs at internal services.
-- `SRE_SANDBOX_NETWORK=none`.
+**One-time setup on the prod host**
+1. Put the GitHub App's private key at `$ENV_FILE_DIR/secrets/github-app.pem`. That folder is mounted read-only at `/secrets` into `backend` (it lists repos when a project is created) and `sre-worker` (it clones, pushes and opens PRs).
+2. Add to `$ENV_FILE_DIR/backend/.env.prod`:
+   ```bash
+   TEMPORAL_ADDRESS=temporal:7233
+   TEMPORAL_NAMESPACE=default
+   TEMPORAL_TASK_QUEUE=sre-pipeline
+   # Encrypts users' LLM API keys. Back it up: losing it makes stored keys
+   # unreadable, and rotating it needs a re-encryption.
+   SRE_FIELD_ENCRYPTION_KEY=   # python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   GITHUB_APP_ID=
+   GITHUB_APP_PRIVATE_KEY_PATH=/secrets/github-app.pem
+   GITHUB_APP_SLUG=            # Connect GitHub, see docs/AUTH.md
+   GITHUB_APP_CLIENT_ID=
+   GITHUB_APP_CLIENT_SECRET=
+   SRE_ALLOW_PRIVATE_LLM_URLS=false   # otherwise users can point LLM configs at internal services
+   SRE_SANDBOX_NETWORK=none
+   # Optional tracing. Blank = off. Token counts on the dashboard come from the DB either way.
+   LANGFUSE_HOST=
+   LANGFUSE_PUBLIC_KEY=
+   LANGFUSE_SECRET_KEY=
+   ```
+3. On the GitHub App (permissions: Contents read/write, Pull requests read/write), add the Callback URL `https://api-dev.andrewplescan.com/api/sre/github/callback` and follow the rest of `docs/AUTH.md` ("GitHub App (SRE agent)").
+4. Re-run the deploy (`gh workflow run deploy-backend.yml`) or push to `main`.
 
-Roll back the worker the same way as the backend (it ships from the same image). In-flight workflows resume on the new worker; if a deploy changes the workflow's control flow, drain running workflows first (Temporal requires deterministic replay).
+Roll back the worker the same way as the backend, since it ships from the same image. In-flight workflows resume on the new worker. If a deploy changes the workflow's control flow, drain running workflows first, because Temporal requires deterministic replay.
