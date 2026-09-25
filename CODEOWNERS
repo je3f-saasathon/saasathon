@@ -1,0 +1,6 @@
+/frontend/          @frontend-owner
+/backend/           @backend-owner
+/backend/services/  @services-owner
+/scripts/           @infra-owner
+/.github/           @infra-owner
+/docs/              @backend-owner @frontend-owner

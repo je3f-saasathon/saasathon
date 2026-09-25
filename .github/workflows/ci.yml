@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check backend is ready
+        id: check
+        run: |
+          if [ -f backend/pyproject.toml ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::backend/pyproject.toml not found yet, skipping backend job"
+          fi
+      - name: Install uv
+        if: steps.check.outputs.ready == 'true'
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: uv sync
+        if: steps.check.outputs.ready == 'true'
+        working-directory: backend
+        run: uv sync
+      - name: Run tests
+        if: steps.check.outputs.ready == 'true'
+        working-directory: backend
+        run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check frontend is ready
+        id: check
+        run: |
+          if [ -f frontend/package.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::frontend/package.json not found yet, skipping frontend job"
+          fi
+      - name: Setup Node
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+      - name: Enable corepack / pnpm
+        if: steps.check.outputs.ready == 'true'
+        run: corepack enable
+      - name: pnpm install
+        if: steps.check.outputs.ready == 'true'
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: pnpm build
+        if: steps.check.outputs.ready == 'true'
+        working-directory: frontend
+        run: pnpm build
+      - name: pnpm test
+        if: steps.check.outputs.ready == 'true'
+        working-directory: frontend
+        run: pnpm test

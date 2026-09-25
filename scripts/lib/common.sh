@@ -101,11 +101,11 @@ stop_tracked() {
 port_listener() {
   port="$1"
   if command -v lsof >/dev/null 2>&1; then
-    lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print $2"|"$1}'
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print $2"|"$1}' || true
   elif command -v ss >/dev/null 2>&1; then
-    ss -ltnp 2>/dev/null | grep ":$port " | sed -n 's/.*pid=\([0-9]*\).*/\1|proc/p' | head -n1
+    ss -ltnp 2>/dev/null | grep ":$port " | sed -n 's/.*pid=\([0-9]*\).*/\1|proc/p' | head -n1 || true
   elif command -v fuser >/dev/null 2>&1; then
-    p=$(fuser -n tcp "$port" 2>/dev/null | tr -d ' ')
+    p=$(fuser -n tcp "$port" 2>/dev/null | tr -d ' ' || true)
     [ -n "$p" ] && echo "$p|unknown"
   fi
 }

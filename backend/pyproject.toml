@@ -1,0 +1,34 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Backend API for the saasathon starter"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.0,<6.0",
+    "django-ninja>=1.3.0",
+    "django-cors-headers>=4.4.0",
+    "python-dotenv>=1.0.1",
+    "dj-database-url>=2.2.0",
+    "requests>=2.32.0",
+    "pyjwt>=2.9.0",
+    "gunicorn>=23.0.0",
+    "uvicorn[standard]>=0.30.6",
+]
+
+[tool.uv.workspace]
+members = ["services/*"]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.2",
+    "pytest-django>=4.9.0",
+    "responses>=0.25.3",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+testpaths = ["accounts", "items", "config"]

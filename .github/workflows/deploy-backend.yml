@@ -1,0 +1,49 @@
+name: Deploy backend
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, je3f-saasathon-oma, backend]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Build and start backend
+        run: docker compose -f docker-compose.prod.yml up -d --build backend
+
+      - name: Health check
+        run: |
+          url="http://localhost:${BACKEND_PORT:-8000}/api/health"
+          host_header="api.dev.andrewplescan.com"
+          echo "checking $url with Host: $host_header"
+          attempt=0
+          max_attempts=15
+          delay=2
+          until curl -fsS -H "Host: $host_header" "$url" >/dev/null; do
+            attempt=$((attempt+1))
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "backend health check failed after $attempt attempts"
+              docker compose -f docker-compose.prod.yml logs --tail 100 backend
+              exit 1
+            fi
+            sleep "$delay"
+            delay=$((delay * 2))
+            [ "$delay" -gt 30 ] && delay=30
+          done
+          echo "backend healthy"
+
+      - name: Prune old images
+        if: always()
+        run: docker image prune -f

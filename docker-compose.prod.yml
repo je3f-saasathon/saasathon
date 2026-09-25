@@ -1,0 +1,62 @@
+name: saasathon-prod
+
+# env_file paths point OUTSIDE this git checkout — production secrets are
+# never committed. Default layout on the prod host:
+#   ${ENV_FILE_DIR:-/home/$(whoami)/prod-Je3f-saasathon}/backend/.env.prod
+#   ${ENV_FILE_DIR:-/home/$(whoami)/prod-Je3f-saasathon}/frontend/.env.prod
+# Set ENV_FILE_DIR in the shell (or a systemd unit / CI runner env) if you
+# want a different location. See docs/DEPLOYMENT.md.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE_DIR:-/home/nobody/prod-Je3f-saasathon}/backend/.env.prod
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: prod
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE_DIR:-/home/nobody/prod-Je3f-saasathon}/backend/.env.prod
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      - postgres
+    command: uv run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: prod
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE_DIR:-/home/nobody/prod-Je3f-saasathon}/frontend/.env.prod
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - backend
+
+  # ---------------------------------------------------------------------
+  # Example standalone service, mirrored from docker-compose.yml. Uncomment
+  # once a real service exists.
+  # ---------------------------------------------------------------------
+  # example-service:
+  #   build:
+  #     context: ./backend/services/example
+  #     dockerfile: Dockerfile
+  #     target: prod
+  #   restart: unless-stopped
+  #   env_file:
+  #     - ${ENV_FILE_DIR:-/home/nobody/prod-Je3f-saasathon}/services/example/.env.prod
+  #   ports:
+  #     - "8100:8100"
+
+volumes:
+  postgres_data_prod:

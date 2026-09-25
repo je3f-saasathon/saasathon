@@ -1,0 +1,77 @@
+name: saasathon
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: saasathon
+      POSTGRES_USER: saasathon
+      POSTGRES_PASSWORD: saasathon
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saasathon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgres://saasathon:saasathon@postgres:5432/saasathon
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uv run python manage.py runserver 0.0.0.0:8000
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    restart: unless-stopped
+    env_file:
+      - ./frontend/.env
+    environment:
+      VITE_API_URL: http://localhost:${BACKEND_PORT:-8000}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    command: pnpm dev --host --port 5173
+
+  # ---------------------------------------------------------------------
+  # Example standalone service (backend/services/*). Uncomment and copy
+  # once a real service exists. Each service gets its own port starting
+  # at 8100, its own Dockerfile, and a shared-secret or bearer check.
+  # ---------------------------------------------------------------------
+  # example-service:
+  #   build:
+  #     context: ./backend/services/example
+  #     dockerfile: Dockerfile
+  #   restart: unless-stopped
+  #   env_file:
+  #     - ./backend/services/example/.env
+  #   ports:
+  #     - "8100:8100"
+  #   volumes:
+  #     - ./backend/services/example:/app
+
+volumes:
+  postgres_data:
