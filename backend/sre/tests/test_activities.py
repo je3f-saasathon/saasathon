@@ -312,6 +312,26 @@ def test_autonomous_attempt_pushes_and_opens_pr(monkeypatch, fake_infra, project
     assert [s["type"] for s in attempt.generated_steps] == ["edit_file", "run_command"]
 
 
+@pytest.mark.parametrize("project_setting", [True, False])
+def test_generate_tests_is_frozen_on_the_run_and_steers_the_agent(
+        monkeypatch, fake_infra, project, incident, project_setting):
+    project.generate_tests = project_setting
+    project.save()
+    playbook = Playbook.objects.create(project=project, title="p", status="confirmed")
+    info = activities.create_playbook_run(RunInput(incident.id, playbook.id))
+    # Flipping the project afterwards doesn't change a run that already started.
+    project.generate_tests = not project_setting
+    project.save()
+    playbook_run = PlaybookRun.objects.get(id=info.playbook_run_id)
+    assert playbook_run.generate_tests is project_setting
+
+    llm = FakeLLM(monkeypatch, *AGENT_TURNS)
+    PlaybookExecutor(playbook_run, 1, "").execute()
+    system = llm.prompts[0][0]
+    assert ("Add or update a test" in system) is project_setting
+    assert ("Do not write new tests" in system) is not project_setting
+
+
 def test_draft_attempt_opens_draft_pr(monkeypatch, fake_infra, project, incident):
     FakeLLM(monkeypatch, *AGENT_TURNS)
     result = PlaybookExecutor(_playbook_run(project, incident, "draft_only"), 1, "").execute()

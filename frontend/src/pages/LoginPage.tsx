@@ -20,7 +20,7 @@ export function LoginPage() {
     retry: false,
   });
 
-  const from = (location.state as { from?: string } | null)?.from ?? "/";
+  const from = (location.state as { from?: string } | null)?.from ?? "/dashboard";
 
   function handleOAuthStart(provider: "github" | "google") {
     sessionStorage.setItem("post_login_redirect", from);

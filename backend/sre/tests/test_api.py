@@ -119,6 +119,17 @@ def test_create_project_returns_secret_once(api_for, make_user, monkeypatch):
     assert "webhook_secret" not in listed[0]
 
 
+def test_admin_can_toggle_test_generation(api_for, make_user, make_project, add_member):
+    owner, admin = make_user(email="o@example.com"), make_user(email="a@example.com")
+    project = make_project(owner)
+    add_member(project, admin, ProjectRole.ADMIN)
+    assert api_for(owner).get(f"/projects/{project.id}").json()["generate_tests"] is True
+    resp = api_for(admin).patch(f"/projects/{project.id}", {"generate_tests": False})
+    assert resp.status_code == 200 and resp.json()["generate_tests"] is False
+    # An unrelated update leaves it alone.
+    assert api_for(admin).patch(f"/projects/{project.id}", {"name": "x"}).json()["generate_tests"] is False
+
+
 def test_non_member_gets_404(api_for, make_user, make_project):
     project = make_project(make_user(email="owner@example.com"))
     outsider = api_for(make_user(email="outsider@example.com"))

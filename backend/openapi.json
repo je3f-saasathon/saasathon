@@ -2381,6 +2381,10 @@
             ],
             "title": "Default Llm Config Id"
           },
+          "generate_tests": {
+            "title": "Generate Tests",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2402,6 +2406,7 @@
           "uptrace_source_id",
           "default_execution_mode",
           "default_llm_config_id",
+          "generate_tests",
           "created_at",
           "github_verified"
         ],
@@ -2464,6 +2469,10 @@
             ],
             "title": "Default Llm Config Id"
           },
+          "generate_tests": {
+            "title": "Generate Tests",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2493,6 +2502,7 @@
           "uptrace_source_id",
           "default_execution_mode",
           "default_llm_config_id",
+          "generate_tests",
           "created_at",
           "github_verified",
           "webhook_secret",
@@ -2536,6 +2546,11 @@
               }
             ],
             "default": "draft_only"
+          },
+          "generate_tests": {
+            "default": true,
+            "title": "Generate Tests",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2635,6 +2650,17 @@
               }
             ],
             "title": "Default Llm Config Id"
+          },
+          "generate_tests": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generate Tests"
           }
         },
         "title": "ProjectUpdateIn",
@@ -3414,6 +3440,17 @@
               }
             ]
           },
+          "generate_tests": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generate Tests"
+          },
           "usage": {
             "$ref": "#/components/schemas/UsageOut"
           }
@@ -3438,6 +3475,7 @@
           "pr_url",
           "playbook_run_status",
           "execution_mode",
+          "generate_tests",
           "usage"
         ],
         "title": "IncidentRunOut",
@@ -3622,6 +3660,10 @@
           "execution_mode": {
             "$ref": "#/components/schemas/ExecutionMode"
           },
+          "generate_tests": {
+            "title": "Generate Tests",
+            "type": "boolean"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -3670,6 +3712,7 @@
           "incident_run_id",
           "playbook_id",
           "execution_mode",
+          "generate_tests",
           "status",
           "approved_by_id",
           "approved_at",

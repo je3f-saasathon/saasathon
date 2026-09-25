@@ -59,6 +59,8 @@ class Project(models.Model):
     default_execution_mode = models.CharField(
         max_length=32, choices=ExecutionMode.choices, default=ExecutionMode.DRAFT_ONLY
     )
+    # Off = the fix agent runs the repo's existing tests but writes none (cheaper runs).
+    generate_tests = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -194,6 +196,8 @@ class PlaybookRun(models.Model):
     )
     playbook = models.ForeignKey(Playbook, on_delete=models.CASCADE, related_name="runs")
     execution_mode = models.CharField(max_length=32, choices=ExecutionMode.choices)
+    # Frozen from the project when the run starts, so token costs can be compared per run.
+    generate_tests = models.BooleanField(default=True)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.RUNNING)
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL

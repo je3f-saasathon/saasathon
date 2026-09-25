@@ -35,7 +35,7 @@ export function AuthCallbackPage() {
         return;
       }
 
-      const redirectTo = sessionStorage.getItem("post_login_redirect") || "/";
+      const redirectTo = sessionStorage.getItem("post_login_redirect") || "/dashboard";
       sessionStorage.removeItem("post_login_redirect");
       navigate(redirectTo, { replace: true });
     }

@@ -131,7 +131,9 @@ def create_playbook_run(inp: RunInput) -> PlaybookRunInfo:
     if playbook.status == Playbook.Status.UNCONFIRMED and mode == ExecutionMode.AUTONOMOUS:
         mode = ExecutionMode.DRAFT_ONLY
     playbook_run, _ = PlaybookRun.objects.get_or_create(
-        incident_run=run, defaults={"playbook": playbook, "execution_mode": mode}
+        incident_run=run,
+        defaults={"playbook": playbook, "execution_mode": mode,
+                  "generate_tests": run.project.generate_tests},
     )
     return PlaybookRunInfo(playbook_run.id, playbook_run.execution_mode)
 

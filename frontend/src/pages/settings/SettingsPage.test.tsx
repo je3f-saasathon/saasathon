@@ -13,7 +13,8 @@ const project = {
   id: 2, name: "django-buggy-app", role: "owner", github_installation_id: "164850677",
   github_repo_owner: "je3f-saasathon", github_repo_name: "django-buggy-app",
   github_default_branch: "main", uptrace_source_id: "", default_execution_mode: "draft_only",
-  default_llm_config_id: 1, created_at: "2026-09-25T00:00:00Z", github_verified: false,
+  default_llm_config_id: 1, generate_tests: true, created_at: "2026-09-25T00:00:00Z",
+  github_verified: false,
 };
 
 const routes: Record<string, unknown> = {
@@ -21,6 +22,7 @@ const routes: Record<string, unknown> = {
   "POST /api/sre/llm-configs": { ...configs[0], id: 3, name: "claude" },
   "PATCH /api/sre/llm-configs/1": { ...configs[0], has_api_key: false },
   "GET /api/sre/projects": [project],
+  "PATCH /api/sre/projects/2": { ...project, generate_tests: false },
   "GET /api/sre/projects/2/step-overrides": [],
   "GET /api/sre/github/status": { configured: true, app_slug: "sre-app-local" },
   "GET /api/sre/github/installations": [{ id: 9, installation_id: "164850677", account_login: "je3f-saasathon", account_type: "Organization" }],
@@ -96,6 +98,20 @@ describe("SettingsPage", () => {
     expect(within(execution).getByRole("option", { name: /jev/ })).toBeDisabled();
     const triage = screen.getByLabelText("Model for Anomaly double-check");
     expect(within(triage).getByRole("option", { name: /jev/ })).not.toBeDisabled();
+  });
+
+  it("turning off test generation sends only that change", async () => {
+    renderAt("/settings?tab=projects");
+    fireEvent.click(await screen.findByText("django-buggy-app"));
+    const toggle = await screen.findByRole("checkbox", { name: /Generate tests/ });
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Save project" }));
+    await vi.waitFor(() =>
+      expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true),
+    );
+    const [, init] = fetchMock.mock.calls.find(([, i]) => i?.method === "PATCH")!;
+    expect(JSON.parse(init.body)).toEqual({ generate_tests: false });
   });
 
   it("shows the connected banner and installations on the GitHub tab", async () => {

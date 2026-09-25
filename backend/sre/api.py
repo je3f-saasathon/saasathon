@@ -114,7 +114,7 @@ def _own_config(user, config_id: int) -> LLMProviderConfig:
 
 INCIDENT_EXTRA_FIELDS = {
     "created_playbook_id", "playbook_run_id", "project_name", "playbook", "pr_url",
-    "playbook_run_status", "execution_mode", "usage",
+    "playbook_run_status", "execution_mode", "generate_tests", "usage",
 }
 
 
@@ -155,6 +155,7 @@ def _incident_out(run: IncidentRun) -> dict:
         "pr_url": playbook_run.pr_url if playbook_run else "",
         "playbook_run_status": playbook_run.status if playbook_run else None,
         "execution_mode": playbook_run.execution_mode if playbook_run else None,
+        "generate_tests": playbook_run.generate_tests if playbook_run else None,
         "usage": _usage_out(run.llm_usage.all()),
     }
 

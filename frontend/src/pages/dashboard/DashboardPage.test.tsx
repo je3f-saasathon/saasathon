@@ -35,6 +35,7 @@ const run = {
   pr_url: "https://github.com/je3f-saasathon/django-buggy-app/pull/1",
   playbook_run_status: "succeeded",
   execution_mode: "draft_only",
+  generate_tests: false,
   usage,
 };
 
@@ -85,6 +86,7 @@ describe("DashboardPage", () => {
     expect(screen.getByText("gpt-5.4-mini")).toBeInTheDocument();
     expect(screen.getByText("gpt-5.5")).toBeInTheDocument();
     expect(screen.getAllByText((1234).toLocaleString()).length).toBeGreaterThan(0);
+    expect(screen.getByText("tests off")).toBeInTheDocument();
   });
 
   it("shows details on row click, with the diagnosis hidden until asked for", async () => {

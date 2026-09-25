@@ -796,6 +796,8 @@ export interface components {
             default_execution_mode: components["schemas"]["ExecutionMode"];
             /** Default Llm Config Id */
             default_llm_config_id: number | null;
+            /** Generate Tests */
+            generate_tests: boolean;
             /**
              * Created At
              * Format: date-time
@@ -829,6 +831,8 @@ export interface components {
             default_execution_mode: components["schemas"]["ExecutionMode"];
             /** Default Llm Config Id */
             default_llm_config_id: number | null;
+            /** Generate Tests */
+            generate_tests: boolean;
             /**
              * Created At
              * Format: date-time
@@ -863,6 +867,11 @@ export interface components {
             uptrace_source_id: string;
             /** @default draft_only */
             default_execution_mode: components["schemas"]["ExecutionMode"];
+            /**
+             * Generate Tests
+             * @default true
+             */
+            generate_tests: boolean;
         };
         /** ProjectUpdateIn */
         ProjectUpdateIn: {
@@ -881,6 +890,8 @@ export interface components {
             default_execution_mode?: components["schemas"]["ExecutionMode"] | null;
             /** Default Llm Config Id */
             default_llm_config_id?: number | null;
+            /** Generate Tests */
+            generate_tests?: boolean | null;
         };
         /** WebhookSecretOut */
         WebhookSecretOut: {
@@ -1172,6 +1183,8 @@ export interface components {
             /** Playbook Run Status */
             playbook_run_status: string | null;
             execution_mode: components["schemas"]["ExecutionMode"] | null;
+            /** Generate Tests */
+            generate_tests: boolean | null;
             usage: components["schemas"]["UsageOut"];
         };
         /** PlaybookBriefOut */
@@ -1247,6 +1260,8 @@ export interface components {
             /** Playbook Id */
             playbook_id: number;
             execution_mode: components["schemas"]["ExecutionMode"];
+            /** Generate Tests */
+            generate_tests: boolean;
             /** Status */
             status: string;
             /** Approved By Id */

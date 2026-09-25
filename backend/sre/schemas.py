@@ -29,6 +29,7 @@ class ProjectOut(Schema):
     uptrace_source_id: str
     default_execution_mode: ExecutionMode
     default_llm_config_id: int | None
+    generate_tests: bool
     created_at: datetime
     # True when an owner has proved (via Connect GitHub) access to the installation.
     github_verified: bool
@@ -52,6 +53,7 @@ class ProjectCreateIn(Schema):
     github_default_branch: str = "main"
     uptrace_source_id: str = ""
     default_execution_mode: ExecutionMode = ExecutionMode.DRAFT_ONLY
+    generate_tests: bool = True
 
 
 class ProjectUpdateIn(Schema):
@@ -63,6 +65,7 @@ class ProjectUpdateIn(Schema):
     uptrace_source_id: str | None = None
     default_execution_mode: ExecutionMode | None = None
     default_llm_config_id: int | None = None
+    generate_tests: bool | None = None
 
 
 class MemberOut(Schema):
@@ -173,6 +176,7 @@ class PlaybookRunOut(Schema):
     incident_run_id: int
     playbook_id: int
     execution_mode: ExecutionMode
+    generate_tests: bool
     status: str
     approved_by_id: int | None
     approved_at: datetime | None
@@ -226,6 +230,7 @@ class IncidentRunOut(Schema):
     pr_url: str
     playbook_run_status: str | None
     execution_mode: ExecutionMode | None
+    generate_tests: bool | None  # frozen on the playbook run; None without one
     usage: UsageOut
 
 
