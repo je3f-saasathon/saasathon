@@ -82,7 +82,8 @@ describe("DashboardPage", () => {
     expect(await screen.findByText("ZeroDivisionError in checkout")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /PR #1/ })).toHaveAttribute("href", run.pr_url);
     expect(screen.getByText("Guard division by zero")).toBeInTheDocument();
-    expect(screen.getByText("gpt-5.4-mini, gpt-5.5")).toBeInTheDocument();
+    expect(screen.getByText("gpt-5.4-mini")).toBeInTheDocument();
+    expect(screen.getByText("gpt-5.5")).toBeInTheDocument();
     expect(screen.getAllByText((1234).toLocaleString()).length).toBeGreaterThan(0);
   });
 
