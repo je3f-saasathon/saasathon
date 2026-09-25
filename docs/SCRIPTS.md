@@ -23,6 +23,7 @@ All commands below are `make` targets (thin wrappers around `scripts/*.sh`). Run
 | `make contracts` | Regenerates `backend/openapi.json` and the frontend's TypeScript API types. Run this after changing any backend endpoint. |
 | `make dev-token` | Prints a bearer token for the demo user, for `curl`/Postman testing. Only works when `DEBUG=true`. |
 | `make reset-db` | Wipes and recreates the dev database, then reseeds the demo user. |
+| `make test-db` (or `make testdb`) | Fills the dev database with fake `[demo]` projects and incidents so you can try the dashboard without GitHub or Uptrace. Re-running replaces them; `make test-db CLEAR=1` removes them. Only works when `DEBUG=true`. |
 | `make logs SERVICE=backend` | Tails logs for one service (`backend`, `frontend`, or a service name). Omit `SERVICE` to see all. |
 
 ## SRE agent
