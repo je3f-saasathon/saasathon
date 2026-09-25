@@ -97,8 +97,15 @@ def test_webhook_returns_503_when_temporal_is_down(client, make_user, make_proje
 
 # ---- projects & membership ---------------------------------------------------------
 
-def test_create_project_returns_secret_once(api_for, make_user):
-    api = api_for(make_user())
+def test_create_project_returns_secret_once(api_for, make_user, monkeypatch):
+    from sre.models import GitHubInstallation
+    from sre.services import github_connect
+    user = make_user()
+    GitHubInstallation.objects.create(user=user, installation_id="1", account_login="acme")
+    monkeypatch.setattr(github_connect, "installation_repos",
+                        lambda _id: [{"owner": "acme", "name": "shop", "default_branch": "main",
+                                      "private": True}])
+    api = api_for(user)
     resp = api.post("/projects", {"name": "shop", "github_installation_id": "1",
                                   "github_repo_owner": "acme", "github_repo_name": "shop"})
     assert resp.status_code == 201

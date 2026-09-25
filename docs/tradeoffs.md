@@ -36,6 +36,21 @@ Each Uptrace callback starts one workflow, keyed by `(project, trace_id)`. Repea
 **Why not build grouping now**
 - Fingerprinting is hard to get right. Is "the same incident" the same trace template, the same top stack frame, or the same file the playbook touches? A wrong heuristic (merging distinct bugs, or grouping nothing useful) is worse than none. v1 ships something real and simple first.
 
+## 4. GitHub connect: the signed `state` isn't bound to the browser
+
+"Connect GitHub" puts the user id in a signed, 10-minute `state` because GitHub's redirect
+back to our callback carries no bearer token (the frontend keeps it in localStorage, not
+a cookie).
+
+**What's given up**
+- Someone who steals a victim's fresh `state` could finish the flow with *their own* GitHub
+  account and link *their* installations to the victim's user. That doesn't give anyone
+  access to someone else's repos. At worst it adds installations the victim didn't intend to have.
+
+**Why not bind it now**
+- Binding needs a cookie set on the backend's domain before the redirect, which is
+  a separate origin from the frontend in dev and in the tunnel. The risk is low and the TTL is short.
+
 ## Future improvements the schema doesn't block
 
 - **Incident grouping**: add an `IncidentFingerprint` model (a hash of the normalized stack trace, or Uptrace's own group id) with a foreign key from `IncidentRun`, and check for a recent open run before starting a workflow. The workflow id can switch from the raw trace id to the fingerprint without touching other models.

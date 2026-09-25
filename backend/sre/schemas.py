@@ -30,6 +30,8 @@ class ProjectOut(Schema):
     default_execution_mode: ExecutionMode
     default_llm_config_id: int | None
     created_at: datetime
+    # True when an owner has proved (via Connect GitHub) access to the installation.
+    github_verified: bool
 
 
 class ProjectCreatedOut(ProjectOut):
@@ -234,3 +236,27 @@ class IncidentRunListOut(Schema):
 
 class ApprovePlaybookRunIn(Schema):
     approve: bool
+
+
+class GitHubStatusOut(Schema):
+    configured: bool
+    app_slug: str
+
+
+class GitHubConnectOut(Schema):
+    install_url: str
+    authorize_url: str
+
+
+class GitHubInstallationOut(Schema):
+    id: int
+    installation_id: str
+    account_login: str
+    account_type: str
+
+
+class GitHubRepoOut(Schema):
+    owner: str
+    name: str
+    default_branch: str
+    private: bool

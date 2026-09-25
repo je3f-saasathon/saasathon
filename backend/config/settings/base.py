@@ -164,6 +164,11 @@ LANGFUSE_SECRET_KEY = os.environ.get("LANGFUSE_SECRET_KEY", "")
 
 GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "")
 GITHUB_APP_PRIVATE_KEY_PATH = os.environ.get("GITHUB_APP_PRIVATE_KEY_PATH", "")
+# The same App's public name and OAuth credentials: used to verify, via the user's own
+# GitHub token, that an installation belongs to them before a project may use it.
+GITHUB_APP_SLUG = os.environ.get("GITHUB_APP_SLUG", "")
+GITHUB_APP_CLIENT_ID = os.environ.get("GITHUB_APP_CLIENT_ID", "")
+GITHUB_APP_CLIENT_SECRET = os.environ.get("GITHUB_APP_CLIENT_SECRET", "")
 
 SRE_FIELD_ENCRYPTION_KEY = os.environ.get("SRE_FIELD_ENCRYPTION_KEY", "")
 SRE_ALLOW_PRIVATE_LLM_URLS = env_bool("SRE_ALLOW_PRIVATE_LLM_URLS", default=False)

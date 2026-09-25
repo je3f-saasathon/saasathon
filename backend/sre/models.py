@@ -248,3 +248,22 @@ class LLMUsage(models.Model):
     class Meta:
         db_table = "sre_llm_usage"
         ordering = ["created_at"]
+
+
+class GitHubInstallation(models.Model):
+    """A GitHub App installation this user proved access to (via their own GitHub token,
+    GET /user/installations). Projects may only use installations their editor has here."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="github_installations"
+    )
+    installation_id = models.CharField(max_length=64)
+    account_login = models.CharField(max_length=255)
+    account_type = models.CharField(max_length=32, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "sre_github_installation"
+        unique_together = [("user", "installation_id")]
+        ordering = ["account_login"]

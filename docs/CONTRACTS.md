@@ -81,9 +81,9 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | Method | Path | Role | Body / Params | Returns |
 |---|---|---|---|---|
 | GET | `/sre/projects` | member | — | `Project[]` |
-| POST | `/sre/projects` | any user | `{name, github_installation_id, github_repo_owner, github_repo_name, github_default_branch?, uptrace_source_id?, default_execution_mode?}` | `201 Project & {webhook_secret, webhook_url}` — the only time the secret is shown besides rotation. Caller becomes owner. |
+| POST | `/sre/projects` | any user | `{name, github_installation_id, github_repo_owner, github_repo_name, github_default_branch?, uptrace_source_id?, default_execution_mode?}` | `201 Project & {webhook_secret, webhook_url}` — the only time the secret is shown besides rotation. Caller becomes owner. `400` unless the caller has connected that installation (see GitHub connect) and it can reach the repo. |
 | GET | `/sre/projects/{id}` | viewer | — | `Project` |
-| PATCH | `/sre/projects/{id}` | admin (owner for `github_*` / `uptrace_source_id`) | any subset of the create fields, plus `default_llm_config_id: int\|null` (must be one of the caller's own configs) | `Project` |
+| PATCH | `/sre/projects/{id}` | admin (owner for `github_*` / `uptrace_source_id`) | any subset of the create fields, plus `default_llm_config_id: int\|null` (must be one of the caller's own configs) | `Project`; `400` if the installation/repo *changes* and fails the same check as create (unchanged wiring is grandfathered) |
 | DELETE | `/sre/projects/{id}` | owner | — | `204` |
 | POST | `/sre/projects/{id}/webhook-secret/rotate` | owner | — | `{webhook_secret, webhook_url}` |
 | GET | `/sre/projects/{id}/members` | viewer | — | `{user_id, email, name, role}[]` |
@@ -91,7 +91,20 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | PATCH | `/sre/projects/{id}/members/{user_id}` | owner | `{role}` | `Member`, `409` if it would remove the last owner |
 | DELETE | `/sre/projects/{id}/members/{user_id}` | owner, or the member themself | — | `204`, `409` last owner. The member's LLM configs are detached from the project. |
 
-`Project`: `{id, name, role, github_installation_id, github_repo_owner, github_repo_name, github_default_branch, uptrace_source_id, default_execution_mode, default_llm_config_id, created_at}` (`role` is the caller's).
+`Project`: `{id, name, role, github_installation_id, github_repo_owner, github_repo_name, github_default_branch, uptrace_source_id, default_execution_mode, default_llm_config_id, created_at, github_verified}` (`role` is the caller's; `github_verified` is true when an owner has connected the project's installation).
+
+### GitHub connect (prove access to a GitHub App installation)
+
+| Method | Path | Auth | Body / Params | Returns |
+|---|---|---|---|---|
+| GET | `/sre/github/status` | user | — | `{configured, app_slug}` — `configured` is false without `GITHUB_APP_SLUG` / `_CLIENT_ID` / `_CLIENT_SECRET` |
+| POST | `/sre/github/connect` | user | — | `{install_url, authorize_url}`, each carrying a signed 10-minute `state` for the caller; `400` if not configured |
+| GET | `/sre/github/callback` | none (`state`) | `?code&state` (GitHub adds `installation_id`, `setup_action`) | `302` to `{FRONTEND_URL}/settings?tab=github&github=connected&count=N`, or `…&github_error=invalid_state\|state_expired\|authorization_missing\|token_exchange_failed\|github_api_failed\|not_configured`. On success it replaces the caller's installation list with what `GET /user/installations` returns for this App. |
+| GET | `/sre/github/installations` | user | — | `GitHubInstallation[]` (the caller's own) |
+| DELETE | `/sre/github/installations/{id}` | user (own) | — | `204` — unlinks our record only; nothing changes on GitHub |
+| GET | `/sre/github/installations/{id}/repos` | user (own) | — | `[{owner, name, default_branch, private}]`; `502` if GitHub fails |
+
+`GitHubInstallation`: `{id, installation_id, account_login, account_type}`. `id` is ours; `installation_id` is GitHub's (what projects store).
 
 ### LLM configs (owned by a user, attached to projects by reference)
 
