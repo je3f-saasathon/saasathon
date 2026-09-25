@@ -24,6 +24,9 @@ export function Layout() {
           <Link to="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
             Dashboard
           </Link>
+          <Link to="/settings" className="text-sm text-gray-600 hover:text-gray-900">
+            Settings
+          </Link>
         </nav>
         <div className="flex items-center gap-4">
           <HealthIndicator />
