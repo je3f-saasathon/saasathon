@@ -64,7 +64,7 @@ def test_me_requires_valid_token(client, make_user):
     token, raw = AuthToken.issue(user)
     resp = client.get("/api/auth/me", HTTP_AUTHORIZATION=f"Bearer {raw}")
     assert resp.status_code == 200
-    assert resp.json()["email"] == user.email
+    assert resp.json()["user"]["email"] == user.email
 
 
 def test_me_rejects_expired_or_revoked_token(client, make_user):

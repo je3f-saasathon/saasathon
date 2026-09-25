@@ -255,6 +255,10 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** MeOut */
+        MeOut: {
+            user: components["schemas"]["UserOut"];
+        };
         /** OkOut */
         OkOut: {
             /**
@@ -432,7 +436,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserOut"];
+                    "application/json": components["schemas"]["MeOut"];
                 };
             };
         };

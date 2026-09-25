@@ -117,7 +117,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserOut"
+                  "$ref": "#/components/schemas/MeOut"
                 }
               }
             }
@@ -581,6 +581,18 @@
           "password"
         ],
         "title": "LoginIn",
+        "type": "object"
+      },
+      "MeOut": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserOut"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "title": "MeOut",
         "type": "object"
       },
       "OkOut": {

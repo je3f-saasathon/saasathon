@@ -28,6 +28,10 @@ class TokenOut(Schema):
     user: UserOut
 
 
+class MeOut(Schema):
+    user: UserOut
+
+
 class OkOut(Schema):
     ok: bool = True
 

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api/client";
-import { setToken } from "../api/token";
-import type { User } from "../api/types";
+import { useAuth } from "../auth/AuthContext";
+import { getToken, setToken } from "../api/token";
 
 export function AuthCallbackPage() {
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const ranOnce = useRef(false);
 
@@ -28,14 +28,16 @@ export function AuthCallbackPage() {
       // Clear the fragment from the URL without adding a history entry.
       window.history.replaceState(null, "", window.location.pathname);
 
-      try {
-        await api.get<{ user: User }>("/auth/me");
-        const redirectTo = sessionStorage.getItem("post_login_redirect") || "/";
-        sessionStorage.removeItem("post_login_redirect");
-        navigate(redirectTo, { replace: true });
-      } catch {
+      await refreshUser();
+
+      if (!getToken()) {
         setError("Failed to load account after login");
+        return;
       }
+
+      const redirectTo = sessionStorage.getItem("post_login_redirect") || "/";
+      sessionStorage.removeItem("post_login_redirect");
+      navigate(redirectTo, { replace: true });
     }
 
     run();

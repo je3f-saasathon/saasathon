@@ -22,7 +22,7 @@ from .oauth import (
     make_state,
     verify_state,
 )
-from .schemas import LoginIn, OkOut, ProvidersOut, RegisterIn, TokenOut, UserOut, user_to_out
+from .schemas import LoginIn, MeOut, OkOut, ProvidersOut, RegisterIn, TokenOut, user_to_out
 
 router = Router(tags=["auth"])
 
@@ -79,9 +79,9 @@ def login(request, payload: LoginIn):
     return 200, {"token": raw_token, "user": user_to_out(user)}
 
 
-@router.get("/me", response=UserOut, auth=bearer_auth)
+@router.get("/me", response=MeOut, auth=bearer_auth)
 def me(request):
-    return user_to_out(request.auth)
+    return {"user": user_to_out(request.auth)}
 
 
 @router.post("/logout", response=OkOut, auth=bearer_auth)
