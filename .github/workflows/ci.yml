@@ -56,9 +56,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: frontend/.nvmrc
-      - name: Enable corepack / pnpm
+      - name: Install pnpm
         if: steps.check.outputs.ready == 'true'
-        run: corepack enable
+        # Not using `corepack enable`: the corepack bundled with the
+        # .nvmrc-pinned Node version fails pnpm's registry signature check
+        # (stale signing-key bug), so install pnpm directly instead.
+        run: npm install -g pnpm@12.6.0
       - name: pnpm install
         if: steps.check.outputs.ready == 'true'
         working-directory: frontend
