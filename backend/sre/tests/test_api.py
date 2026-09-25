@@ -85,6 +85,60 @@ def test_duplicate_webhook_returns_same_run(client, make_user, make_project, tem
     assert IncidentRun.objects.count() == 1
 
 
+# What Uptrace's webhook notification channel actually posts (from its source:
+# vue/src/alerting/NotifChannelWebhookForm.vue). No trace id, no headers, no signature.
+def uptrace_alert(alert_id="123", event="created", state="open", name="AttributeError: 'NoneType'"):
+    return {
+        "id": "1676471814931265794", "eventName": event, "payload": {"env": "prod"},
+        "createdAt": "2026-09-26T10:00:00Z",
+        "alert": {"id": alert_id, "url": f"https://uptrace.example/alerting/1/alerts/{alert_id}",
+                  "name": name, "type": "error", "state": state,
+                  "createdAt": "2026-09-26T10:00:00Z"},
+    }
+
+
+def post_uptrace(client, project, body, token=None):
+    token = project.uptrace_webhook_secret if token is None else token
+    return client.post(f"/api/sre/webhooks/uptrace/{project.id}?token={token}",
+                       data=json.dumps(body), content_type="application/json")
+
+
+def test_real_uptrace_alert_with_url_token_starts_one_incident_per_alert(
+        client, make_user, make_project, temporal_calls):
+    project = make_project(make_user())
+    first = post_uptrace(client, project, uptrace_alert())
+    assert first.status_code == 200
+    run = IncidentRun.objects.get(id=first.json()["incident_run_id"])
+    assert run.trace_id == "uptrace-alert-123"
+    assert run.raw_webhook_payload["alert"]["name"] == "AttributeError: 'NoneType'"
+    # The same error recurring is the same Uptrace alert, so the same incident.
+    again = post_uptrace(client, project, uptrace_alert(event="recurring"))
+    assert again.json()["incident_run_id"] == run.id
+    assert IncidentRun.objects.count() == 1
+
+
+@pytest.mark.parametrize("event,state", [("state-changed", "closed"), ("created", "closed"),
+                                         ("something-new", "open")])
+def test_uptrace_closed_or_unknown_events_are_ignored(client, make_user, make_project,
+                                                      temporal_calls, event, state):
+    project = make_project(make_user())
+    resp = post_uptrace(client, project, uptrace_alert(event=event, state=state))
+    assert resp.status_code == 202
+    assert not IncidentRun.objects.exists() and temporal_calls["start"] == []
+
+
+def test_uptrace_url_token_must_match(client, make_user, make_project, temporal_calls):
+    project = make_project(make_user())
+    assert post_uptrace(client, project, uptrace_alert(), token="wrong").status_code == 401
+    assert post_uptrace(client, project, uptrace_alert(), token="").status_code == 401
+
+
+def test_webhook_needs_an_alert_or_a_trace_id(client, make_user, make_project, temporal_calls):
+    project = make_project(make_user())
+    assert post_uptrace(client, project, {"payload": {"x": 1}}).status_code == 422
+    assert not IncidentRun.objects.exists()
+
+
 def test_webhook_returns_503_when_temporal_is_down(client, make_user, make_project, monkeypatch):
     def down(*args):
         raise RuntimeError("connection refused")
@@ -114,6 +168,7 @@ def test_create_project_returns_secret_once(api_for, make_user, monkeypatch):
     assert body["default_execution_mode"] == "draft_only"
     assert body["webhook_secret"]
     assert body["webhook_url"].endswith(f"/api/sre/webhooks/uptrace/{body['id']}")
+    assert body["uptrace_webhook_url"] == f"{body['webhook_url']}?token={body['webhook_secret']}"
 
     listed = api.get("/projects").json()
     assert "webhook_secret" not in listed[0]

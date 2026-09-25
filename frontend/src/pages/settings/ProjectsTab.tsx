@@ -94,14 +94,35 @@ function SecretPanel({ secret, onClose }: { secret: WebhookSecret; onClose: () =
     <div className="space-y-3 rounded-md border border-amber-500/60 bg-amber-50 dark:bg-amber-500/10 p-4">
       <div className="flex items-start justify-between gap-4">
         <p className="text-sm font-medium">
-          Point your Uptrace alert webhook here. The secret is shown only this once. Copy it now.
+          Connect Uptrace. This is shown only once, so copy it now.
         </p>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Dismiss">
           <X />
         </Button>
       </div>
-      <CopyValue label="Webhook URL" value={secret.webhook_url} />
-      <CopyValue label="Webhook secret (X-SRE-Webhook-Secret header)" value={secret.webhook_secret} />
+      <CopyValue label="Uptrace webhook URL (includes the secret)" value={secret.uptrace_webhook_url} />
+      <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+        <li>
+          In Uptrace, open Alerting → Notification channels → New channel → <b>Webhook</b>.
+        </li>
+        <li>Paste the URL above as the Webhook URL and save.</li>
+        <li>
+          Select that channel on the error monitors you want fixed. Each new alert becomes one
+          incident here, and closed alerts are ignored.
+        </li>
+      </ol>
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted-foreground">
+          Calling from another tool instead?
+        </summary>
+        <div className="mt-3 space-y-3">
+          <CopyValue label="Webhook URL" value={secret.webhook_url} />
+          <CopyValue
+            label="Secret (X-SRE-Webhook-Secret header, or HMAC via X-SRE-Signature)"
+            value={secret.webhook_secret}
+          />
+        </div>
+      </details>
     </div>
   );
 }

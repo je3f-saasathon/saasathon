@@ -69,23 +69,28 @@ All routes are under `/api/sre` and require `Authorization: Bearer <token>`, exc
 ### Webhook (called by Uptrace)
 
 `POST /sre/webhooks/uptrace/{project_id}` — no bearer token. Authenticate with **one** of:
-- `X-SRE-Signature: sha256=<hex HMAC-SHA256 of the raw request body, keyed with the project's webhook secret>` (preferred)
-- `X-SRE-Webhook-Secret: <the project's webhook secret>` (for senders that can't sign)
+- `?token=<the project's webhook secret>` in the URL. This is the only option for **Uptrace**, whose webhook channel takes just a URL: no custom headers and no signing. Project create and secret rotation return it ready-made as `uptrace_webhook_url`.
+- `X-SRE-Signature: sha256=<hex HMAC-SHA256 of the raw request body, keyed with the project's webhook secret>`, for senders that can sign.
+- `X-SRE-Webhook-Secret: <the project's webhook secret>`, for other senders that can't sign.
 
-Body: `{trace_id: string, exception_id?: string, source_id?: string, payload?: object}` — configure Uptrace's webhook template to send this shape; `payload` is stored verbatim and shown to the LLM as untrusted data.
+Body, either of:
+- **Uptrace's alert notification, as Uptrace sends it**: `{id, eventName, payload, createdAt, alert: {id, url, name, type, state, createdAt}}`. It has no trace id; `alert.name` carries the error text. Only open alerts with `eventName` `created`, `recurring` or `state-changed` start work. Anything else (e.g. an alert closing) returns `202 {detail}` and does nothing. The incident key is `uptrace-alert-{alert.id}`, so an error that keeps recurring is **one** incident, because Uptrace already groups repeats into one alert.
+- A direct call: `{trace_id: string, exception_id?: string, source_id?: string, payload?: object}`. The incident key is `trace_id`.
 
-Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(project, trace_id)`: repeats return the same run and never re-run the pipeline. `401 {detail}` for a bad signature or unknown project (same answer for both). `503 {detail}` if Temporal is unreachable — safe to retry.
+The whole body is stored verbatim and shown to the LLM as untrusted data.
+
+Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(project, incident key)`: repeats return the same run and never re-run the pipeline. `401 {detail}` for a bad secret or unknown project (same answer for both). `422 {detail}` if the body has neither an alert nor a `trace_id`. `503 {detail}` if Temporal is unreachable, which is safe to retry.
 
 ### Projects & members
 
 | Method | Path | Role | Body / Params | Returns |
 |---|---|---|---|---|
 | GET | `/sre/projects` | member | — | `Project[]` |
-| POST | `/sre/projects` | any user | `{name, github_installation_id, github_repo_owner, github_repo_name, github_default_branch?, uptrace_source_id?, default_execution_mode?, generate_tests?}` | `201 Project & {webhook_secret, webhook_url}` — the only time the secret is shown besides rotation. Caller becomes owner. `400` unless the caller has connected that installation (see GitHub connect) and it can reach the repo. |
+| POST | `/sre/projects` | any user | `{name, github_installation_id, github_repo_owner, github_repo_name, github_default_branch?, uptrace_source_id?, default_execution_mode?, generate_tests?}` | `201 Project & {webhook_secret, webhook_url, uptrace_webhook_url}` — the only time the secret is shown besides rotation. Caller becomes owner. `400` unless the caller has connected that installation (see GitHub connect) and it can reach the repo. |
 | GET | `/sre/projects/{id}` | viewer | — | `Project` |
 | PATCH | `/sre/projects/{id}` | admin (owner for `github_*` / `uptrace_source_id`) | any subset of the create fields, plus `default_llm_config_id: int\|null` (must be one of the caller's own configs) | `Project`; `400` if the installation/repo *changes* and fails the same check as create (unchanged wiring is grandfathered) |
 | DELETE | `/sre/projects/{id}` | owner | — | `204` |
-| POST | `/sre/projects/{id}/webhook-secret/rotate` | owner | — | `{webhook_secret, webhook_url}` |
+| POST | `/sre/projects/{id}/webhook-secret/rotate` | owner | — | `{webhook_secret, webhook_url, uptrace_webhook_url}` |
 | GET | `/sre/projects/{id}/members` | viewer | — | `{user_id, email, name, role}[]` |
 | POST | `/sre/projects/{id}/members` | owner | `{email, role}` (user must already have an account) | `201 Member`, `404` unknown email, `409` already a member |
 | PATCH | `/sre/projects/{id}/members/{user_id}` | owner | `{role}` | `Member`, `409` if it would remove the last owner |

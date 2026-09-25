@@ -552,8 +552,32 @@
               }
             }
           },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -2312,10 +2336,18 @@
         "type": "object"
       },
       "UptraceWebhookIn": {
+        "description": "Two shapes are accepted: Uptrace's own alert notification\n({id, eventName, payload, createdAt, alert: {id, url, name, type, state, createdAt}}),\nor a direct call with a trace_id (scripts, other tools).",
         "properties": {
           "trace_id": {
-            "title": "Trace Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Id"
           },
           "exception_id": {
             "anyOf": [
@@ -2344,11 +2376,31 @@
             "default": {},
             "title": "Payload",
             "type": "object"
+          },
+          "eventName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventname"
+          },
+          "alert": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert"
           }
         },
-        "required": [
-          "trace_id"
-        ],
         "title": "UptraceWebhookIn",
         "type": "object"
       },
@@ -2525,6 +2577,10 @@
           "webhook_url": {
             "title": "Webhook Url",
             "type": "string"
+          },
+          "uptrace_webhook_url": {
+            "title": "Uptrace Webhook Url",
+            "type": "string"
           }
         },
         "required": [
@@ -2543,7 +2599,8 @@
           "created_at",
           "github_verified",
           "webhook_secret",
-          "webhook_url"
+          "webhook_url",
+          "uptrace_webhook_url"
         ],
         "title": "ProjectCreatedOut",
         "type": "object"
@@ -2712,11 +2769,16 @@
           "webhook_url": {
             "title": "Webhook Url",
             "type": "string"
+          },
+          "uptrace_webhook_url": {
+            "title": "Uptrace Webhook Url",
+            "type": "string"
           }
         },
         "required": [
           "webhook_secret",
-          "webhook_url"
+          "webhook_url",
+          "uptrace_webhook_url"
         ],
         "title": "WebhookSecretOut",
         "type": "object"

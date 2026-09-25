@@ -26,15 +26,16 @@ A user owns `LLMProviderConfig` rows (provider, model, encrypted key). A project
 - Two tables plus fallback logic is more to test and reason about than one foreign key.
 - Adding a sixth pipeline step means a migration and an enum change, touching everything that resolves steps.
 
-## 3. One stateless workflow per trace id, no incident grouping
+## 3. One stateless workflow per incident key, grouping delegated to Uptrace
 
-Each Uptrace callback starts one workflow, keyed by `(project, trace_id)`. Repeats of the *same* trace are deduplicated; different traces of the *same bug* are not.
+Each callback starts one workflow, keyed by `(project, incident key)`. For real Uptrace alerts the key is the Uptrace **alert id**, and Uptrace already groups repeats of the same error into one alert. So a crash loop (the same bug throwing 50 times an hour) is one incident and at most one PR. Direct calls with a `trace_id` are keyed by that trace, so different traces of the same bug still start separate workflows.
 
 **What's given up**
-- A hot crash loop (the same bug throwing 50 times an hour) starts 50 independent workflows. Each runs the full pipeline and may open its own PR. Nothing guards against this beyond whatever throttling Uptrace does before calling us.
+- The grouping is only as good as Uptrace's. If it splits one bug into two alerts (say, different span names), that's two incidents. If it merges two bugs into one alert, the second never gets its own run.
+- Once an alert has had its incident, it never gets another, even if the fix was rejected and the error comes back. Closing and reopening the alert in Uptrace doesn't help, because it keeps the same id.
 
-**Why not build grouping now**
-- Fingerprinting is hard to get right. Is "the same incident" the same trace template, the same top stack frame, or the same file the playbook touches? A wrong heuristic (merging distinct bugs, or grouping nothing useful) is worse than none. v1 ships something real and simple first.
+**Why not build our own grouping now**
+- Fingerprinting is hard to get right, and Uptrace already does it with the full span data. We'd only add our own if its grouping proves wrong in practice.
 
 ## 4. GitHub connect: the signed `state` isn't bound to the browser
 
@@ -53,5 +54,5 @@ a cookie).
 
 ## Future improvements the schema doesn't block
 
-- **Incident grouping**: add an `IncidentFingerprint` model (a hash of the normalized stack trace, or Uptrace's own group id) with a foreign key from `IncidentRun`, and check for a recent open run before starting a workflow. The workflow id can switch from the raw trace id to the fingerprint without touching other models.
+- **Own incident grouping** (if Uptrace's proves wrong): add an `IncidentFingerprint` model (a hash of the normalized stack trace) with a foreign key from `IncidentRun`, and check for a recent open run before starting a workflow. The workflow id can switch from the raw trace id to the fingerprint without touching other models.
 - **Semantic playbook search**: `PlaybookSearch` ranks by keyword overlap in Python (so it works on SQLite). A `Playbook.embedding` column (pgvector on Postgres) can sit next to `keywords` without a breaking migration; only `PlaybookSearch.top_k` changes.

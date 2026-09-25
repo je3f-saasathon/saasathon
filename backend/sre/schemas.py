@@ -6,10 +6,15 @@ from .models import ExecutionMode, LLMProvider, PipelineStep, Playbook, ProjectR
 
 
 class UptraceWebhookIn(Schema):
-    trace_id: str
+    """Two shapes are accepted: Uptrace's own alert notification
+    ({id, eventName, payload, createdAt, alert: {id, url, name, type, state, createdAt}}),
+    or a direct call with a trace_id (scripts, other tools)."""
+    trace_id: str | None = None
     exception_id: str | None = None
     source_id: str | None = None
     payload: dict = {}
+    eventName: str | None = None
+    alert: dict | None = None
 
 
 class UptraceWebhookOut(Schema):
@@ -40,11 +45,17 @@ class ProjectOut(Schema):
 class ProjectCreatedOut(ProjectOut):
     webhook_secret: str
     webhook_url: str
+    # webhook_url with the secret as ?token=: what to paste into Uptrace, whose
+    # webhook channel can only take a URL (no headers).
+    uptrace_webhook_url: str
 
 
 class WebhookSecretOut(Schema):
     webhook_secret: str
     webhook_url: str
+    # webhook_url with the secret as ?token=: what to paste into Uptrace, whose
+    # webhook channel can only take a URL (no headers).
+    uptrace_webhook_url: str
 
 
 class ProjectCreateIn(Schema):
