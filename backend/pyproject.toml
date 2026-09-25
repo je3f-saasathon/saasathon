@@ -14,6 +14,13 @@ dependencies = [
     "gunicorn>=23.0.0",
     "uvicorn[standard]>=0.30.6",
     "psycopg[binary]>=3.2.0",
+    "temporalio>=1.33.0",
+    "langfuse>=3,<4",
+    "anthropic>=1.8.0",
+    "openai>=3.19.2",
+    "pygithub>=2.10.0",
+    "cryptography>=50.0.1",
+    "docker>=7.2.0",
 ]
 
 [tool.uv.workspace]
