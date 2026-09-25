@@ -13,7 +13,7 @@ const project = {
   id: 2, name: "django-buggy-app", role: "owner", github_installation_id: "164850677",
   github_repo_owner: "je3f-saasathon", github_repo_name: "django-buggy-app",
   github_default_branch: "main", uptrace_source_id: "", default_execution_mode: "draft_only",
-  default_llm_config_id: 1, generate_tests: true, platform_tokens_this_month: 0, created_at: "2026-09-25T00:00:00Z",
+  default_llm_config_id: 1, generate_tests: true, platform_preset: "openai_jev", platform_tokens_this_month: 0, created_at: "2026-09-25T00:00:00Z",
   github_verified: false, service_names: [], uptrace_managed: false, uptrace_status: "",
   uptrace_error: "", uptrace_project_id: null, uptrace_dsn: "", uptrace_shared_with: [],
 };
@@ -31,7 +31,17 @@ const routes: Record<string, unknown> = {
   "PATCH /api/sre/llm-configs/1": { ...configs[0], has_api_key: false },
   "GET /api/sre/projects": [project],
   "GET /api/sre/projects/3/step-overrides": [],
-  "GET /api/sre/platform": { available: true, triage_model: "jev", strong_model: "gpt-5.5", monthly_token_cap: 2000000 },
+  "GET /api/sre/platform": {
+    available: true, triage_model: "jev", strong_model: "gpt-5.5", monthly_token_cap: 2000000,
+    default_preset: "openai_jev",
+    presets: [
+      { key: "openai_jev", label: "OpenAI + Jev", triage_model: "jev", strong_model: "gpt-5.5" },
+      { key: "openai", label: "OpenAI", triage_model: "gpt-5.4-mini", strong_model: "gpt-5.5" },
+      { key: "gpt_5_4", label: "GPT-5.4 only", triage_model: "gpt-5.4", strong_model: "gpt-5.4" },
+      { key: "gpt_5_5", label: "GPT-5.5 only", triage_model: "gpt-5.5", strong_model: "gpt-5.5" },
+    ],
+  },
+  "PATCH /api/sre/projects/3": {},
   "PATCH /api/sre/projects/2": { ...project, generate_tests: false },
   "GET /api/sre/projects/2/step-overrides": [],
   "GET /api/sre/github/status": { configured: true, app_slug: "sre-app-local" },
@@ -134,7 +144,18 @@ describe("SettingsPage", () => {
     ];
     renderAt("/settings?tab=projects");
     fireEvent.click(await screen.findByText("bare-project"));
-    expect(await screen.findByRole("option", { name: "Company default (Jev + gpt-5.5)" })).toBeInTheDocument();
+    const select = await screen.findByLabelText("Default model");
+    await vi.waitFor(() => expect(select).toHaveValue("company:openai_jev"));
+    for (const name of ["OpenAI + Jev (Jev + gpt-5.5)", "OpenAI (gpt-5.4-mini + gpt-5.5)",
+                        "GPT-5.4 only", "GPT-5.5 only"]) {
+      expect(screen.getByRole("option", { name })).toBeInTheDocument();
+    }
+    fireEvent.change(select, { target: { value: "company:gpt_5_4" } });
+    await vi.waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u, i]) => i?.method === "PATCH" && String(u).endsWith("/projects/3"))).toBe(true),
+    );
+    const [, patch] = fetchMock.mock.calls.find(([u, i]) => i?.method === "PATCH" && String(u).endsWith("/projects/3"))!;
+    expect(JSON.parse(patch.body)).toEqual({ default_llm_config_id: null, platform_preset: "gpt_5_4" });
     expect(await screen.findByTestId("company-usage")).toHaveTextContent("500,000 / 2,000,000 tokens");
     expect(screen.queryByText(/No default model/)).not.toBeInTheDocument();
     routes["GET /api/sre/projects"] = [project];

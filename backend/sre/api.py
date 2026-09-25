@@ -463,8 +463,14 @@ def list_projects(request: HttpRequest):
     return [_project_out(m.project, m.role) for m in memberships.order_by("-project__created_at")]
 
 
+def _check_preset(preset: str | None) -> None:
+    if preset is not None and preset not in platform.PRESETS:
+        raise HttpError(400, f"Unknown company model option '{preset}'")
+
+
 @router.post("/projects", response={201: ProjectCreatedOut})
 def create_project(request: HttpRequest, payload: ProjectCreateIn):
+    _check_preset(payload.platform_preset)
     _check_github_repo(request.auth, payload.github_installation_id,
                        payload.github_repo_owner, payload.github_repo_name)
     data = payload.dict()
@@ -519,6 +525,7 @@ def update_project(request: HttpRequest, project_id: int, payload: ProjectUpdate
             else project.service_names,
             changes.get("organization_id") or project.organization_id, project.id,
         )
+    _check_preset(changes.get("platform_preset"))
     # Existing wiring is grandfathered: only a change to it has to be proven.
     repo = {f: changes.get(f) or getattr(project, f) for f in GITHUB_REPO_FIELDS}
     if any(repo[f] != getattr(project, f) for f in GITHUB_REPO_FIELDS):

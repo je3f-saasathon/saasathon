@@ -124,8 +124,13 @@ def test_a_users_keyless_jev_config_bills_us_and_is_capped(company, project):
 
 def test_platform_endpoint_and_project_usage(api_for, company, project):
     api = api_for(project.memberships.get().user)
-    assert api.get("/platform").json() == {"available": True, "triage_model": "jev",
-                                           "strong_model": "gpt-strong", "monthly_token_cap": 1000}
+    body = api.get("/platform").json()
+    assert (body["available"], body["triage_model"], body["strong_model"],
+            body["monthly_token_cap"], body["default_preset"]) == (True, "jev", "gpt-strong", 1000,
+                                                                   "openai_jev")
+    assert [(p["key"], p["triage_model"], p["strong_model"]) for p in body["presets"]] == [
+        ("openai_jev", "jev", "gpt-strong"), ("openai", "gpt-fast", "gpt-strong"),
+        ("gpt_5_4", "gpt-5.4", "gpt-5.4"), ("gpt_5_5", "gpt-5.5", "gpt-5.5")]
     usage(project, 300)
     usage(project, 50, billed_to="user")
     assert api.get(f"/projects/{project.id}").json()["platform_tokens_this_month"] == 300
@@ -138,3 +143,33 @@ def test_platform_endpoint_when_not_configured(api_for, settings, project):
     settings.SRE_PLATFORM_OPENAI_API_KEY = ""
     body = api_for(project.memberships.get().user).get("/platform").json()
     assert body["available"] is False and body["strong_model"] == ""
+
+
+@pytest.mark.parametrize("preset,triage,strong", [
+    ("openai_jev", ("jev_cloudflare", "typesafe/jev"), ("openai", "gpt-strong")),
+    ("openai", ("openai", "gpt-fast"), ("openai", "gpt-strong")),
+    ("gpt_5_4", ("openai", "gpt-5.4"), ("openai", "gpt-5.4")),
+    ("gpt_5_5", ("openai", "gpt-5.5"), ("openai", "gpt-5.5")),
+])
+def test_each_company_option_picks_its_models(company, project, preset, triage, strong):
+    project.platform_preset = preset
+    project.save()
+    t = get_llm_config(project, "bug_classification")
+    s = get_llm_config(project, "playbook_execution")
+    assert (t.provider, t.model) == triage and (s.provider, s.model) == strong
+    assert t.is_platform and s.is_platform
+
+
+def test_jev_option_falls_back_to_the_fast_model_without_cloudflare(company, project):
+    company.CLOUDFLARE_API_TOKEN = ""
+    assert get_llm_config(project, "bug_classification").model == "gpt-fast"  # default preset
+
+
+def test_project_company_option_is_set_and_validated(api_for, company, project):
+    api = api_for(project.memberships.get().user)
+    assert api.get(f"/projects/{project.id}").json()["platform_preset"] == "openai_jev"
+    resp = api.patch(f"/projects/{project.id}", {"platform_preset": "gpt_5_4"})
+    assert resp.status_code == 200 and resp.json()["platform_preset"] == "gpt_5_4"
+    assert api.patch(f"/projects/{project.id}", {"platform_preset": "gpt-9"}).status_code == 400
+    project.refresh_from_db()
+    assert project.platform_preset == "gpt_5_4"

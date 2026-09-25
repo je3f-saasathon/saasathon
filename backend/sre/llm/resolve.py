@@ -29,7 +29,7 @@ def get_llm_config(project: Project, step: PipelineStep) -> LLMProviderConfig:
         config = project.default_llm_config
     else:
         # Nothing picked: fall back to the company default, on our keys.
-        config = platform.config_for(step)
+        config = platform.config_for(step, project.platform_preset)
         if config is None:
             raise NoLLMConfigError(
                 f"Project {project.id} has no LLM config for step '{step}' and no default config"

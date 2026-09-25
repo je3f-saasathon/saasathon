@@ -161,6 +161,9 @@ class Project(models.Model):
     uptrace_status = models.CharField(max_length=16, choices=UptraceStatus.choices, blank=True, default="")
     uptrace_error = models.CharField(max_length=500, blank=True, default="")
     uptrace_dsn_encrypted = models.BinaryField(blank=True, default=b"")
+    # Which company-default model mix a project uses when it hasn't picked its own config
+    # (see llm/platform.py PRESETS).
+    platform_preset = models.CharField(max_length=32, default="openai_jev")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
