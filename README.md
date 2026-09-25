@@ -1,4 +1,4 @@
-# Je3f
+# saasathon
 
 A full-stack starter: React/Vite frontend, Django/django-ninja backend, working auth (email+password, GitHub, Google), and dev tooling for native, Docker, and remote-tunnel workflows.
 
@@ -6,7 +6,7 @@ A full-stack starter: React/Vite frontend, Django/django-ninja backend, working 
 
 ```
 git clone <this-repo>
-cd Je3f-saasathon
+cd saasathon
 make setup
 make dev
 ```

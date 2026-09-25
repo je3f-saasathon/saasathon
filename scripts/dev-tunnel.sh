@@ -64,8 +64,8 @@ if [ ! -f "$TUNNEL_ENV" ]; then
 fi
 
 REMOTE_HOST="${REMOTE_HOST:-$(env_get "$TUNNEL_ENV" REMOTE_HOST oma)}"
-REMOTE_PROJECT_DIR="${REMOTE_PROJECT_DIR:-$(env_get "$TUNNEL_ENV" REMOTE_PROJECT_DIR '$HOME/Je3f-saasathon')}"
-REPO_URL="${REPO_URL:-$(env_get "$TUNNEL_ENV" REPO_URL https://github.com/andples/Je3f-saasathon.git)}"
+REMOTE_PROJECT_DIR="${REMOTE_PROJECT_DIR:-$(env_get "$TUNNEL_ENV" REMOTE_PROJECT_DIR '$HOME/saasathon')}"
+REPO_URL="${REPO_URL:-$(env_get "$TUNNEL_ENV" REPO_URL https://github.com/je3f-saasathon/saasathon.git)}"
 REMOTE_MODE="${REMOTE_MODE:-$(env_get "$TUNNEL_ENV" REMOTE_MODE docker)}"
 
 ssh_run() {
