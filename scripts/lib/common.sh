@@ -46,7 +46,7 @@ ensure_env_file() {
 
 frontend_port() { env_get "$REPO_ROOT/frontend/.env" FRONTEND_PORT 5173; }
 backend_port()  { env_get "$REPO_ROOT/backend/.env" BACKEND_PORT 8000; }
-db_port()       { echo 5432; }
+db_port()       { env_get "$REPO_ROOT/backend/.env" DB_PORT 5432; }
 
 mkdir -p "$RUN_DIR" "$LOG_DIR" 2>/dev/null || true
 

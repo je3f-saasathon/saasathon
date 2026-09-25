@@ -52,8 +52,12 @@ done
 
 FE_PORT=$(frontend_port)
 BE_PORT=$(backend_port)
+DB_PORT_VAL=$(db_port)
 ensure_port_free "$FE_PORT" "$FORCE" || exit 1
 ensure_port_free "$BE_PORT" "$FORCE" || exit 1
+ensure_port_free "$DB_PORT_VAL" "$FORCE" || exit 1
+
+export FRONTEND_PORT="$FE_PORT" BACKEND_PORT="$BE_PORT" DB_PORT="$DB_PORT_VAL"
 
 COMPOSE=(docker compose -p saasathon -f "$REPO_ROOT/docker-compose.yml")
 

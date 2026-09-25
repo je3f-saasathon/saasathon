@@ -4,6 +4,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { Layout } from "./components/Layout";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage";
+import { DashboardPage } from "./pages/dashboard/DashboardPage";
 import { ItemsPage } from "./pages/ItemsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -26,6 +27,14 @@ export function App() {
                 element={
                   <ProtectedRoute>
                     <ItemsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <DashboardPage />
                   </ProtectedRoute>
                 }
               />
