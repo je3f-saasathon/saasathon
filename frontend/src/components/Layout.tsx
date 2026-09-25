@@ -14,9 +14,17 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="flex items-center justify-between border-b bg-white px-6 py-3">
-        <Link to="/" className="text-lg font-semibold">
-          App
-        </Link>
+        <nav className="flex items-center gap-6">
+          <Link to="/" className="text-lg font-semibold">
+            App
+          </Link>
+          <Link to="/" className="text-sm text-gray-600 hover:text-gray-900">
+            Items
+          </Link>
+          <Link to="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
+            Dashboard
+          </Link>
+        </nav>
         <div className="flex items-center gap-4">
           <HealthIndicator />
           {user && (
