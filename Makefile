@@ -1,4 +1,4 @@
-.PHONY: setup dev dev-docker stop restart restart-docker status logs doctor test contracts reset-db dev-token sync-agents deploy prod-local tunnel infra-up infra-down sandbox-image sandbox-image-prod sre-worker
+.PHONY: setup dev dev-docker stop restart restart-docker status logs doctor test contracts reset-db test-db testdb dev-token sync-agents deploy prod-local tunnel infra-up infra-down sandbox-image sandbox-image-prod sre-worker
 
 setup:
 	scripts/setup.sh $(if $(DOCKER_ONLY),--docker-only,) $(if $(NATIVE_ONLY),--native-only,) $(if $(YES),--yes,)
@@ -35,6 +35,11 @@ contracts:
 
 reset-db:
 	scripts/reset-db.sh
+
+test-db:
+	scripts/test-db.sh $(if $(CLEAR),--clear,)
+
+testdb: test-db
 
 dev-token:
 	scripts/dev-token.sh

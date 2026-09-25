@@ -5,7 +5,7 @@ A full-stack starter app: a React/Vite frontend, a Django/django-ninja backend, 
 
 ## Running it
 
-`make setup` · `make dev` · `make dev-docker` · `make tunnel` · `make stop` · `make restart` · `make status` · `make doctor` · `make test` · `make contracts` · `make dev-token`
+`make setup` · `make dev` · `make dev-docker` · `make tunnel` · `make stop` · `make restart` · `make status` · `make doctor` · `make test` · `make contracts` · `make dev-token` · `make test-db`
 
 See `docs/SCRIPTS.md` for what each one does.
 
