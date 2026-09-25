@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+import re
 import secrets
 
 from django.contrib.auth import get_user_model
@@ -206,9 +207,35 @@ def _webhook_authorized(request: HttpRequest, project: Project) -> bool:
 # Uptrace notifies on every alert state change; only a new or recurring open alert is work.
 UPTRACE_ACTIONABLE_EVENTS = {"created", "recurring", "state-changed"}
 
+# alert.url is ".../alerting/<uptrace project id>/alerts/<alert id>" on the Uptrace instance.
+_UPTRACE_ALERT_URL = re.compile(r"^https?://([^/?#]+)/alerting/(\d+)/alerts/")
+
+
+def uptrace_source(alert: dict) -> str:
+    """Which Uptrace instance + project an alert came from, e.g. "app.uptrace.dev/1"."""
+    match = _UPTRACE_ALERT_URL.match(str(alert.get("url") or ""))
+    return f"{match.group(1).lower()}/{match.group(2)}" if match else ""
+
+
+def _pin_uptrace_source(project: Project, source: str) -> str | None:
+    """Pins the project to the Uptrace project of its first alert, so a channel attached to
+    another service's monitors can't send the agent after the wrong repo. Returns an error
+    message if this alert comes from somewhere else."""
+    if not project.uptrace_source_id and source:
+        # Conditional update: two first alerts at once can't pin different sources.
+        Project.objects.filter(id=project.id, uptrace_source_id="").update(uptrace_source_id=source)
+        project.refresh_from_db(fields=["uptrace_source_id"])
+    if project.uptrace_source_id and source != project.uptrace_source_id:
+        return (f"This project only takes alerts from Uptrace project "
+                f"{project.uptrace_source_id}, not {source or 'an unrecognised alert URL'}. "
+                "Send that Uptrace project's alerts to its own project's webhook URL, or "
+                "clear the pin in Settings → Projects.")
+    return None
+
 
 @router.post("/webhooks/uptrace/{project_id}", auth=None,
-             response={200: UptraceWebhookOut, 202: dict, 401: dict, 422: dict, 503: dict})
+             response={200: UptraceWebhookOut, 202: dict, 401: dict, 409: dict, 422: dict,
+                       503: dict})
 def uptrace_webhook(request: HttpRequest, project_id: int, payload: UptraceWebhookIn):
     project = Project.objects.filter(id=project_id).first()
     # Same answer for unknown project and bad secret: don't reveal which projects exist.
@@ -222,6 +249,9 @@ def uptrace_webhook(request: HttpRequest, project_id: int, payload: UptraceWebho
                                    f"event {payload.eventName or 'unknown'}"}
         if not alert.get("id"):
             return 422, {"detail": "Uptrace alert has no id"}
+        mismatch = _pin_uptrace_source(project, uptrace_source(alert))
+        if mismatch:
+            return 409, {"detail": mismatch}
         # One incident per Uptrace alert: Uptrace already groups repeats of the same error
         # into one alert, so a crash loop is one incident, not one per occurrence.
         incident_key = f"uptrace-alert-{alert['id']}"

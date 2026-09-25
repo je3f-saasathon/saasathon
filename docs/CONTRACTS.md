@@ -60,12 +60,12 @@ All routes are under `/api/sre` and require `Authorization: Bearer <token>`, exc
 - `X-SRE-Webhook-Secret: <the project's webhook secret>`, for other senders that can't sign.
 
 Body, either of:
-- **Uptrace's alert notification, as Uptrace sends it**: `{id, eventName, payload, createdAt, alert: {id, url, name, type, state, createdAt}}`. It has no trace id; `alert.name` carries the error text. Only open alerts with `eventName` `created`, `recurring` or `state-changed` start work. Anything else (e.g. an alert closing) returns `202 {detail}` and does nothing. The incident key is `uptrace-alert-{alert.id}`, so an error that keeps recurring is **one** incident, because Uptrace already groups repeats into one alert.
+- **Uptrace's alert notification, as Uptrace sends it**: `{id, eventName, payload, createdAt, alert: {id, url, name, type, state, createdAt}}`. It has no trace id; `alert.name` carries the error text. Only open alerts with `eventName` `created`, `recurring` or `state-changed` start work. Anything else (e.g. an alert closing) returns `202 {detail}` and does nothing. The incident key is `uptrace-alert-{alert.id}`, so an error that keeps recurring is **one** incident, because Uptrace already groups repeats into one alert. **Pinning:** the first alert pins the project to its Uptrace instance and project, read from `alert.url` (`<host>/alerting/<id>/…`) and stored in `uptrace_source_id`, e.g. `app.uptrace.dev/1`. After that, alerts from any other Uptrace project return `409 {detail}`, so a misattached channel can't send the agent after the wrong repo. An owner can clear `uptrace_source_id` to re-pin.
 - A direct call: `{trace_id: string, exception_id?: string, source_id?: string, payload?: object}`. The incident key is `trace_id`.
 
 The whole body is stored verbatim and shown to the LLM as untrusted data.
 
-Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(project, incident key)`: repeats return the same run and never re-run the pipeline. `401 {detail}` for a bad secret or unknown project (same answer for both). `422 {detail}` if the body has neither an alert nor a `trace_id`. `503 {detail}` if Temporal is unreachable, which is safe to retry.
+Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(project, incident key)`: repeats return the same run and never re-run the pipeline. `401 {detail}` for a bad secret or unknown project (same answer for both). `409 {detail}` for an alert from an Uptrace project this one isn't pinned to. `422 {detail}` if the body has neither an alert nor a `trace_id`. `503 {detail}` if Temporal is unreachable, which is safe to retry.
 
 ### Projects & members
 

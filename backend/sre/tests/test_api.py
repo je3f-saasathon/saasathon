@@ -133,6 +133,43 @@ def test_uptrace_url_token_must_match(client, make_user, make_project, temporal_
     assert post_uptrace(client, project, uptrace_alert(), token="").status_code == 401
 
 
+def test_first_alert_pins_the_uptrace_project_and_others_are_rejected(
+        client, api_for, make_user, make_project, temporal_calls):
+    project = make_project(make_user())
+    assert post_uptrace(client, project, uptrace_alert("1")).status_code == 200
+    project.refresh_from_db()
+    assert project.uptrace_source_id == "uptrace.example/1"
+
+    other_project = uptrace_alert("2")
+    other_project["alert"]["url"] = "https://uptrace.example/alerting/7/alerts/2"
+    other_instance = uptrace_alert("3")
+    other_instance["alert"]["url"] = "https://other-uptrace.io/alerting/1/alerts/3"
+    for body in (other_project, other_instance):
+        resp = post_uptrace(client, project, body)
+        assert resp.status_code == 409 and "uptrace.example/1" in resp.json()["detail"]
+    assert IncidentRun.objects.count() == 1 and len(temporal_calls["start"]) == 1
+
+    # The owner clears the pin; the next alert pins again.
+    owner = api_for(project.memberships.get().user)
+    assert owner.patch(f"/projects/{project.id}", {"uptrace_source_id": ""}).status_code == 200
+    assert post_uptrace(client, project, other_project).status_code == 200
+    project.refresh_from_db()
+    assert project.uptrace_source_id == "uptrace.example/7"
+
+
+def test_unrecognised_alert_url_does_not_pin_but_is_refused_once_pinned(
+        client, make_user, make_project, temporal_calls):
+    project = make_project(make_user())
+    odd = uptrace_alert("1")
+    odd["alert"]["url"] = ""
+    assert post_uptrace(client, project, odd).status_code == 200
+    project.refresh_from_db()
+    assert project.uptrace_source_id == ""
+    assert post_uptrace(client, project, uptrace_alert("2")).status_code == 200  # pins now
+    odd["alert"]["id"] = "3"
+    assert post_uptrace(client, project, odd).status_code == 409
+
+
 def test_webhook_needs_an_alert_or_a_trace_id(client, make_user, make_project, temporal_calls):
     project = make_project(make_user())
     assert post_uptrace(client, project, {"payload": {"x": 1}}).status_code == 422
