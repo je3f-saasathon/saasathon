@@ -30,6 +30,8 @@ class ProjectOut(Schema):
     default_execution_mode: ExecutionMode
     default_llm_config_id: int | None
     generate_tests: bool
+    # Tokens billed to the company default (our keys) this calendar month.
+    platform_tokens_this_month: int
     created_at: datetime
     # True when an owner has proved (via Connect GitHub) access to the installation.
     github_verified: bool
@@ -196,6 +198,7 @@ class StepUsageOut(Schema):
     step: str
     provider: str
     model: str
+    billed_to: str  # "platform" (our keys) or "user"
     calls: int
     input_tokens: int
     output_tokens: int
@@ -206,6 +209,7 @@ class UsageOut(Schema):
     input_tokens: int
     output_tokens: int
     total_tokens: int
+    platform_tokens: int  # the part of total_tokens billed to our keys
     models: list[str]
     by_step: list[StepUsageOut]
 
@@ -265,3 +269,10 @@ class GitHubRepoOut(Schema):
     name: str
     default_branch: str
     private: bool
+
+
+class PlatformOut(Schema):
+    available: bool  # false = no company default; projects must bring their own model
+    triage_model: str  # "jev", or the fast chat model
+    strong_model: str
+    monthly_token_cap: int  # per project; 0 = unlimited

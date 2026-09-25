@@ -14,6 +14,7 @@ from ninja import Router
 from ninja.errors import HttpError
 
 from . import temporal_client
+from .llm import platform
 from .llm.resolve import provider_supports_step
 from .models import (
     GitHubInstallation,
@@ -42,6 +43,7 @@ from .schemas import (
     MemberAddIn,
     MemberOut,
     MemberUpdateIn,
+    PlatformOut,
     PlaybookCreateIn,
     PlaybookListOut,
     PlaybookOut,
@@ -82,9 +84,10 @@ def _github_verified(project: Project) -> bool:
 def _project_out(project: Project, role: str) -> dict:
     return {
         **{f: getattr(project, f) for f in ProjectOut.model_fields
-           if f not in ("role", "github_verified")},
+           if f not in ("role", "github_verified", "platform_tokens_this_month")},
         "role": role,
         "github_verified": _github_verified(project),
+        "platform_tokens_this_month": platform.tokens_this_month(project),
     }
 
 
@@ -121,9 +124,9 @@ INCIDENT_EXTRA_FIELDS = {
 def _usage_out(rows) -> dict:
     by_step: dict[tuple, dict] = {}
     for row in rows:
-        entry = by_step.setdefault((row.step, row.provider, row.model), {
+        entry = by_step.setdefault((row.step, row.provider, row.model, row.billed_to), {
             "step": row.step, "provider": row.provider, "model": row.model,
-            "calls": 0, "input_tokens": 0, "output_tokens": 0,
+            "billed_to": row.billed_to, "calls": 0, "input_tokens": 0, "output_tokens": 0,
         })
         entry["calls"] += 1
         entry["input_tokens"] += row.input_tokens
@@ -136,6 +139,8 @@ def _usage_out(rows) -> dict:
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": input_tokens + output_tokens,
+        "platform_tokens": sum(s["input_tokens"] + s["output_tokens"] for s in steps
+                               if s["billed_to"] == platform.PLATFORM),
         "models": list(dict.fromkeys(s["model"] for s in steps if s["model"])),
         "by_step": steps,
     }
@@ -416,6 +421,13 @@ def remove_member(request: HttpRequest, project_id: int, user_id: int):
         _detach_user_configs(project, membership.user)
         membership.delete()
     return 204, None
+
+
+# ---- company default model ---------------------------------------------------------
+
+@router.get("/platform", response=PlatformOut)
+def platform_default(request: HttpRequest):
+    return platform.describe()
 
 
 # ---- LLM configs (owned by the user, shared into projects by reference) ------

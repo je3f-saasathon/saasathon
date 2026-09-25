@@ -100,7 +100,8 @@ def test_step_override_beats_default(monkeypatch, incident, project):
     assert get_llm_config(project, "anomaly_double_check") == project.default_llm_config
 
 
-def test_missing_llm_config_is_non_retryable(incident, project):
+def test_missing_llm_config_is_non_retryable(incident, project, settings):
+    settings.SRE_PLATFORM_OPENAI_API_KEY = ""  # no company default to fall back to
     project.default_llm_config = None
     project.save()
     with pytest.raises(ApplicationError) as exc:

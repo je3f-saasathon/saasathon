@@ -23,6 +23,7 @@ def record_usage(config, usage: dict) -> None:
     if scope is None:
         return
     from ..models import LLMUsage
+    from .platform import billed_to
 
     incident_run_id, step = scope
     LLMUsage.objects.create(
@@ -30,6 +31,7 @@ def record_usage(config, usage: dict) -> None:
         step=step,
         provider=config.provider,
         model=config.model,
+        billed_to=billed_to(config),
         input_tokens=int(usage.get("input") or 0),
         output_tokens=int(usage.get("output") or 0),
     )

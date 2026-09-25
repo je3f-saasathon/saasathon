@@ -1249,6 +1249,33 @@
         ]
       }
     },
+    "/api/sre/platform": {
+      "get": {
+        "operationId": "sre_api_platform_default",
+        "summary": "Platform Default",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/sre/llm-configs": {
       "get": {
         "operationId": "sre_api_list_llm_configs",
@@ -2385,6 +2412,10 @@
             "title": "Generate Tests",
             "type": "boolean"
           },
+          "platform_tokens_this_month": {
+            "title": "Platform Tokens This Month",
+            "type": "integer"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2407,6 +2438,7 @@
           "default_execution_mode",
           "default_llm_config_id",
           "generate_tests",
+          "platform_tokens_this_month",
           "created_at",
           "github_verified"
         ],
@@ -2473,6 +2505,10 @@
             "title": "Generate Tests",
             "type": "boolean"
           },
+          "platform_tokens_this_month": {
+            "title": "Platform Tokens This Month",
+            "type": "integer"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2503,6 +2539,7 @@
           "default_execution_mode",
           "default_llm_config_id",
           "generate_tests",
+          "platform_tokens_this_month",
           "created_at",
           "github_verified",
           "webhook_secret",
@@ -2830,6 +2867,34 @@
           "role"
         ],
         "title": "MemberUpdateIn",
+        "type": "object"
+      },
+      "PlatformOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "triage_model": {
+            "title": "Triage Model",
+            "type": "string"
+          },
+          "strong_model": {
+            "title": "Strong Model",
+            "type": "string"
+          },
+          "monthly_token_cap": {
+            "title": "Monthly Token Cap",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "available",
+          "triage_model",
+          "strong_model",
+          "monthly_token_cap"
+        ],
+        "title": "PlatformOut",
         "type": "object"
       },
       "LLMConfigOut": {
@@ -3522,6 +3587,10 @@
             "title": "Model",
             "type": "string"
           },
+          "billed_to": {
+            "title": "Billed To",
+            "type": "string"
+          },
           "calls": {
             "title": "Calls",
             "type": "integer"
@@ -3539,6 +3608,7 @@
           "step",
           "provider",
           "model",
+          "billed_to",
           "calls",
           "input_tokens",
           "output_tokens"
@@ -3564,6 +3634,10 @@
             "title": "Total Tokens",
             "type": "integer"
           },
+          "platform_tokens": {
+            "title": "Platform Tokens",
+            "type": "integer"
+          },
           "models": {
             "items": {
               "type": "string"
@@ -3584,6 +3658,7 @@
           "input_tokens",
           "output_tokens",
           "total_tokens",
+          "platform_tokens",
           "models",
           "by_step"
         ],
