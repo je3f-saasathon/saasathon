@@ -3,7 +3,7 @@
 FROM node:20-slim AS base
 WORKDIR /app
 RUN corepack enable
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 RUN pnpm install --frozen-lockfile || pnpm install
 
 # ---- dev: pnpm dev with hot reload, source bind-mounted by docker-compose ----
