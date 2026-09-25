@@ -19,7 +19,7 @@ export const statusVariant: Record<IncidentStatus, BadgeVariant> = {
 
 // shadcn's Badge has no "success"/"warning" variants; tint the outline/default ones.
 export const statusClassName: Partial<Record<IncidentStatus, string>> = {
-  succeeded: "border-emerald-500 text-emerald-700",
+  succeeded: "border-emerald-500 text-emerald-700 dark:text-emerald-300",
   awaiting_approval: "bg-amber-500 text-white hover:bg-amber-500/80",
 };
 

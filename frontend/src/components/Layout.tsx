@@ -1,6 +1,16 @@
-import { Link, Outlet, useNavigate } from "react-router-dom";
+import { Bug } from "lucide-react";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { HealthIndicator } from "./HealthIndicator";
+import { ThemeToggle } from "./theme";
+
+const navItems = [
+  { to: "/dashboard", label: "Dashboard" },
+  { to: "/settings", label: "Settings" },
+  { to: "/items", label: "Items" },
+];
 
 export function Layout() {
   const { user, logout } = useAuth();
@@ -12,40 +22,44 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="flex items-center justify-between border-b bg-white px-6 py-3">
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b bg-background/80 px-6 py-3 backdrop-blur">
         <nav className="flex items-center gap-6">
-          <Link to="/" className="text-lg font-semibold">
-            App
+          <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
+            <Bug className="h-5 w-5 text-primary" />
+            SRE Agent
           </Link>
-          <Link to="/items" className="text-sm text-gray-600 hover:text-gray-900">
-            Items
-          </Link>
-          <Link to="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
-            Dashboard
-          </Link>
-          <Link to="/settings" className="text-sm text-gray-600 hover:text-gray-900">
-            Settings
-          </Link>
+          {navItems.map(({ to, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(
+                  "text-sm transition-colors hover:text-foreground",
+                  isActive ? "font-medium text-foreground" : "text-muted-foreground",
+                )
+              }
+            >
+              {label}
+            </NavLink>
+          ))}
         </nav>
         <div className="flex items-center gap-4">
           <HealthIndicator />
+          <ThemeToggle />
           {user && (
             <div className="flex items-center gap-3">
               {user.avatar_url ? (
-                <img src={user.avatar_url} alt={user.name} className="h-8 w-8 rounded-full" />
+                <img src={user.avatar_url} alt={user.name} className="h-8 w-8 rounded-full ring-1 ring-border" />
               ) : (
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-300 text-sm">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-sm font-medium text-primary ring-1 ring-primary/30">
                   {user.name?.[0]?.toUpperCase() ?? "?"}
                 </div>
               )}
               <span className="text-sm font-medium">{user.name}</span>
-              <button
-                onClick={handleLogout}
-                className="rounded bg-gray-200 px-3 py-1 text-sm hover:bg-gray-300"
-              >
+              <Button variant="outline" size="sm" onClick={handleLogout}>
                 Log out
-              </button>
+              </Button>
             </div>
           )}
         </div>

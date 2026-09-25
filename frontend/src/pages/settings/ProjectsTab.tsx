@@ -91,7 +91,7 @@ function CopyValue({ label, value }: { label: string; value: string }) {
 
 function SecretPanel({ secret, onClose }: { secret: WebhookSecret; onClose: () => void }) {
   return (
-    <div className="space-y-3 rounded-md border border-amber-500/60 bg-amber-50 p-4">
+    <div className="space-y-3 rounded-md border border-amber-500/60 bg-amber-50 dark:bg-amber-500/10 p-4">
       <div className="flex items-start justify-between gap-4">
         <p className="text-sm font-medium">
           Point your Uptrace alert webhook here. The secret is shown only this once. Copy it now.
@@ -419,7 +419,7 @@ function ProjectModels({ project }: { project: Project }) {
         </Select>
       </Field>
       {defaultId == null && !company && platform.isSuccess && (
-        <p className="text-sm text-amber-700">
+        <p className="text-sm text-amber-700 dark:text-amber-300">
           No default model: incidents fail unless every step has an override.
         </p>
       )}
@@ -449,7 +449,7 @@ function ProjectModels({ project }: { project: Project }) {
         </div>
       )}
       {jevDefaultGaps.length > 0 && (
-        <p className="text-sm text-amber-700">
+        <p className="text-sm text-amber-700 dark:text-amber-300">
           The default is a Jev config, which can't run{" "}
           {jevDefaultGaps.map((s) => steps[s].toLowerCase()).join(", ")}. Set an override for
           those.
@@ -643,12 +643,12 @@ export function ProjectsTab() {
                       </TableCell>
                       <TableCell>
                         {p.github_verified ? (
-                          <span className="inline-flex items-center gap-1 text-sm text-emerald-700">
+                          <span className="inline-flex items-center gap-1 text-sm text-emerald-700 dark:text-emerald-300">
                             <ShieldCheck className="h-4 w-4" /> Verified
                           </span>
                         ) : (
                           <span
-                            className="inline-flex items-center gap-1 text-sm text-amber-700"
+                            className="inline-flex items-center gap-1 text-sm text-amber-700 dark:text-amber-300"
                             title="No owner of this project has connected its GitHub installation. An owner can fix this in the GitHub tab."
                           >
                             <ShieldAlert className="h-4 w-4" /> Unverified

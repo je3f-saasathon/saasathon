@@ -39,7 +39,7 @@ function Banner() {
   if (params.get("github") === "connected") {
     const count = Number(params.get("count") ?? 0);
     return (
-      <p className="rounded-md border border-emerald-500/50 p-3 text-sm text-emerald-700">
+      <p className="rounded-md border border-emerald-500/50 p-3 text-sm text-emerald-700 dark:text-emerald-300">
         GitHub connected: {count} installation{count === 1 ? "" : "s"} available.
       </p>
     );

@@ -11,20 +11,20 @@ export function HealthIndicator() {
   });
 
   let label = "checking...";
-  let color = "bg-gray-400";
+  let color = "bg-muted-foreground";
 
   if (!isLoading) {
     if (isError || data?.status !== "ok") {
       label = "unreachable";
-      color = "bg-red-500";
+      color = "bg-destructive";
     } else {
       label = `ok (v${data.version})`;
-      color = "bg-green-500";
+      color = "bg-emerald-500 shadow-[0_0_8px_theme(colors.emerald.400)]";
     }
   }
 
   return (
-    <div className="flex items-center gap-2 text-sm text-gray-600">
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
       <span className={`h-2 w-2 rounded-full ${color}`} />
       <span>API: {label}</span>
     </div>
