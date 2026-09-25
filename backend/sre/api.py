@@ -111,6 +111,12 @@ def _webhook_url(request: HttpRequest, project: Project) -> str:
     return request.build_absolute_uri(f"/api/sre/webhooks/uptrace/{project.id}")
 
 
+def _webhook_urls(request: HttpRequest, project: Project) -> dict:
+    url = _webhook_url(request, project)
+    return {"webhook_secret": project.uptrace_webhook_secret, "webhook_url": url,
+            "uptrace_webhook_url": f"{url}?token={project.uptrace_webhook_secret}"}
+
+
 def _own_config(user, config_id: int) -> LLMProviderConfig:
     return get_object_or_404(LLMProviderConfig, id=config_id, owner=user)
 
@@ -191,24 +197,45 @@ def _webhook_authorized(request: HttpRequest, project: Project) -> bool:
     if signature.startswith("sha256="):
         expected = hmac.new(secret, request.body, hashlib.sha256).hexdigest()
         return hmac.compare_digest(signature[len("sha256="):], expected)
-    token = request.headers.get("X-SRE-Webhook-Secret", "")
+    # Uptrace's webhook channel can't send headers or sign requests, only a URL, so it
+    # passes the secret as ?token= (the URL settings shows). Other callers use the header.
+    token = request.headers.get("X-SRE-Webhook-Secret", "") or request.GET.get("token", "")
     return bool(token) and hmac.compare_digest(token.encode(), secret)
 
 
+# Uptrace notifies on every alert state change; only a new or recurring open alert is work.
+UPTRACE_ACTIONABLE_EVENTS = {"created", "recurring", "state-changed"}
+
+
 @router.post("/webhooks/uptrace/{project_id}", auth=None,
-             response={200: UptraceWebhookOut, 401: dict, 503: dict})
+             response={200: UptraceWebhookOut, 202: dict, 401: dict, 422: dict, 503: dict})
 def uptrace_webhook(request: HttpRequest, project_id: int, payload: UptraceWebhookIn):
     project = Project.objects.filter(id=project_id).first()
     # Same answer for unknown project and bad secret: don't reveal which projects exist.
     if project is None or not _webhook_authorized(request, project):
         return 401, {"detail": "Invalid webhook signature"}
 
-    workflow_id = f"sre-incident-{project.id}-{payload.trace_id}"
+    if payload.alert is not None:
+        alert = payload.alert
+        if alert.get("state") != "open" or payload.eventName not in UPTRACE_ACTIONABLE_EVENTS:
+            return 202, {"detail": f"Ignored: alert {alert.get('state') or 'unknown'}, "
+                                   f"event {payload.eventName or 'unknown'}"}
+        if not alert.get("id"):
+            return 422, {"detail": "Uptrace alert has no id"}
+        # One incident per Uptrace alert: Uptrace already groups repeats of the same error
+        # into one alert, so a crash loop is one incident, not one per occurrence.
+        incident_key = f"uptrace-alert-{alert['id']}"
+    elif payload.trace_id:
+        incident_key = payload.trace_id
+    else:
+        return 422, {"detail": "Expected an Uptrace alert notification or a trace_id"}
+
+    workflow_id = f"sre-incident-{project.id}-{incident_key}"
     run, _ = IncidentRun.objects.get_or_create(
         temporal_workflow_id=workflow_id,
         defaults={
             "project": project,
-            "trace_id": payload.trace_id,
+            "trace_id": incident_key,
             "uptrace_exception_id": payload.exception_id or "",
             "raw_webhook_payload": payload.dict(),
         },
@@ -240,8 +267,7 @@ def create_project(request: HttpRequest, payload: ProjectCreateIn):
         ProjectMembership.objects.create(project=project, user=request.auth, role=ProjectRole.OWNER)
     return 201, {
         **_project_out(project, ProjectRole.OWNER),
-        "webhook_secret": project.uptrace_webhook_secret,
-        "webhook_url": _webhook_url(request, project),
+        **_webhook_urls(request, project),
     }
 
 
@@ -283,8 +309,7 @@ def rotate_webhook_secret(request: HttpRequest, project_id: int):
     project = get_project_for(request.auth, project_id, ProjectRole.OWNER)
     project.uptrace_webhook_secret = secrets.token_urlsafe(32)
     project.save(update_fields=["uptrace_webhook_secret", "updated_at"])
-    return {"webhook_secret": project.uptrace_webhook_secret,
-            "webhook_url": _webhook_url(request, project)}
+    return _webhook_urls(request, project)
 
 
 # ---- GitHub connect --------------------------------------------------------------

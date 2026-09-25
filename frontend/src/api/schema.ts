@@ -772,10 +772,15 @@ export interface components {
             /** Status */
             status: string;
         };
-        /** UptraceWebhookIn */
+        /**
+         * UptraceWebhookIn
+         * @description Two shapes are accepted: Uptrace's own alert notification
+         *     ({id, eventName, payload, createdAt, alert: {id, url, name, type, state, createdAt}}),
+         *     or a direct call with a trace_id (scripts, other tools).
+         */
         UptraceWebhookIn: {
             /** Trace Id */
-            trace_id: string;
+            trace_id?: string | null;
             /** Exception Id */
             exception_id?: string | null;
             /** Source Id */
@@ -787,6 +792,12 @@ export interface components {
             payload: {
                 [key: string]: unknown;
             };
+            /** Eventname */
+            eventName?: string | null;
+            /** Alert */
+            alert?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * ExecutionMode
@@ -865,6 +876,8 @@ export interface components {
             webhook_secret: string;
             /** Webhook Url */
             webhook_url: string;
+            /** Uptrace Webhook Url */
+            uptrace_webhook_url: string;
         };
         /** ProjectCreateIn */
         ProjectCreateIn: {
@@ -920,6 +933,8 @@ export interface components {
             webhook_secret: string;
             /** Webhook Url */
             webhook_url: string;
+            /** Uptrace Webhook Url */
+            uptrace_webhook_url: string;
         };
         /** GitHubStatusOut */
         GitHubStatusOut: {
@@ -1725,8 +1740,30 @@ export interface operations {
                     "application/json": components["schemas"]["UptraceWebhookOut"];
                 };
             };
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
