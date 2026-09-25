@@ -55,6 +55,9 @@ on `main`. Backend and frontend deploy independently via `deploy-backend.yml` /
    GITHUB_APP_CLIENT_SECRET=
    SRE_ALLOW_PRIVATE_LLM_URLS=false   # otherwise users can point LLM configs at internal services
    SRE_SANDBOX_NETWORK=none
+   # Network for the dependency-install step only (uv sync / pip / npm ci). The worker
+   # disconnects the sandbox and checks it's offline before the agent runs. none = no installs.
+   SRE_SANDBOX_INSTALL_NETWORK=bridge
    # Optional tracing. Blank = off. Token counts on the dashboard come from the DB either way.
    LANGFUSE_HOST=
    LANGFUSE_PUBLIC_KEY=

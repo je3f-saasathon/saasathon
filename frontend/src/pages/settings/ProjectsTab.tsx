@@ -324,10 +324,18 @@ function ProjectForm({
             onChange={(e) => setForm({ ...form, repo: { ...form.repo, branch: e.target.value } })}
           />
         </Field>
-        <Field label="Uptrace source id" hint="Optional.">
+        <Field
+          label="Uptrace project"
+          hint={
+            form.uptrace_source_id
+              ? "Only alerts from this Uptrace project are accepted. Clear it and save to re-pin on the next alert."
+              : "Set automatically by the first alert (e.g. app.uptrace.dev/1). Later alerts from any other Uptrace project are rejected."
+          }
+        >
           <Input
             value={form.uptrace_source_id}
             disabled={!isOwner}
+            placeholder="Not pinned yet"
             onChange={(e) => setForm({ ...form, uptrace_source_id: e.target.value })}
           />
         </Field>
@@ -524,7 +532,7 @@ function ProjectModels({ project }: { project: Project }) {
           </TableBody>
         </Table>
       </div>
-      {mine.length === 0 && editable && (
+      {mine.length === 0 && editable && !company && (
         <p className="text-sm text-muted-foreground">
           You have no model configs.{" "}
           <Link to="/settings?tab=models" className="font-medium underline">

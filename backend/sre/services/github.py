@@ -25,6 +25,18 @@ class GitError(Exception):
     pass
 
 
+INSTALL_DIRS = [".venv/", "node_modules/", "__pycache__/", ".pytest_cache/"]
+
+
+def exclude_install_dirs(git_dir: Path) -> None:
+    """Environments the dependency install creates must never end up in the PR, whatever
+    the repo's own .gitignore says. info/exclude lives in the git dir, out of the sandbox's
+    reach, and only affects untracked files."""
+    (git_dir / "info").mkdir(parents=True, exist_ok=True)
+    with open(git_dir / "info" / "exclude", "a") as exclude:
+        exclude.write("\n" + "\n".join(INSTALL_DIRS) + "\n")
+
+
 class GitHubRepo:
     """Worker-side git/GitHub operations. The installation token never touches disk
     and never enters the sandbox: it's passed as a one-off http header."""
@@ -65,6 +77,7 @@ class GitHubRepo:
         # The separate-git-dir pointer file is inside the sandbox's reach; drop it.
         # Every later git call passes --git-dir explicitly.
         (work_tree / ".git").unlink(missing_ok=True)
+        exclude_install_dirs(git_dir)
         self._git(git_dir, work_tree, "checkout", "-b", branch)
 
     def has_changes(self, git_dir: Path, work_tree: Path) -> bool:

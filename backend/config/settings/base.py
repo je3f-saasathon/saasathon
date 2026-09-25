@@ -184,4 +184,8 @@ SRE_PLATFORM_MONTHLY_TOKEN_CAP = int(os.environ.get("SRE_PLATFORM_MONTHLY_TOKEN_
 SRE_ALLOW_PRIVATE_LLM_URLS = env_bool("SRE_ALLOW_PRIVATE_LLM_URLS", default=False)
 SRE_SANDBOX_IMAGE = os.environ.get("SRE_SANDBOX_IMAGE", "saasathon-sre-sandbox:latest")
 SRE_SANDBOX_NETWORK = os.environ.get("SRE_SANDBOX_NETWORK", "none")
+# Network used only for installing a repo's dependencies (uv sync / pip / npm ci) before
+# the agent starts; the sandbox is then disconnected, so the agent itself never has
+# network when SRE_SANDBOX_NETWORK=none. "none" here skips network for installs too.
+SRE_SANDBOX_INSTALL_NETWORK = os.environ.get("SRE_SANDBOX_INSTALL_NETWORK", "bridge")
 SRE_WORKDIR = os.environ.get("SRE_WORKDIR", "/tmp/sre-work")
