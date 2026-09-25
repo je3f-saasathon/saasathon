@@ -2,6 +2,7 @@ import io
 import os
 import posixpath
 import tarfile
+import time
 from pathlib import Path
 
 from django.conf import settings
@@ -103,6 +104,9 @@ class Sandbox:
             info = tarfile.TarInfo(name=posixpath.basename(target))
             info.size = len(data)
             info.mode = 0o644
+            # Docker extracts as root and keeps tar ownership; stamp the worker's uid.
+            info.uid, info.gid = os.getuid(), os.getgid()
+            info.mtime = int(time.time())
             tar.addfile(info, io.BytesIO(data))
         parent = posixpath.dirname(target)
         self.container.exec_run(["mkdir", "-p", parent])

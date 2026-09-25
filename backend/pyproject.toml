@@ -40,3 +40,4 @@ dev = [
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 testpaths = ["accounts", "items", "config", "jev", "sre"]
+markers = ["sandbox: runs a real sandbox container (skipped without Docker)"]
