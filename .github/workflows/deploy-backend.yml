@@ -28,7 +28,11 @@ jobs:
           echo "BACKEND_PORT=${port:-8000}" >> "$GITHUB_ENV"
 
       - name: Build and start backend
-        run: docker compose --env-file "$ENV_FILE_DIR/backend/.env.prod" -f docker-compose.prod.yml up -d --no-deps --build backend
+        # No --no-deps here (unlike frontend): backend's own .env.prod is
+        # the single source of truth for postgres's env too, so bringing
+        # postgres up alongside backend is safe and necessary on a fresh
+        # host where postgres has never been started.
+        run: docker compose --env-file "$ENV_FILE_DIR/backend/.env.prod" -f docker-compose.prod.yml up -d --build postgres backend
 
       - name: Health check
         run: |
