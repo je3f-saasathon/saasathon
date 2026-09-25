@@ -92,6 +92,8 @@ services:
       - sre_work:/sre-work
       - sre_docker_data:/var/lib/docker
       - ./backend/sre/sandbox:/sandbox:ro
+      # Public resolvers: dind breaks the embedded DNS (see the file's comment).
+      - ./backend/sre/sandbox/dind-resolv.conf:/etc/resolv.conf:ro
 
   frontend:
     build:
