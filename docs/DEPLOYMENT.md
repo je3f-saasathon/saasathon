@@ -16,5 +16,15 @@ on `main`. Backend and frontend deploy independently via `deploy-backend.yml` /
 1. Register two self-hosted Actions runners on the prod host, labels
    `[self-hosted, je3f-saasathon-oma, backend]` and `..., frontend]`.
 2. Create `.env.prod` files at the `ENV_FILE_DIR` path for `backend/` and `frontend/`.
-3. Configure Cloudflare Tunnel ingress: `dev.andrewplescan.com` -> frontend port,
-   `api.dev.andrewplescan.com` -> backend port, then `sudo systemctl restart cloudflared`.
+3. Create a Cloudflare Tunnel dedicated to this project (Zero Trust dashboard
+   → Networks → Tunnels → Create). It must live on the same Cloudflare
+   account that owns the app's domain zone — a tunnel can't route to a zone
+   on a different account. Set its public hostnames: `dev.andrewplescan.com`
+   -> frontend port, `api-dev.andrewplescan.com` -> backend port (note: no
+   `api.dev...` — Cloudflare's free Universal SSL only covers one level of
+   subdomain, so a second-level subdomain like `api.dev.andrewplescan.com`
+   fails TLS; use a hyphenated single-level name instead).
+4. Run the connector as a systemd service on the prod host using that
+   tunnel's install command from the dashboard (`cloudflared service
+   install <token>`), so it survives reboot. This is a separate cloudflared
+   instance/service from any other project's tunnel on the same host.

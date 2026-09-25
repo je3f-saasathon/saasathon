@@ -5,7 +5,7 @@
 GitHub Settings > Developer settings > OAuth Apps > New OAuth App.
 
 - Local dev callback: `http://localhost:8000/api/auth/github/callback`
-- Production callback: `https://api.dev.andrewplescan.com/api/auth/github/callback`
+- Production callback: `https://api-dev.andrewplescan.com/api/auth/github/callback`
 
 Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in `backend/.env` (or `.env.prod`).
 
@@ -15,7 +15,7 @@ Google Cloud Console > APIs & Services > Credentials > Create Credentials >
 OAuth client ID > Application type "Web application".
 
 - Local dev callback: `http://localhost:8000/api/auth/google/callback`
-- Production callback: `https://api.dev.andrewplescan.com/api/auth/google/callback`
+- Production callback: `https://api-dev.andrewplescan.com/api/auth/google/callback`
 
 Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `backend/.env` (or `.env.prod`).
 
