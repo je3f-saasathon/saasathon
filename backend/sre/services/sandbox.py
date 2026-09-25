@@ -28,16 +28,19 @@ class Sandbox:
     no network unless SRE_SANDBOX_NETWORK says otherwise. Every agent tool call
     (file reads/writes and commands) happens in here, never on the worker host."""
 
-    def __init__(self, work_tree: Path, name: str):
+    def __init__(self, work_tree: Path, name: str, network: str | None = None):
         self.work_tree = work_tree
         self.name = name
+        # The network the container starts on; isolate() can take it off later.
+        self.network = network or settings.SRE_SANDBOX_NETWORK
         self.container = None
+        self.client = None
 
     def __enter__(self):
         import docker
 
         try:
-            client = docker.from_env()
+            self.client = client = docker.from_env()
             self.container = client.containers.run(
                 settings.SRE_SANDBOX_IMAGE,
                 command=["sleep", "infinity"],
@@ -45,7 +48,7 @@ class Sandbox:
                 detach=True,
                 auto_remove=False,
                 environment={},
-                network_mode=settings.SRE_SANDBOX_NETWORK,
+                network_mode=self.network,
                 volumes={str(self.work_tree): {"bind": WORKSPACE, "mode": "rw"}},
                 working_dir=WORKSPACE,
                 # Same uid as the worker so it can commit and clean up what the agent wrote.
@@ -74,9 +77,29 @@ class Sandbox:
             raise SandboxError(f"path escapes the repo: {path}")
         return joined
 
-    def run(self, command: str) -> tuple[int, str]:
+    def isolate(self) -> None:
+        """Disconnect every network, then prove there's no way out. Raises (and the attempt
+        fails) rather than letting the agent run with network it shouldn't have."""
+        import docker
+
+        try:
+            self.container.reload()
+            for name in list(self.container.attrs["NetworkSettings"]["Networks"]):
+                self.client.networks.get(name).disconnect(self.container, force=True)
+            self.container.reload()
+        except docker.errors.DockerException as exc:
+            raise SandboxError(f"could not disconnect the sandbox from the network: {exc}") from exc
+        if self.container.attrs["NetworkSettings"]["Networks"]:
+            raise SandboxError("sandbox still has a network after disconnecting")
+        exit_code, _ = self.container.exec_run(
+            ["python3", "-c", "import socket; socket.create_connection(('1.1.1.1', 53), 3)"]
+        )
+        if exit_code == 0:
+            raise SandboxError("sandbox can still reach the internet after disconnecting")
+
+    def run(self, command: str, timeout: int = COMMAND_TIMEOUT_SECONDS) -> tuple[int, str]:
         exit_code, output = self.container.exec_run(
-            ["timeout", str(COMMAND_TIMEOUT_SECONDS), "sh", "-c", command],
+            ["timeout", str(timeout), "sh", "-c", command],
             workdir=WORKSPACE,
             demux=False,
         )

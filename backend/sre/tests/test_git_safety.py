@@ -4,7 +4,7 @@ run code when it later runs git there."""
 import subprocess
 from types import SimpleNamespace
 
-from sre.services.github import GitHubRepo
+from sre.services.github import GitHubRepo, exclude_install_dirs
 
 
 def _repo():
@@ -44,3 +44,23 @@ def test_planted_git_hooks_and_config_do_not_run(tmp_path):
                                capture_output=True, text=True, check=True).stdout
     assert "fix.py" in committed
     assert ".git/" not in committed
+
+
+def test_installed_environments_are_never_committed(tmp_path):
+    git_dir, work_tree = tmp_path / "git", tmp_path / "tree"
+    work_tree.mkdir()
+    subprocess.run(["git", "init", "-q", f"--separate-git-dir={git_dir}", str(work_tree)], check=True)
+    (work_tree / ".git").unlink()
+    exclude_install_dirs(git_dir)  # what GitHubRepo.clone does
+    for path in (".venv/lib/site.py", "node_modules/pkg/index.js", "app/__pycache__/x.pyc"):
+        (work_tree / path).parent.mkdir(parents=True, exist_ok=True)
+        (work_tree / path).write_text("installed")
+    (work_tree / "fix.py").write_text("x = 1\n")
+
+    repo = _repo()
+    repo._git(git_dir, work_tree, "add", "-A")
+    repo._git(git_dir, work_tree, "-c", "user.name=t", "-c", "user.email=t@t",
+              "commit", "-q", "-m", "fix")
+    committed = subprocess.run(["git", f"--git-dir={git_dir}", "show", "--name-only", "--format="],
+                               capture_output=True, text=True, check=True).stdout.split()
+    assert committed == ["fix.py"]

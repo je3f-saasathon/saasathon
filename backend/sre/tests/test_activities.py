@@ -354,8 +354,18 @@ class FakeRepo:
 
 
 class FakeSandbox:
-    def __init__(self, work_tree, name):
+    instances = []
+
+    def __init__(self, work_tree, name, network=None):
         self.files = {}
+        self.network = network
+        self.commands = []  # (command, network at the time)
+        self.isolated = False
+        FakeSandbox.instances.append(self)
+
+    def isolate(self):
+        self.isolated = True
+        self.network = "none"
 
     def __enter__(self):
         return self
@@ -366,7 +376,8 @@ class FakeSandbox:
     def write_file(self, path, content):
         self.files[path] = content
 
-    def run(self, command):
+    def run(self, command, timeout=None):
+        self.commands.append((command, self.network))
         return 0, "1 passed"
 
     def read_file(self, path):
@@ -380,6 +391,7 @@ class FakeSandbox:
 def fake_infra(monkeypatch, settings, tmp_path):
     settings.SRE_WORKDIR = str(tmp_path)
     FakeRepo.instances = []
+    FakeSandbox.instances = []
     monkeypatch.setattr(executor_module, "GitHubRepo", FakeRepo)
     monkeypatch.setattr(executor_module, "Sandbox", FakeSandbox)
 
@@ -428,6 +440,63 @@ def test_generate_tests_is_frozen_on_the_run_and_steers_the_agent(
     system = llm.prompts[0][0]
     assert ("Add or update a test" in system) is project_setting
     assert ("Do not write new tests" in system) is not project_setting
+
+
+class LockfileRepo(FakeRepo):
+    def clone(self, git_dir, work_tree, branch):
+        work_tree.mkdir(parents=True)
+        (work_tree / "uv.lock").write_text("")
+        (work_tree / "package-lock.json").write_text("{}")
+
+
+def test_offline_sandbox_installs_dependencies_then_cuts_network_before_the_agent(
+        monkeypatch, fake_infra, settings, project, incident):
+    settings.SRE_SANDBOX_NETWORK = "none"
+    settings.SRE_SANDBOX_INSTALL_NETWORK = "bridge"
+    monkeypatch.setattr(executor_module, "GitHubRepo", LockfileRepo)
+    llm = FakeLLM(monkeypatch, *AGENT_TURNS)
+    result = PlaybookExecutor(_playbook_run(project, incident, "autonomous"), 1, "").execute()
+    assert result.outcome == "succeeded"
+    box = FakeSandbox.instances[0]
+    installs = [c for c in box.commands if c[0] in ("uv sync --frozen", "npm ci")]
+    assert installs == [("uv sync --frozen", "bridge"), ("npm ci", "bridge")]
+    assert box.isolated
+    # Every agent command ran after the disconnect.
+    assert [c for c in box.commands if c not in installs] == [("pytest", "none")]
+    kickoff = llm.prompts[0][1][0]["content"]
+    assert "uv sync --frozen  -> ok" in kickoff and "no network" in kickoff
+
+
+def test_no_lockfile_means_no_install_and_the_sandbox_starts_offline(
+        monkeypatch, fake_infra, settings, project, incident):
+    settings.SRE_SANDBOX_NETWORK = "none"
+    FakeLLM(monkeypatch, *AGENT_TURNS)
+    PlaybookExecutor(_playbook_run(project, incident, "autonomous"), 1, "").execute()
+    box = FakeSandbox.instances[0]
+    assert box.network == "none" and not box.isolated
+    assert box.commands == [("pytest", "none")]
+
+
+def test_install_network_none_keeps_the_whole_run_offline(
+        monkeypatch, fake_infra, settings, project, incident):
+    settings.SRE_SANDBOX_NETWORK = "none"
+    settings.SRE_SANDBOX_INSTALL_NETWORK = "none"
+    monkeypatch.setattr(executor_module, "GitHubRepo", LockfileRepo)
+    FakeLLM(monkeypatch, *AGENT_TURNS)
+    PlaybookExecutor(_playbook_run(project, incident, "autonomous"), 1, "").execute()
+    box = FakeSandbox.instances[0]
+    assert all(network == "none" for _, network in box.commands) and not box.isolated
+
+
+def test_install_commands_follow_the_lockfiles(tmp_path):
+    from sre.services.executor import install_commands
+    assert install_commands(tmp_path) == []
+    (tmp_path / "requirements.txt").write_text("django")
+    assert install_commands(tmp_path) == [
+        "python -m venv .venv && .venv/bin/pip install -r requirements.txt"]
+    (tmp_path / "uv.lock").write_text("")
+    (tmp_path / "package.json").write_text("{}")
+    assert install_commands(tmp_path) == ["uv sync --frozen", "npm install"]
 
 
 def test_draft_attempt_opens_draft_pr(monkeypatch, fake_infra, project, incident):

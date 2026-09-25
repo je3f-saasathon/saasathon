@@ -63,3 +63,18 @@ def test_commands_see_only_the_work_tree(sandbox):
     box, _ = sandbox
     code, output = box.run("ls -a /workspace")
     assert code == 0 and "app.py" in output
+
+
+def test_install_then_isolate_cuts_all_network(settings, tmp_path):
+    """The prod flow: start on a network for the dependency install, then disconnect
+    before the agent runs. After isolate() nothing can get out."""
+    if not _sandbox_available(settings.SRE_SANDBOX_IMAGE):
+        pytest.skip("Docker or sandbox image not available (run `make sandbox-image`)")
+    reach = "python3 -c \"import socket; socket.create_connection(('1.1.1.1', 53), 3)\""
+    with Sandbox(tmp_path, name=f"sre-test-iso-{os.getpid()}", network="bridge") as box:
+        assert box.run(reach)[0] == 0  # online for the install step
+        box.isolate()
+        assert box.run(reach)[0] != 0
+        assert box.run("getent hosts pypi.org")[0] != 0
+        box.container.reload()
+        assert box.container.attrs["NetworkSettings"]["Networks"] == {}

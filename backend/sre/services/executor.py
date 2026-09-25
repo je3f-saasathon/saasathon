@@ -42,6 +42,25 @@ def agent_system(generate_tests: bool) -> str:
     )
 
 
+INSTALL_TIMEOUT_SECONDS = 900
+
+
+def install_commands(work_tree: Path) -> list[str]:
+    """The repo's own lockfile install, chosen by the worker (never by the agent)."""
+    commands = []
+    if (work_tree / "uv.lock").exists():
+        commands.append("uv sync --frozen")
+    elif (work_tree / "requirements.txt").exists():
+        commands.append("python -m venv .venv && .venv/bin/pip install -r requirements.txt")
+    elif (work_tree / "pyproject.toml").exists():
+        commands.append("uv sync")
+    if (work_tree / "package-lock.json").exists():
+        commands.append("npm ci")
+    elif (work_tree / "package.json").exists():
+        commands.append("npm install")
+    return commands
+
+
 def branch_name_for(playbook_run: PlaybookRun, attempt_number: int) -> str:
     return f"sre/incident-{playbook_run.incident_run_id}-a{attempt_number}"
 
@@ -96,8 +115,20 @@ class PlaybookExecutor:
         repo.clone(git_dir, work_tree, self.branch)
         self.heartbeat("cloned")
 
-        with Sandbox(work_tree, name=f"sre-{self.playbook_run.id}-a{self.attempt_number}") as box:
-            summary, tests_passed = self._agent_loop(box)
+        # Dependencies are installed with network, then the sandbox is cut off before the
+        # agent (which reads attacker-influenced telemetry) gets a single turn.
+        commands = install_commands(work_tree)
+        agent_offline = settings.SRE_SANDBOX_NETWORK == "none"
+        install_network = settings.SRE_SANDBOX_INSTALL_NETWORK
+        start_network = (install_network if commands and agent_offline and install_network != "none"
+                         else settings.SRE_SANDBOX_NETWORK)
+        name = f"sre-{self.playbook_run.id}-a{self.attempt_number}"
+        with Sandbox(work_tree, name=name, network=start_network) as box:
+            install_report = self._install_dependencies(box, commands)
+            if agent_offline and start_network != "none":
+                box.isolate()
+            self.heartbeat("sandbox ready")
+            summary, tests_passed = self._agent_loop(box, install_report)
 
         if not repo.has_changes(git_dir, work_tree):
             return AttemptResult("failed", f"Agent made no changes. Its summary: {summary}",
@@ -117,7 +148,19 @@ class PlaybookExecutor:
         )
         return AttemptResult("succeeded", "", self.branch, pr_url, summary=summary)
 
-    def _agent_loop(self, box: Sandbox) -> tuple[str, bool]:
+    def _install_dependencies(self, box: Sandbox, commands: list[str]) -> str:
+        """Returns a report for the agent: what ran and how it went."""
+        lines = []
+        for command in commands:
+            self.heartbeat(f"installing: {command}")
+            exit_code, output = box.run(command, timeout=INSTALL_TIMEOUT_SECONDS)
+            status = "ok" if exit_code == 0 else f"FAILED (exit {exit_code})"
+            lines.append(f"$ {command}  -> {status}")
+            if exit_code != 0:
+                lines.append(output[-2000:])
+        return "\n".join(lines)
+
+    def _agent_loop(self, box: Sandbox, install_report: str = "") -> tuple[str, bool]:
         client = client_for(get_llm_config(self.project, PipelineStep.PLAYBOOK_EXECUTION))
         kickoff = (
             incident_context(self.run)
@@ -127,6 +170,15 @@ class PlaybookExecutor:
                                      "description": self.playbook.description,
                                      "steps": self.playbook.steps})
         )
+        if install_report:
+            kickoff += (
+                "\n\nThe repo's dependencies were installed before you started"
+                + (" and the sandbox now has no network, so you can't install more"
+                   if settings.SRE_SANDBOX_NETWORK == "none" else "")
+                + ". Use the project's environment, e.g. "
+                "`uv run pytest` or `.venv/bin/python -m pytest` for Python. Install log:\n"
+                + untrusted("dependency_install", install_report)
+            )
         if self.previous_feedback:
             kickoff += (
                 "\n\nA previous attempt at this fix failed. Take a different approach where "
