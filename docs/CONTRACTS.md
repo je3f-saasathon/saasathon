@@ -42,6 +42,14 @@ All auth endpoints are public except `/auth/me` and `/auth/logout` (require `Aut
 
 `Item` shape: `{id, owner_id, title, description, created_at, updated_at}`. Ownership: users can only see/modify their own items (queryset filtered by `request.user`).
 
+## Jev (Cloudflare Workers AI, experimental)
+
+Requires `Authorization: Bearer <token>`. Requires `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` to be set on the backend, and gateway balance (or BYOK) on the Cloudflare account — otherwise upstream calls fail and this returns 502.
+
+| Method | Path        | Body / Params                                              | Returns                              |
+|--------|-------------|--------------------------------------------------------------|----------------------------------------|
+| POST   | `/jev/run`  | `{state: string, questions: {[name]: {type: "noul"\|"choice"\|"score", instructions, criteria}}}` | `{model, answers, usage}` or `502 {detail}` |
+
 ## Errors
 
 All error responses: `{detail: string}` with the appropriate HTTP status. 401 for missing/invalid/expired token, 403 for wrong owner, 404 for missing resource, 422 for validation errors (django-ninja default).

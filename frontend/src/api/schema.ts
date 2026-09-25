@@ -211,6 +211,23 @@ export interface paths {
         patch: operations["items_api_update_item"];
         trace?: never;
     };
+    "/api/jev/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run */
+        post: operations["jev_api_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -323,6 +340,39 @@ export interface components {
             title?: string | null;
             /** Description */
             description?: string | null;
+        };
+        /** JevRunOut */
+        JevRunOut: {
+            /** Model */
+            model: string;
+            /** Answers */
+            answers: {
+                [key: string]: unknown;
+            };
+            /** Usage */
+            usage: {
+                [key: string]: unknown;
+            };
+        };
+        /** JevQuestionIn */
+        JevQuestionIn: {
+            /** Type */
+            type: string;
+            /** Instructions */
+            instructions: string;
+            /** Criteria */
+            criteria: {
+                [key: string]: string;
+            } | string[];
+        };
+        /** JevRunIn */
+        JevRunIn: {
+            /** State */
+            state: string;
+            /** Questions */
+            questions: {
+                [key: string]: components["schemas"]["JevQuestionIn"];
+            };
         };
     };
     responses: never;
@@ -670,6 +720,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ItemOut"];
+                };
+            };
+        };
+    };
+    jev_api_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JevRunIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JevRunOut"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

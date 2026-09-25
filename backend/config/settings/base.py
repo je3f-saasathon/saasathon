@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "ninja",
     "accounts",
     "items",
+    "jev",
 ]
 
 MIDDLEWARE = [
@@ -144,3 +145,8 @@ GOOGLE_REDIRECT_URI = os.environ.get(
 )
 
 APP_VERSION = os.environ.get("APP_VERSION", "0.1.0")
+
+# --- Jev (Cloudflare Workers AI) ---
+CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+CLOUDFLARE_API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+CLOUDFLARE_JEV_MODEL = os.environ.get("CLOUDFLARE_JEV_MODEL", "typesafe/jev")

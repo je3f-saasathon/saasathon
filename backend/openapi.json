@@ -476,6 +476,55 @@
           }
         ]
       }
+    },
+    "/api/jev/run": {
+      "post": {
+        "operationId": "jev_api_run",
+        "summary": "Run",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JevRunOut"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "jev"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JevRunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -741,6 +790,88 @@
           }
         },
         "title": "ItemUpdateIn",
+        "type": "object"
+      },
+      "JevRunOut": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "answers": {
+            "additionalProperties": true,
+            "title": "Answers",
+            "type": "object"
+          },
+          "usage": {
+            "additionalProperties": true,
+            "title": "Usage",
+            "type": "object"
+          }
+        },
+        "required": [
+          "model",
+          "answers",
+          "usage"
+        ],
+        "title": "JevRunOut",
+        "type": "object"
+      },
+      "JevQuestionIn": {
+        "properties": {
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "instructions": {
+            "title": "Instructions",
+            "type": "string"
+          },
+          "criteria": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Criteria"
+          }
+        },
+        "required": [
+          "type",
+          "instructions",
+          "criteria"
+        ],
+        "title": "JevQuestionIn",
+        "type": "object"
+      },
+      "JevRunIn": {
+        "properties": {
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "questions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JevQuestionIn"
+            },
+            "title": "Questions",
+            "type": "object"
+          }
+        },
+        "required": [
+          "state",
+          "questions"
+        ],
+        "title": "JevRunIn",
         "type": "object"
       }
     },
