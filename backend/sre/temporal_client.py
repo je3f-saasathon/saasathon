@@ -1,0 +1,38 @@
+from asgiref.sync import async_to_sync
+from django.conf import settings
+from temporalio.client import Client
+from temporalio.exceptions import WorkflowAlreadyStartedError
+
+from .temporal_types import ApprovalDecision, IncidentInput
+
+
+# Connect per call: Django may run each request on a different event loop,
+# and a Temporal client is bound to the loop it was created on.
+async def _connect() -> Client:
+    return await Client.connect(settings.TEMPORAL_ADDRESS, namespace=settings.TEMPORAL_NAMESPACE)
+
+
+async def _start(workflow_id: str, inp: IncidentInput) -> None:
+    client = await _connect()
+    try:
+        await client.start_workflow(
+            "IncidentDiagnosisWorkflow",
+            inp,
+            id=workflow_id,
+            task_queue=settings.TEMPORAL_TASK_QUEUE,
+        )
+    except WorkflowAlreadyStartedError:
+        pass  # duplicate callback for the same trace: the first workflow already owns it
+
+
+async def _signal(workflow_id: str, decision: ApprovalDecision) -> None:
+    client = await _connect()
+    await client.get_workflow_handle(workflow_id).signal("approval_decision", decision)
+
+
+def start_incident_workflow(workflow_id: str, inp: IncidentInput) -> None:
+    async_to_sync(_start)(workflow_id, inp)
+
+
+def signal_approval(workflow_id: str, decision: ApprovalDecision) -> None:
+    async_to_sync(_signal)(workflow_id, decision)

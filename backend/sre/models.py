@@ -219,6 +219,7 @@ class PlaybookExecutionAttempt(models.Model):
     generated_steps = models.JSONField(default=list)
     previous_attempt_feedback = models.TextField(blank=True, default="")
     outcome = models.CharField(max_length=32, choices=Outcome.choices, default=Outcome.PENDING)
+    summary = models.TextField(blank=True, default="")
     error_output = models.TextField(blank=True, default="")
     branch_name = models.CharField(max_length=255, blank=True, default="")
     langfuse_trace_id = models.CharField(max_length=255, blank=True, default="")
