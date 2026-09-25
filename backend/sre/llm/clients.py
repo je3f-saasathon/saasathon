@@ -35,8 +35,13 @@ class ChatClient:
     def __init__(self, config: LLMProviderConfig):
         self.config = config
         self.api_key = decrypt(config.api_key_encrypted) if config.api_key_encrypted else ""
-        self.max_tokens = int(config.extra_config.get("max_tokens", 4096))
-        self.temperature = config.extra_config.get("temperature", 0)
+        # Reasoning models count thinking against this budget, so keep it generous.
+        self.max_tokens = int(config.extra_config.get("max_tokens", 16000))
+        # Only sent when set: newer models reject any non-default temperature.
+        self.temperature = config.extra_config.get("temperature")
+
+    def _optional(self) -> dict:
+        return {} if self.temperature is None else {"temperature": self.temperature}
 
     def chat(self, system: str, messages: list[dict], name: str = "chat") -> str:
         with trace_generation(name, model=self.config.model, input=messages) as generation:
@@ -62,9 +67,9 @@ class AnthropicClient(ChatClient):
             resp = client.messages.create(
                 model=self.config.model,
                 max_tokens=self.max_tokens,
-                temperature=self.temperature,
                 system=system,
                 messages=messages,
+                **self._optional(),
             )
         except (anthropic.AuthenticationError, anthropic.PermissionDeniedError,
                 anthropic.NotFoundError, anthropic.BadRequestError) as exc:
@@ -87,12 +92,16 @@ class OpenAICompatibleClient(ChatClient):
         client = openai.OpenAI(
             api_key=self.api_key or "not-needed", base_url=self.config.base_url or None
         )
+        # OpenAI's GPT-5/o-series reject max_tokens; self-hosted servers expect it.
+        limit_key = (
+            "max_completion_tokens" if self.config.provider == LLMProvider.OPENAI else "max_tokens"
+        )
         try:
             resp = client.chat.completions.create(
                 model=self.config.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
                 messages=[{"role": "system", "content": system}, *messages],
+                **{limit_key: self.max_tokens},
+                **self._optional(),
             )
         except (openai.AuthenticationError, openai.PermissionDeniedError,
                 openai.NotFoundError, openai.BadRequestError) as exc:

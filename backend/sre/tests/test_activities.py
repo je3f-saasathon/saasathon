@@ -315,3 +315,51 @@ def test_previous_feedback_reaches_next_attempt_as_untrusted(monkeypatch, fake_i
     kickoff = llm.prompts[0][1][0]["content"]
     assert '<untrusted_data label="previous_attempt">' in kickoff
     assert "ImportError in db.py" in kickoff
+
+
+# ---- provider request shape --------------------------------------------------------
+
+class _CapturingOpenAI:
+    calls = []
+
+    def __init__(self, **kwargs):
+        self.chat = self
+        self.completions = self
+
+    def create(self, **kwargs):
+        _CapturingOpenAI.calls.append(kwargs)
+        from types import SimpleNamespace as NS
+        return NS(choices=[NS(message=NS(content='{"ok": true}'))], usage=None)
+
+
+@pytest.mark.parametrize("provider,base_url,limit_key", [
+    ("openai", "", "max_completion_tokens"),        # GPT-5/o-series reject max_tokens
+    ("self_hosted", "https://llm.example.com/v1", "max_tokens"),
+])
+def test_openai_compatible_request_shape(monkeypatch, settings, project, provider, base_url, limit_key):
+    import openai
+    from sre.llm.clients import client_for
+
+    settings.SRE_ALLOW_PRIVATE_LLM_URLS = True  # skip DNS for the fake host
+    monkeypatch.setattr(openai, "OpenAI", _CapturingOpenAI)
+    _CapturingOpenAI.calls = []
+    config = LLMProviderConfig.objects.create(owner=project.memberships.get().user, name="c",
+                                              provider=provider, model="m", base_url=base_url)
+    assert client_for(config).complete_json("sys", "hi") == {"ok": True}
+    sent = _CapturingOpenAI.calls[0]
+    other_key = ({"max_tokens", "max_completion_tokens"} - {limit_key}).pop()
+    assert limit_key in sent and other_key not in sent
+    assert "temperature" not in sent  # only sent when a config sets it
+
+
+def test_temperature_sent_only_when_configured(monkeypatch, project):
+    import openai
+    from sre.llm.clients import client_for
+
+    monkeypatch.setattr(openai, "OpenAI", _CapturingOpenAI)
+    _CapturingOpenAI.calls = []
+    config = LLMProviderConfig.objects.create(owner=project.memberships.get().user, name="c",
+                                              provider="openai", model="m",
+                                              extra_config={"temperature": 0.2})
+    client_for(config).complete_json("sys", "hi")
+    assert _CapturingOpenAI.calls[0]["temperature"] == 0.2
