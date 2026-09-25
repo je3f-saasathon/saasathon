@@ -48,7 +48,7 @@ All commands below are `make` targets (thin wrappers around `scripts/*.sh`). Run
 
 | Command | What it does |
 |---|---|
-| `make tunnel` | Starts the stack on the remote host (if not already running) and opens the tunnel. Ctrl+C closes the tunnel only — the remote stack keeps running. |
+| `make tunnel` | Starts the stack on the remote host (if not already running) and opens the tunnel. Also forwards the remote Langfuse (`:3100`) and Temporal UI (`:8243`) if those ports are free locally. Ctrl+C closes the tunnel only — the remote stack keeps running. |
 | `make tunnel CMD=down` | Stops the remote stack, no tunnel. |
 | `make tunnel CMD=kill` | Force-stops the remote stack (use if `down` doesn't fully clean up). |
 | `make tunnel CMD=status` | Shows what's running on the remote host. |

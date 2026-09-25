@@ -43,7 +43,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: uv run python manage.py runserver 0.0.0.0:8000
+    # Migrate on start so new app tables (e.g. sre) exist in the docker Postgres.
+    command: sh -c "uv run python manage.py migrate --noinput && uv run python manage.py runserver 0.0.0.0:8000"
 
   # SRE agent Temporal worker. Local dev only: it gets the host's Docker
   # socket to start sandboxes (effectively root on this machine). Prod uses a

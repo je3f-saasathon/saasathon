@@ -41,6 +41,15 @@ wait_healthy() { # wait_healthy <service> <seconds>
 case "${1:-}" in
   up)
     require_docker
+    sandbox_image=$(env_get "$REPO_ROOT/backend/.env" SRE_SANDBOX_IMAGE "saasathon-sre-sandbox:latest")
+    if ! docker image inspect "$sandbox_image" >/dev/null 2>&1; then
+      log_info "building SRE sandbox image $sandbox_image (first run only)"
+      if docker build -q -t "$sandbox_image" "$REPO_ROOT/backend/sre/sandbox" >/dev/null; then
+        log_ok "sandbox image built"
+      else
+        log_warn "sandbox image build failed (retry with: make sandbox-image)"
+      fi
+    fi
     log_info "starting SRE infra (Temporal + Langfuse)"
     "${INFRA[@]}" up -d
     if wait_healthy temporal 90; then log_ok "temporal healthy"; else log_warn "temporal not healthy yet (docker compose -p saasathon-infra logs temporal)"; fi

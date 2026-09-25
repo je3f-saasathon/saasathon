@@ -11,7 +11,8 @@ usage() {
 Usage: scripts/dev-tunnel.sh {up|down|kill|tunnel|status|logs} [svc] [--db] [--force]
 
 Runs the dev stack on a remote host over SSH and forwards its ports back
-to localhost, so all URLs stay http://localhost:<port>.
+to localhost, so all URLs stay http://localhost:<port>. Also forwards the
+SRE agent's Langfuse and Temporal UIs when those local ports are free.
 
 Commands (default: up):
   up       ensure the remote stack is running, then open the tunnel (foreground)
@@ -138,6 +139,15 @@ remote_ports() {
   echo "${fe:-5173} ${be:-8000}"
 }
 
+# SRE agent UIs on the remote (docker-compose.infra.yml): Langfuse's port comes
+# from the remote LANGFUSE_HOST, the Temporal UI uses the infra default.
+remote_sre_ports() {
+  lf_url=$(ssh_run "grep -E '^LANGFUSE_HOST=' $REMOTE_PROJECT_DIR/backend/.env 2>/dev/null | tail -n1 | cut -d= -f2-" || true)
+  lf=${lf_url##*:}; lf=${lf%%/*}
+  case "$lf" in ''|*[!0-9]*) lf=3100 ;; esac
+  echo "$lf ${TEMPORAL_UI_PORT:-8243}"
+}
+
 remote_wait_health() {
   be="$1"
   log_info "waiting for remote backend health..."
@@ -166,7 +176,7 @@ close_stale_tunnel() {
 }
 
 open_tunnel() {
-  fe="$1"; be="$2"; db="$3"
+  fe="$1"; be="$2"; db="$3"; lf="$4"; tui="$5"
 
   close_stale_tunnel
 
@@ -176,6 +186,14 @@ open_tunnel() {
   for p in $ports; do
     ensure_port_free "$p" "$FORCE" || { log_err "port $p is blocked locally — resolve or pass --force"; exit 1; }
   done
+
+  # SRE UIs are optional: skip one (don't abort) if its port is busy here,
+  # e.g. because this machine also runs its own local SRE infra.
+  sre_lf=""; sre_tui=""
+  if [ -z "$(port_listener "$lf")" ]; then sre_lf="$lf"; ports="$ports $lf"
+  else log_warn "local port $lf is busy — not forwarding the remote Langfuse (make infra-down here frees it)"; fi
+  if [ -z "$(port_listener "$tui")" ]; then sre_tui="$tui"; ports="$ports $tui"
+  else log_warn "local port $tui is busy — not forwarding the remote Temporal UI"; fi
 
   fwd_args=()
   for p in $ports; do
@@ -200,6 +218,8 @@ open_tunnel() {
   printf '  %-10s http://localhost:%s\n' "frontend" "$fe"
   printf '  %-10s http://localhost:%s\n' "backend"  "$be"
   [ "$FORWARD_DB" = "1" ] && printf '  %-10s localhost:%s\n' "db" "$db"
+  [ -n "$sre_lf" ] && printf '  %-10s http://localhost:%s  (SRE agent LLM traces)\n' "langfuse" "$sre_lf"
+  [ -n "$sre_tui" ] && printf '  %-10s http://localhost:%s  (SRE workflows)\n' "temporal" "$sre_tui"
   echo
   log_info "Ctrl+C closes the tunnel only — the remote stack keeps running."
   log_info "stop the remote stack with: scripts/dev-tunnel.sh down"
@@ -224,8 +244,11 @@ case "$CMD" in
     read -r fe be <<EOF
 $(remote_ports)
 EOF
+    read -r lf tui <<EOF
+$(remote_sre_ports)
+EOF
     remote_wait_health "$be"
-    open_tunnel "$fe" "$be" "$(db_port)"
+    open_tunnel "$fe" "$be" "$(db_port)" "$lf" "$tui"
     ;;
   down)
     preflight
@@ -245,7 +268,10 @@ EOF
     read -r fe be <<EOF
 $(remote_ports)
 EOF
-    open_tunnel "$fe" "$be" "$(db_port)"
+    read -r lf tui <<EOF
+$(remote_sre_ports)
+EOF
+    open_tunnel "$fe" "$be" "$(db_port)" "$lf" "$tui"
     ;;
   status)
     preflight
