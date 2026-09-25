@@ -55,6 +55,23 @@ jobs:
           done
           echo "backend healthy"
 
+      # After the backend is healthy, so an SRE problem can't block the main deploy.
+      # The worker ships from the backend image; it must be rebuilt with it or it
+      # keeps running old code.
+      - name: Start SRE agent services
+        run: docker compose --env-file "$ENV_FILE_DIR/backend/.env.prod" -f docker-compose.prod.yml up -d --build temporal sre-docker sre-worker
+
+      - name: Build sandbox image
+        # Built inside the dind sidecar (sandboxes never run on the host's Docker).
+        # Layers are cached in its volume, so this is quick when nothing changed.
+        run: |
+          compose="docker compose --env-file $ENV_FILE_DIR/backend/.env.prod -f docker-compose.prod.yml"
+          for attempt in $(seq 1 30); do
+            $compose exec -T sre-docker docker info >/dev/null 2>&1 && break
+            sleep 2
+          done
+          $compose exec -T sre-docker docker build -t saasathon-sre-sandbox:latest /sandbox
+
       - name: Prune old images
         if: always()
         run: docker image prune -f
