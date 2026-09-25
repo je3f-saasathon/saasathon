@@ -1,0 +1,14 @@
+.run/
+*.env
+!*.env.example
+scripts/tunnel.env
+node_modules/
+.venv/
+*.log
+__pycache__/
+*.pyc
+dist/
+build/
+.DS_Store
+.pytest_cache/
+.vite/
