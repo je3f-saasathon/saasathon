@@ -78,3 +78,4 @@ def test_install_then_isolate_cuts_all_network(settings, tmp_path):
         assert box.run("getent hosts pypi.org")[0] != 0
         box.container.reload()
         assert box.container.attrs["NetworkSettings"]["Networks"] == {}
+        assert box.run("echo $UV_OFFLINE $PIP_NO_INDEX")[1].strip() == "1 1"

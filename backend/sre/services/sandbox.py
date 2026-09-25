@@ -35,6 +35,8 @@ class Sandbox:
         self.network = network or settings.SRE_SANDBOX_NETWORK
         self.container = None
         self.client = None
+        # Set by isolate(): tells package managers not to try the network. Not secrets.
+        self.command_env: dict[str, str] = {}
 
     def __enter__(self):
         import docker
@@ -96,11 +98,13 @@ class Sandbox:
         )
         if exit_code == 0:
             raise SandboxError("sandbox can still reach the internet after disconnecting")
+        self.command_env = {"UV_OFFLINE": "1", "PIP_NO_INDEX": "1"}
 
     def run(self, command: str, timeout: int = COMMAND_TIMEOUT_SECONDS) -> tuple[int, str]:
         exit_code, output = self.container.exec_run(
             ["timeout", str(timeout), "sh", "-c", command],
             workdir=WORKSPACE,
+            environment=self.command_env,
             demux=False,
         )
         return exit_code, _truncate((output or b"").decode(errors="replace"))
