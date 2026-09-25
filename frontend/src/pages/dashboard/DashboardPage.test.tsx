@@ -101,5 +101,20 @@ describe("DashboardPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /Show diagnosis/ }));
     expect(screen.getByText("shop/views.py")).toBeInTheDocument();
     expect(screen.getAllByText("Returned 400 when quantity is 0").length).toBeGreaterThan(0);
+    // Decided already: a plain PR link, no review prompt.
+    expect(screen.getByRole("link", { name: "Open PR" })).toHaveAttribute("href", run.pr_url);
+    expect(screen.queryByText(/waiting for review on GitHub/)).not.toBeInTheDocument();
+  });
+
+  it("sends a draft-only run awaiting approval to GitHub for review", async () => {
+    responses["/api/sre/incident-runs"] = {
+      runs: [{ ...run, status: "awaiting_approval", playbook_run_status: "pending_approval" }],
+      total: 1,
+    };
+    renderPage();
+    fireEvent.click(await screen.findByText("ZeroDivisionError in checkout"));
+    expect(screen.getByRole("link", { name: "Review on GitHub" })).toHaveAttribute("href", run.pr_url);
+    expect(screen.getByText(/waiting for review on GitHub/)).toBeInTheDocument();
+    responses["/api/sre/incident-runs"] = { runs: [run], total: 1 };
   });
 });

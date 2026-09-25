@@ -213,6 +213,8 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
     enabled: playbookRunId != null,
   });
 
+  const awaitingReview = run.playbook_run_status === "pending_approval";
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
@@ -231,9 +233,9 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
         </div>
         <div className="flex items-center gap-2">
           {run.pr_url && (
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant={awaitingReview ? "default" : "outline"} size="sm">
               <a href={run.pr_url} target="_blank" rel="noreferrer">
-                {run.playbook_run_status === "pending_approval" ? "Open draft PR" : "Open PR"}
+                {awaitingReview ? "Review on GitHub" : "Open PR"}
                 <ExternalLink />
               </a>
             </Button>
@@ -244,6 +246,13 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {awaitingReview && (
+          <p className="rounded-md border border-amber-500/60 bg-amber-50 p-3 text-sm dark:bg-amber-500/10">
+            The agent's fix is waiting for review on GitHub. <strong>Merge the PR</strong> to accept
+            it, or <strong>close it without merging</strong> to reject it; this incident updates
+            when you do.
+          </p>
+        )}
         {run.error_message && (
           <p className="whitespace-pre-wrap text-sm text-destructive">{run.error_message}</p>
         )}
