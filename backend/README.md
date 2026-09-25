@@ -57,8 +57,6 @@ This writes `backend/openapi.json`, which the frontend's typegen consumes.
 - `accounts/` — custom `User` model, opaque bearer `AuthToken`, the
   `HttpBearer` auth class, and all `/api/auth/*` endpoints including
   GitHub/Google OAuth.
-- `items/` — the generic `Item` entity and `/api/items` CRUD endpoints,
-  owner-scoped.
 - `services/` — optional standalone worker/model services (owned
   separately; declared as a `uv` workspace so each service manages its
   own dependencies).

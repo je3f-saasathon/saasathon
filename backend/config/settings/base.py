@@ -47,7 +47,6 @@ INSTALLED_APPS = [
     "corsheaders",
     "ninja",
     "accounts",
-    "items",
     "jev",
     "sre",
 ]
