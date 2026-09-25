@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "accounts",
     "items",
     "jev",
+    "sre",
 ]
 
 MIDDLEWARE = [
@@ -150,3 +151,22 @@ APP_VERSION = os.environ.get("APP_VERSION", "0.1.0")
 CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
 CLOUDFLARE_API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")
 CLOUDFLARE_JEV_MODEL = os.environ.get("CLOUDFLARE_JEV_MODEL", "typesafe/jev")
+
+# --- SRE agent (Temporal workflow + LLM pipeline) ---
+TEMPORAL_ADDRESS = os.environ.get("TEMPORAL_ADDRESS", "localhost:7243")
+TEMPORAL_NAMESPACE = os.environ.get("TEMPORAL_NAMESPACE", "default")
+TEMPORAL_TASK_QUEUE = os.environ.get("TEMPORAL_TASK_QUEUE", "sre-pipeline")
+
+# Blank keys = tracing disabled (LLM calls still run, just untraced).
+LANGFUSE_HOST = os.environ.get("LANGFUSE_HOST", "")
+LANGFUSE_PUBLIC_KEY = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
+LANGFUSE_SECRET_KEY = os.environ.get("LANGFUSE_SECRET_KEY", "")
+
+GITHUB_APP_ID = os.environ.get("GITHUB_APP_ID", "")
+GITHUB_APP_PRIVATE_KEY_PATH = os.environ.get("GITHUB_APP_PRIVATE_KEY_PATH", "")
+
+SRE_FIELD_ENCRYPTION_KEY = os.environ.get("SRE_FIELD_ENCRYPTION_KEY", "")
+SRE_ALLOW_PRIVATE_LLM_URLS = env_bool("SRE_ALLOW_PRIVATE_LLM_URLS", default=False)
+SRE_SANDBOX_IMAGE = os.environ.get("SRE_SANDBOX_IMAGE", "saasathon-sre-sandbox:latest")
+SRE_SANDBOX_NETWORK = os.environ.get("SRE_SANDBOX_NETWORK", "none")
+SRE_WORKDIR = os.environ.get("SRE_WORKDIR", "/tmp/sre-work")

@@ -30,6 +30,43 @@ services:
       - postgres
     command: sh -c "uv run python manage.py migrate --noinput && uv run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
 
+  # SRE agent Temporal worker. TEMPORAL_ADDRESS / LANGFUSE_* come from
+  # .env.prod (your prod Temporal and Langfuse, see docs/DEPLOYMENT.md).
+  sre-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: prod
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/backend/.env.prod
+    environment:
+      DOCKER_HOST: tcp://sre-docker:2375
+      SRE_WORKDIR: /sre-work
+    volumes:
+      - sre_work:/sre-work
+    depends_on:
+      - postgres
+      - sre-docker
+    command: uv run python -m sre.worker
+
+  # Docker daemon the worker runs sandboxes on, so a sandbox escape lands in
+  # this container, not on the host. Plain TCP is fine: it's only reachable on
+  # the compose network and is never published. Build the sandbox image into
+  # it with `make sandbox-image-prod`.
+  sre-docker:
+    image: docker:27-dind
+    restart: unless-stopped
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      # Same path as the worker so sandbox bind mounts resolve. Never under /tmp:
+      # the dind image mounts a tmpfs over /tmp, hiding anything mounted there.
+      - sre_work:/sre-work
+      - sre_docker_data:/var/lib/docker
+      - ./backend/sre/sandbox:/sandbox:ro
+
   frontend:
     build:
       context: ./frontend
@@ -62,3 +99,5 @@ services:
 
 volumes:
   postgres_data_prod:
+  sre_work:
+  sre_docker_data:

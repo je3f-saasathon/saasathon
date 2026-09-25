@@ -7,7 +7,8 @@ usage() {
 Usage: scripts/stop.sh [--all]
 
 Stops anything this repo started, in either native or docker mode.
-Succeeds quietly if nothing is running.
+Succeeds quietly if nothing is running. Leaves the SRE infra (Temporal +
+Langfuse) running; stop that with `make infra-down`.
 
   --all   also sweep the known ports for matching processes and project
           docker containers even if .run/ was deleted
@@ -26,7 +27,7 @@ done
 
 did_something=0
 
-for name in frontend backend tunnel; do
+for name in sre-worker frontend backend tunnel; do
   if [ -f "$RUN_DIR/${name}.pid" ]; then
     stop_tracked "$name"
     did_something=1

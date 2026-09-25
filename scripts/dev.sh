@@ -6,9 +6,11 @@ usage() {
   cat <<'EOF'
 Usage: scripts/dev.sh [--force]
 
-Runs the stack natively: backend (uv run python manage.py runserver) and
-frontend (pnpm dev), tracked in .run/, with logs tailed in the foreground.
-Ctrl+C stops both. Detects and stops docker mode first, since both share
+Runs the stack natively: backend (uv run python manage.py runserver),
+frontend (pnpm dev) and the SRE agent's Temporal worker, tracked in .run/,
+with logs tailed in the foreground. Ctrl+C stops all three. Also starts
+the SRE infra (Temporal + Langfuse, see scripts/infra.sh) if docker is
+available, and leaves it running. Detects and stops docker mode first, since both share
 ports.
 
   --force   forcibly free ports held by unrelated processes
@@ -49,13 +51,26 @@ fi
 
 cleanup() {
   log_info "stopping dev stack"
+  stop_tracked sre-worker
   stop_tracked frontend
   stop_tracked backend
 }
 trap cleanup INT TERM EXIT
 
+SRE_INFRA=0
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  if "$REPO_ROOT/scripts/infra.sh" up; then SRE_INFRA=1; fi
+else
+  log_warn "docker not available — skipping SRE infra (Temporal/Langfuse) and the SRE worker"
+fi
+
 log_info "starting backend on :$BE_PORT"
 ( cd "$REPO_ROOT/backend" && start_bg backend "$LOG_DIR/backend.log" uv run python manage.py runserver "0.0.0.0:$BE_PORT" )
+
+if [ "$SRE_INFRA" = "1" ]; then
+  log_info "starting SRE worker"
+  ( cd "$REPO_ROOT/backend" && start_bg sre-worker "$LOG_DIR/sre-worker.log" uv run python -m sre.worker )
+fi
 
 log_info "starting frontend on :$FE_PORT"
 ( cd "$REPO_ROOT/frontend" && start_bg frontend "$LOG_DIR/frontend.log" pnpm dev --port "$FE_PORT" --host )
@@ -80,4 +95,6 @@ printf '  %-10s %s\n' "frontend" "http://localhost:$FE_PORT"
 printf '  %-10s %s\n' "backend"  "http://localhost:$BE_PORT"
 echo
 log_info "tailing logs (Ctrl+C to stop everything)"
-tail -n +1 -f "$LOG_DIR/backend.log" "$LOG_DIR/frontend.log"
+LOGS=("$LOG_DIR/backend.log" "$LOG_DIR/frontend.log")
+[ "$SRE_INFRA" = "1" ] && LOGS+=("$LOG_DIR/sre-worker.log")
+tail -n +1 -f "${LOGS[@]}"

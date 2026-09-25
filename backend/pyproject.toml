@@ -14,6 +14,13 @@ dependencies = [
     "gunicorn>=23.0.0",
     "uvicorn[standard]>=0.30.6",
     "psycopg[binary]>=3.2.0",
+    "temporalio>=1.33.0",
+    "langfuse>=4,<5",
+    "anthropic>=1.8.0",
+    "openai>=3.19.2",
+    "pygithub>=2.10.0",
+    "cryptography>=50.0.1",
+    "docker>=7.2.0",
 ]
 
 [tool.uv.workspace]
@@ -32,4 +39,5 @@ dev = [
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
-testpaths = ["accounts", "items", "config", "jev"]
+testpaths = ["accounts", "items", "config", "jev", "sre"]
+markers = ["sandbox: runs a real sandbox container (skipped without Docker)"]

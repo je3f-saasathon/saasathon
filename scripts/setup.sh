@@ -96,6 +96,12 @@ fi
 # ---- backend -----------------------------------------------------------
 if [ -f "$REPO_ROOT/backend/pyproject.toml" ]; then
   ensure_env_file "$REPO_ROOT/backend"
+  # The SRE agent can't store LLM keys without this; generate one if unset.
+  if [ -z "$(env_get "$REPO_ROOT/backend/.env" SRE_FIELD_ENCRYPTION_KEY "")" ] && command -v python3 >/dev/null 2>&1; then
+    sre_key=$(python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())")
+    printf '\nSRE_FIELD_ENCRYPTION_KEY=%s\n' "$sre_key" >> "$REPO_ROOT/backend/.env"
+    log_ok "generated SRE_FIELD_ENCRYPTION_KEY in backend/.env (keep it: losing it makes stored LLM keys unreadable)"
+  fi
   if command -v uv >/dev/null 2>&1; then
     log_info "uv sync in backend/"
     (cd "$REPO_ROOT/backend" && uv sync)

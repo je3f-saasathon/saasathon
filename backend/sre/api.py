@@ -1,0 +1,476 @@
+import hashlib
+import hmac
+import logging
+import secrets
+
+from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.db.models import Q
+from django.http import HttpRequest
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from ninja import Router
+from ninja.errors import HttpError
+
+from . import temporal_client
+from .llm.resolve import provider_supports_step
+from .models import (
+    IncidentRun,
+    LLMProvider,
+    LLMProviderConfig,
+    LLMStepOverride,
+    Playbook,
+    PlaybookRun,
+    Project,
+    ProjectMembership,
+    ProjectRole,
+)
+from .permissions import get_membership, get_project_for, member_project_ids
+from .schemas import (
+    ApprovePlaybookRunIn,
+    IncidentRunListOut,
+    IncidentRunOut,
+    LLMConfigIn,
+    LLMConfigOut,
+    LLMConfigUpdateIn,
+    MemberAddIn,
+    MemberOut,
+    MemberUpdateIn,
+    PlaybookCreateIn,
+    PlaybookListOut,
+    PlaybookOut,
+    PlaybookRunOut,
+    PlaybookUpdateIn,
+    ProjectCreatedOut,
+    ProjectCreateIn,
+    ProjectOut,
+    ProjectUpdateIn,
+    StepOverrideOut,
+    StepOverridesIn,
+    UptraceWebhookIn,
+    UptraceWebhookOut,
+    WebhookSecretOut,
+)
+from .services.playbooks import clean_steps
+from .temporal_types import ApprovalDecision, IncidentInput
+from .validators import UnsafeURLError, validate_llm_base_url
+
+logger = logging.getLogger(__name__)
+router = Router(tags=["sre"])
+
+OWNER_ONLY_PROJECT_FIELDS = {
+    "github_installation_id", "github_repo_owner", "github_repo_name", "uptrace_source_id",
+}
+
+
+# ---- helpers ---------------------------------------------------------------
+
+def _project_out(project: Project, role: str) -> dict:
+    return {**{f: getattr(project, f) for f in ProjectOut.model_fields if f != "role"}, "role": role}
+
+
+def _webhook_url(request: HttpRequest, project: Project) -> str:
+    return request.build_absolute_uri(f"/api/sre/webhooks/uptrace/{project.id}")
+
+
+def _own_config(user, config_id: int) -> LLMProviderConfig:
+    return get_object_or_404(LLMProviderConfig, id=config_id, owner=user)
+
+
+def _incident_out(run: IncidentRun) -> dict:
+    created = getattr(run, "created_playbook", None)
+    playbook_run = getattr(run, "playbook_run", None)
+    return {
+        **{f: getattr(run, f) for f in IncidentRunOut.model_fields
+           if f not in ("created_playbook_id", "playbook_run_id")},
+        "created_playbook_id": created.id if created else None,
+        "playbook_run_id": playbook_run.id if playbook_run else None,
+    }
+
+
+def _detach_user_configs(project: Project, user) -> None:
+    """A departing member's keys must stop paying for (and seeing) this project's runs."""
+    if project.default_llm_config_id and project.default_llm_config.owner_id == user.id:
+        project.default_llm_config = None
+        project.save(update_fields=["default_llm_config", "updated_at"])
+    LLMStepOverride.objects.filter(project=project, llm_config__owner=user).delete()
+
+
+def _owner_count(project: Project) -> int:
+    return project.memberships.filter(role=ProjectRole.OWNER).count()
+
+
+# ---- webhook -----------------------------------------------------------------
+
+def _webhook_authorized(request: HttpRequest, project: Project) -> bool:
+    secret = project.uptrace_webhook_secret.encode()
+    signature = request.headers.get("X-SRE-Signature", "")
+    if signature.startswith("sha256="):
+        expected = hmac.new(secret, request.body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature[len("sha256="):], expected)
+    token = request.headers.get("X-SRE-Webhook-Secret", "")
+    return bool(token) and hmac.compare_digest(token.encode(), secret)
+
+
+@router.post("/webhooks/uptrace/{project_id}", auth=None,
+             response={200: UptraceWebhookOut, 401: dict, 503: dict})
+def uptrace_webhook(request: HttpRequest, project_id: int, payload: UptraceWebhookIn):
+    project = Project.objects.filter(id=project_id).first()
+    # Same answer for unknown project and bad secret: don't reveal which projects exist.
+    if project is None or not _webhook_authorized(request, project):
+        return 401, {"detail": "Invalid webhook signature"}
+
+    workflow_id = f"sre-incident-{project.id}-{payload.trace_id}"
+    run, _ = IncidentRun.objects.get_or_create(
+        temporal_workflow_id=workflow_id,
+        defaults={
+            "project": project,
+            "trace_id": payload.trace_id,
+            "uptrace_exception_id": payload.exception_id or "",
+            "raw_webhook_payload": payload.dict(),
+        },
+    )
+    # Always (re)try the start: a duplicate is a no-op, and a previous failed start
+    # (Temporal down) gets another chance when Uptrace retries.
+    try:
+        temporal_client.start_incident_workflow(workflow_id, IncidentInput(run.id, project.id))
+    except Exception:
+        logger.exception("could not start workflow %s", workflow_id)
+        return 503, {"detail": "Could not start incident workflow; retry later"}
+    return 200, {"incident_run_id": run.id, "temporal_workflow_id": workflow_id, "status": run.status}
+
+
+# ---- projects ----------------------------------------------------------------
+
+@router.get("/projects", response=list[ProjectOut])
+def list_projects(request: HttpRequest):
+    memberships = ProjectMembership.objects.filter(user=request.auth).select_related("project")
+    return [_project_out(m.project, m.role) for m in memberships.order_by("-project__created_at")]
+
+
+@router.post("/projects", response={201: ProjectCreatedOut})
+def create_project(request: HttpRequest, payload: ProjectCreateIn):
+    with transaction.atomic():
+        project = Project.objects.create(**payload.dict())
+        ProjectMembership.objects.create(project=project, user=request.auth, role=ProjectRole.OWNER)
+    return 201, {
+        **_project_out(project, ProjectRole.OWNER),
+        "webhook_secret": project.uptrace_webhook_secret,
+        "webhook_url": _webhook_url(request, project),
+    }
+
+
+@router.get("/projects/{project_id}", response=ProjectOut)
+def get_project(request: HttpRequest, project_id: int):
+    membership = get_membership(request.auth, project_id, ProjectRole.VIEWER)
+    return _project_out(membership.project, membership.role)
+
+
+@router.patch("/projects/{project_id}", response=ProjectOut)
+def update_project(request: HttpRequest, project_id: int, payload: ProjectUpdateIn):
+    changes = payload.dict(exclude_unset=True)
+    min_role = ProjectRole.OWNER if OWNER_ONLY_PROJECT_FIELDS & changes.keys() else ProjectRole.ADMIN
+    membership = get_membership(request.auth, project_id, min_role)
+    project = membership.project
+    if "default_llm_config_id" in changes and changes["default_llm_config_id"] is not None:
+        _own_config(request.auth, changes["default_llm_config_id"])
+    for field, value in changes.items():
+        if value is None and field != "default_llm_config_id":
+            continue
+        setattr(project, field, value)
+    project.save()
+    return _project_out(project, membership.role)
+
+
+@router.delete("/projects/{project_id}", response={204: None})
+def delete_project(request: HttpRequest, project_id: int):
+    get_project_for(request.auth, project_id, ProjectRole.OWNER).delete()
+    return 204, None
+
+
+@router.post("/projects/{project_id}/webhook-secret/rotate", response=WebhookSecretOut)
+def rotate_webhook_secret(request: HttpRequest, project_id: int):
+    project = get_project_for(request.auth, project_id, ProjectRole.OWNER)
+    project.uptrace_webhook_secret = secrets.token_urlsafe(32)
+    project.save(update_fields=["uptrace_webhook_secret", "updated_at"])
+    return {"webhook_secret": project.uptrace_webhook_secret,
+            "webhook_url": _webhook_url(request, project)}
+
+
+# ---- members -----------------------------------------------------------------
+
+def _member_out(m: ProjectMembership) -> dict:
+    return {"user_id": m.user_id, "email": m.user.email, "name": m.user.name, "role": m.role}
+
+
+@router.get("/projects/{project_id}/members", response=list[MemberOut])
+def list_members(request: HttpRequest, project_id: int):
+    project = get_project_for(request.auth, project_id, ProjectRole.VIEWER)
+    return [_member_out(m) for m in project.memberships.select_related("user").order_by("created_at")]
+
+
+@router.post("/projects/{project_id}/members", response={201: MemberOut, 404: dict, 409: dict})
+def add_member(request: HttpRequest, project_id: int, payload: MemberAddIn):
+    project = get_project_for(request.auth, project_id, ProjectRole.OWNER)
+    user = get_user_model().objects.filter(email=payload.email.lower()).first()
+    if user is None:
+        return 404, {"detail": "No user with that email"}
+    membership, created = ProjectMembership.objects.get_or_create(
+        project=project, user=user, defaults={"role": payload.role}
+    )
+    if not created:
+        return 409, {"detail": "Already a member"}
+    return 201, _member_out(membership)
+
+
+@router.patch("/projects/{project_id}/members/{user_id}", response={200: MemberOut, 409: dict})
+def update_member(request: HttpRequest, project_id: int, user_id: int, payload: MemberUpdateIn):
+    project = get_project_for(request.auth, project_id, ProjectRole.OWNER)
+    with transaction.atomic():
+        membership = get_object_or_404(
+            ProjectMembership.objects.select_for_update().select_related("user"),
+            project=project, user_id=user_id,
+        )
+        if (membership.role == ProjectRole.OWNER and payload.role != ProjectRole.OWNER
+                and _owner_count(project) == 1):
+            return 409, {"detail": "A project must keep at least one owner"}
+        membership.role = payload.role
+        membership.save(update_fields=["role"])
+    return 200, _member_out(membership)
+
+
+@router.delete("/projects/{project_id}/members/{user_id}", response={204: None, 409: dict})
+def remove_member(request: HttpRequest, project_id: int, user_id: int):
+    # Any member may leave; only owners may remove someone else.
+    min_role = ProjectRole.VIEWER if user_id == request.auth.id else ProjectRole.OWNER
+    project = get_project_for(request.auth, project_id, min_role)
+    with transaction.atomic():
+        membership = get_object_or_404(
+            ProjectMembership.objects.select_for_update().select_related("user"),
+            project=project, user_id=user_id,
+        )
+        if membership.role == ProjectRole.OWNER and _owner_count(project) == 1:
+            return 409, {"detail": "A project must keep at least one owner"}
+        _detach_user_configs(project, membership.user)
+        membership.delete()
+    return 204, None
+
+
+# ---- LLM configs (owned by the user, shared into projects by reference) ------
+
+def _validate_config(provider: str, base_url: str) -> None:
+    try:
+        validate_llm_base_url(base_url)
+    except UnsafeURLError as exc:
+        raise HttpError(400, str(exc)) from exc
+    if provider == LLMProvider.SELF_HOSTED and not base_url:
+        raise HttpError(400, "self_hosted configs need a base_url")
+
+
+def _set_api_key(config: LLMProviderConfig, api_key: str) -> None:
+    from .crypto import encrypt
+
+    config.api_key_encrypted = encrypt(api_key) if api_key else b""
+
+
+@router.get("/llm-configs", response=list[LLMConfigOut])
+def list_llm_configs(request: HttpRequest):
+    return list(LLMProviderConfig.objects.filter(owner=request.auth))
+
+
+@router.post("/llm-configs", response={201: LLMConfigOut})
+def create_llm_config(request: HttpRequest, payload: LLMConfigIn):
+    _validate_config(payload.provider, payload.base_url)
+    config = LLMProviderConfig(
+        owner=request.auth, name=payload.name, provider=payload.provider, model=payload.model,
+        base_url=payload.base_url, extra_config=payload.extra_config,
+    )
+    _set_api_key(config, payload.api_key)
+    config.save()
+    return 201, config
+
+
+@router.patch("/llm-configs/{config_id}", response=LLMConfigOut)
+def update_llm_config(request: HttpRequest, config_id: int, payload: LLMConfigUpdateIn):
+    config = _own_config(request.auth, config_id)
+    changes = payload.dict(exclude_unset=True)
+    if "base_url" in changes:
+        _validate_config(config.provider, changes["base_url"] or "")
+    for field in ("name", "model", "base_url", "extra_config"):
+        if changes.get(field) is not None:
+            setattr(config, field, changes[field])
+    if changes.get("api_key") is not None:
+        _set_api_key(config, changes["api_key"])
+    config.save()
+    return config
+
+
+@router.delete("/llm-configs/{config_id}", response={204: None})
+def delete_llm_config(request: HttpRequest, config_id: int):
+    _own_config(request.auth, config_id).delete()
+    return 204, None
+
+
+# ---- step overrides -------------------------------------------------------------
+
+def _overrides_out(project: Project) -> list[dict]:
+    return [
+        {"step": o.step, "llm_config_id": o.llm_config_id, "llm_config_name": o.llm_config.name}
+        for o in project.step_overrides.select_related("llm_config").order_by("step")
+    ]
+
+
+@router.get("/projects/{project_id}/step-overrides", response=list[StepOverrideOut])
+def list_step_overrides(request: HttpRequest, project_id: int):
+    return _overrides_out(get_project_for(request.auth, project_id, ProjectRole.VIEWER))
+
+
+@router.put("/projects/{project_id}/step-overrides", response=list[StepOverrideOut])
+def set_step_overrides(request: HttpRequest, project_id: int, payload: StepOverridesIn):
+    project = get_project_for(request.auth, project_id, ProjectRole.ADMIN)
+    with transaction.atomic():
+        for step, config_id in payload.overrides.items():
+            if config_id is None:
+                LLMStepOverride.objects.filter(project=project, step=step).delete()
+                continue
+            config = _own_config(request.auth, config_id)
+            if not provider_supports_step(config.provider, step):
+                raise HttpError(400, f"Jev configs can't run step '{step}'")
+            LLMStepOverride.objects.update_or_create(
+                project=project, step=step, defaults={"llm_config": config}
+            )
+    return _overrides_out(project)
+
+
+# ---- playbooks -------------------------------------------------------------------
+
+@router.get("/projects/{project_id}/playbooks", response=PlaybookListOut)
+def list_playbooks(request: HttpRequest, project_id: int, status: str | None = None):
+    project = get_project_for(request.auth, project_id, ProjectRole.VIEWER)
+    qs = project.playbooks.all()
+    if status:
+        qs = qs.filter(status=status)
+    return {"playbooks": list(qs), "total": qs.count()}
+
+
+@router.post("/projects/{project_id}/playbooks", response={201: PlaybookOut})
+def create_playbook(request: HttpRequest, project_id: int, payload: PlaybookCreateIn):
+    project = get_project_for(request.auth, project_id, ProjectRole.ADMIN)
+    playbook = Playbook.objects.create(
+        project=project,
+        title=payload.title,
+        description=payload.description,
+        keywords=[k.lower().strip() for k in payload.keywords if k.strip()],
+        steps=clean_steps(payload.steps),
+        execution_mode_override=payload.execution_mode_override,
+        status=Playbook.Status.CONFIRMED,  # written by a human admin
+    )
+    return 201, playbook
+
+
+def _playbook_for(user, playbook_id: int, min_role: ProjectRole) -> Playbook:
+    playbook = get_object_or_404(Playbook, id=playbook_id)
+    get_membership(user, playbook.project_id, min_role)
+    return playbook
+
+
+@router.get("/playbooks/{playbook_id}", response=PlaybookOut)
+def get_playbook(request: HttpRequest, playbook_id: int):
+    return _playbook_for(request.auth, playbook_id, ProjectRole.VIEWER)
+
+
+@router.patch("/playbooks/{playbook_id}", response=PlaybookOut)
+def update_playbook(request: HttpRequest, playbook_id: int, payload: PlaybookUpdateIn):
+    playbook = _playbook_for(request.auth, playbook_id, ProjectRole.ADMIN)
+    changes = payload.dict(exclude_unset=True)
+    for field in ("title", "description"):
+        if changes.get(field) is not None:
+            setattr(playbook, field, changes[field])
+    if changes.get("keywords") is not None:
+        playbook.keywords = [k.lower().strip() for k in changes["keywords"] if k.strip()]
+    if changes.get("steps") is not None:
+        playbook.steps = clean_steps(changes["steps"])
+    if changes.get("status") is not None:
+        playbook.status = changes["status"]
+        if playbook.status != Playbook.Status.FAILING:
+            playbook.consecutive_failure_count = 0
+    if "execution_mode_override" in changes:
+        playbook.execution_mode_override = changes["execution_mode_override"]
+    playbook.save()
+    return playbook
+
+
+@router.delete("/playbooks/{playbook_id}", response={204: None})
+def delete_playbook(request: HttpRequest, playbook_id: int):
+    _playbook_for(request.auth, playbook_id, ProjectRole.ADMIN).delete()
+    return 204, None
+
+
+# ---- incident runs & playbook runs ----------------------------------------------
+
+@router.get("/incident-runs", response=IncidentRunListOut)
+def list_incident_runs(request: HttpRequest, project_id: int | None = None,
+                       status: str | None = None, page: int = 1, page_size: int = 20):
+    page = max(page, 1)
+    page_size = max(1, min(page_size, 100))
+    qs = IncidentRun.objects.filter(project_id__in=member_project_ids(request.auth))
+    if project_id is not None:
+        qs = qs.filter(project_id=project_id)
+    if status:
+        qs = qs.filter(status=status)
+    total = qs.count()
+    start = (page - 1) * page_size
+    runs = qs.select_related("created_playbook", "playbook_run")[start:start + page_size]
+    return {"runs": [_incident_out(r) for r in runs], "total": total}
+
+
+@router.get("/incident-runs/{run_id}", response=IncidentRunOut)
+def get_incident_run(request: HttpRequest, run_id: int):
+    run = get_object_or_404(
+        IncidentRun.objects.select_related("created_playbook", "playbook_run"),
+        Q(id=run_id) & Q(project_id__in=member_project_ids(request.auth)),
+    )
+    return _incident_out(run)
+
+
+def _playbook_run_for(user, playbook_run_id: int, min_role: ProjectRole) -> PlaybookRun:
+    playbook_run = get_object_or_404(
+        PlaybookRun.objects.select_related("incident_run"), id=playbook_run_id
+    )
+    get_membership(user, playbook_run.incident_run.project_id, min_role)
+    return playbook_run
+
+
+def _playbook_run_out(playbook_run: PlaybookRun) -> dict:
+    return {
+        **{f: getattr(playbook_run, f) for f in PlaybookRunOut.model_fields if f != "attempts"},
+        "attempts": list(playbook_run.attempts.all()),
+    }
+
+
+@router.get("/playbook-runs/{playbook_run_id}", response=PlaybookRunOut)
+def get_playbook_run(request: HttpRequest, playbook_run_id: int):
+    return _playbook_run_out(_playbook_run_for(request.auth, playbook_run_id, ProjectRole.VIEWER))
+
+
+@router.post("/playbook-runs/{playbook_run_id}/approve",
+             response={200: PlaybookRunOut, 409: dict, 503: dict})
+def approve_playbook_run(request: HttpRequest, playbook_run_id: int, payload: ApprovePlaybookRunIn):
+    playbook_run = _playbook_run_for(request.auth, playbook_run_id, ProjectRole.ADMIN)
+    # Conditional update: two admins clicking at once can't both decide.
+    claimed = PlaybookRun.objects.filter(
+        id=playbook_run.id, status=PlaybookRun.Status.PENDING_APPROVAL, approved_at__isnull=True,
+    ).update(approved_by=request.auth, approved_at=timezone.now())
+    if not claimed:
+        return 409, {"detail": "This run is not waiting for approval"}
+    try:
+        temporal_client.signal_approval(
+            playbook_run.incident_run.temporal_workflow_id,
+            ApprovalDecision(approve=payload.approve, user_id=request.auth.id),
+        )
+    except Exception:
+        logger.exception("could not signal workflow for playbook run %s", playbook_run.id)
+        PlaybookRun.objects.filter(id=playbook_run.id).update(approved_by=None, approved_at=None)
+        return 503, {"detail": "Could not reach the workflow; try again"}
+    playbook_run.refresh_from_db()
+    return 200, _playbook_run_out(playbook_run)

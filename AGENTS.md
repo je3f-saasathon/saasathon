@@ -34,3 +34,4 @@ Three login methods (email+password, GitHub OAuth, Google OAuth) all issue the s
 - `docs/CONTRACTS.md` — API source of truth
 - `docs/DEPLOYMENT.md` — deploy/rollback/logs
 - `docs/SCRIPTS.md` — what each script does
+- `backend/sre/CLAUDE.md` — SRE agent (branch `feat/sre-agent`): read first for context, current state and next steps

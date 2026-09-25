@@ -1,4 +1,4 @@
-.PHONY: setup dev dev-docker stop restart restart-docker status logs doctor test contracts reset-db dev-token sync-agents deploy prod-local tunnel
+.PHONY: setup dev dev-docker stop restart restart-docker status logs doctor test contracts reset-db dev-token sync-agents deploy prod-local tunnel infra-up infra-down sandbox-image sandbox-image-prod sre-worker
 
 setup:
 	scripts/setup.sh $(if $(DOCKER_ONLY),--docker-only,) $(if $(NATIVE_ONLY),--native-only,) $(if $(YES),--yes,)
@@ -50,3 +50,18 @@ prod-local:
 
 tunnel:
 	scripts/dev-tunnel.sh $(if $(CMD),$(CMD),up) $(SVC) $(if $(DB),--db,) $(if $(FORCE),--force,)
+
+infra-up:
+	scripts/infra.sh up
+
+infra-down:
+	scripts/infra.sh down
+
+sandbox-image:
+	docker build -t $${SRE_SANDBOX_IMAGE:-saasathon-sre-sandbox:latest} backend/sre/sandbox
+
+sandbox-image-prod:
+	docker compose -f docker-compose.prod.yml exec sre-docker docker build -t $${SRE_SANDBOX_IMAGE:-saasathon-sre-sandbox:latest} /sandbox
+
+sre-worker:
+	cd backend && uv run python -m sre.worker
