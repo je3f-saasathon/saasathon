@@ -69,6 +69,14 @@
   }
   :root {
     color-scheme: light;
+    /* Always reserve the scrollbar's space so content doesn't jump sideways when the page
+       grows past the viewport (e.g. opening an incident's detail panel). */
+    scrollbar-gutter: stable;
+  }
+  /* Radix menus lock scroll and add margin-right to make up for the hidden scrollbar; the
+     gutter above already keeps that space, so the extra margin would shift content left. */
+  html body[data-scroll-locked] {
+    margin-right: 0 !important;
   }
   .dark {
     color-scheme: dark;
