@@ -228,6 +228,272 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sre/webhooks/uptrace/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Uptrace Webhook */
+        post: operations["sre_api_uptrace_webhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Projects */
+        get: operations["sre_api_list_projects"];
+        put?: never;
+        /** Create Project */
+        post: operations["sre_api_create_project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project */
+        get: operations["sre_api_get_project"];
+        put?: never;
+        post?: never;
+        /** Delete Project */
+        delete: operations["sre_api_delete_project"];
+        options?: never;
+        head?: never;
+        /** Update Project */
+        patch: operations["sre_api_update_project"];
+        trace?: never;
+    };
+    "/api/sre/projects/{project_id}/webhook-secret/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate Webhook Secret */
+        post: operations["sre_api_rotate_webhook_secret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/projects/{project_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Members */
+        get: operations["sre_api_list_members"];
+        put?: never;
+        /** Add Member */
+        post: operations["sre_api_add_member"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/projects/{project_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Member */
+        delete: operations["sre_api_remove_member"];
+        options?: never;
+        head?: never;
+        /** Update Member */
+        patch: operations["sre_api_update_member"];
+        trace?: never;
+    };
+    "/api/sre/llm-configs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Llm Configs */
+        get: operations["sre_api_list_llm_configs"];
+        put?: never;
+        /** Create Llm Config */
+        post: operations["sre_api_create_llm_config"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/llm-configs/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Llm Config */
+        delete: operations["sre_api_delete_llm_config"];
+        options?: never;
+        head?: never;
+        /** Update Llm Config */
+        patch: operations["sre_api_update_llm_config"];
+        trace?: never;
+    };
+    "/api/sre/projects/{project_id}/step-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Step Overrides */
+        get: operations["sre_api_list_step_overrides"];
+        /** Set Step Overrides */
+        put: operations["sre_api_set_step_overrides"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/projects/{project_id}/playbooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Playbooks */
+        get: operations["sre_api_list_playbooks"];
+        put?: never;
+        /** Create Playbook */
+        post: operations["sre_api_create_playbook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/playbooks/{playbook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Playbook */
+        get: operations["sre_api_get_playbook"];
+        put?: never;
+        post?: never;
+        /** Delete Playbook */
+        delete: operations["sre_api_delete_playbook"];
+        options?: never;
+        head?: never;
+        /** Update Playbook */
+        patch: operations["sre_api_update_playbook"];
+        trace?: never;
+    };
+    "/api/sre/incident-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Incident Runs */
+        get: operations["sre_api_list_incident_runs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/incident-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Incident Run */
+        get: operations["sre_api_get_incident_run"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/playbook-runs/{playbook_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Playbook Run */
+        get: operations["sre_api_get_playbook_run"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/playbook-runs/{playbook_run_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Playbook Run */
+        post: operations["sre_api_approve_playbook_run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -373,6 +639,436 @@ export interface components {
             questions: {
                 [key: string]: components["schemas"]["JevQuestionIn"];
             };
+        };
+        /** UptraceWebhookOut */
+        UptraceWebhookOut: {
+            /** Incident Run Id */
+            incident_run_id: number;
+            /** Temporal Workflow Id */
+            temporal_workflow_id: string;
+            /** Status */
+            status: string;
+        };
+        /** UptraceWebhookIn */
+        UptraceWebhookIn: {
+            /** Trace Id */
+            trace_id: string;
+            /** Exception Id */
+            exception_id?: string | null;
+            /** Source Id */
+            source_id?: string | null;
+            /**
+             * Payload
+             * @default {}
+             */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ExecutionMode
+         * @enum {string}
+         */
+        ExecutionMode: "autonomous" | "draft_only" | "advisory_only";
+        /** ProjectOut */
+        ProjectOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            role: components["schemas"]["ProjectRole"];
+            /** Github Installation Id */
+            github_installation_id: string;
+            /** Github Repo Owner */
+            github_repo_owner: string;
+            /** Github Repo Name */
+            github_repo_name: string;
+            /** Github Default Branch */
+            github_default_branch: string;
+            /** Uptrace Source Id */
+            uptrace_source_id: string;
+            default_execution_mode: components["schemas"]["ExecutionMode"];
+            /** Default Llm Config Id */
+            default_llm_config_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ProjectRole
+         * @enum {string}
+         */
+        ProjectRole: "owner" | "admin" | "viewer";
+        /** ProjectCreatedOut */
+        ProjectCreatedOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            role: components["schemas"]["ProjectRole"];
+            /** Github Installation Id */
+            github_installation_id: string;
+            /** Github Repo Owner */
+            github_repo_owner: string;
+            /** Github Repo Name */
+            github_repo_name: string;
+            /** Github Default Branch */
+            github_default_branch: string;
+            /** Uptrace Source Id */
+            uptrace_source_id: string;
+            default_execution_mode: components["schemas"]["ExecutionMode"];
+            /** Default Llm Config Id */
+            default_llm_config_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Webhook Secret */
+            webhook_secret: string;
+            /** Webhook Url */
+            webhook_url: string;
+        };
+        /** ProjectCreateIn */
+        ProjectCreateIn: {
+            /** Name */
+            name: string;
+            /** Github Installation Id */
+            github_installation_id: string;
+            /** Github Repo Owner */
+            github_repo_owner: string;
+            /** Github Repo Name */
+            github_repo_name: string;
+            /**
+             * Github Default Branch
+             * @default main
+             */
+            github_default_branch: string;
+            /**
+             * Uptrace Source Id
+             * @default
+             */
+            uptrace_source_id: string;
+            /** @default draft_only */
+            default_execution_mode: components["schemas"]["ExecutionMode"];
+        };
+        /** ProjectUpdateIn */
+        ProjectUpdateIn: {
+            /** Name */
+            name?: string | null;
+            /** Github Installation Id */
+            github_installation_id?: string | null;
+            /** Github Repo Owner */
+            github_repo_owner?: string | null;
+            /** Github Repo Name */
+            github_repo_name?: string | null;
+            /** Github Default Branch */
+            github_default_branch?: string | null;
+            /** Uptrace Source Id */
+            uptrace_source_id?: string | null;
+            default_execution_mode?: components["schemas"]["ExecutionMode"] | null;
+            /** Default Llm Config Id */
+            default_llm_config_id?: number | null;
+        };
+        /** WebhookSecretOut */
+        WebhookSecretOut: {
+            /** Webhook Secret */
+            webhook_secret: string;
+            /** Webhook Url */
+            webhook_url: string;
+        };
+        /** MemberOut */
+        MemberOut: {
+            /** User Id */
+            user_id: number;
+            /** Email */
+            email: string;
+            /** Name */
+            name: string;
+            role: components["schemas"]["ProjectRole"];
+        };
+        /** MemberAddIn */
+        MemberAddIn: {
+            /** Email */
+            email: string;
+            role: components["schemas"]["ProjectRole"];
+        };
+        /** MemberUpdateIn */
+        MemberUpdateIn: {
+            role: components["schemas"]["ProjectRole"];
+        };
+        /** LLMConfigOut */
+        LLMConfigOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            provider: components["schemas"]["LLMProvider"];
+            /** Model */
+            model: string;
+            /** Base Url */
+            base_url: string;
+            /** Has Api Key */
+            has_api_key: boolean;
+            /** Extra Config */
+            extra_config: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * LLMProvider
+         * @enum {string}
+         */
+        LLMProvider: "anthropic" | "openai" | "self_hosted" | "jev_cloudflare";
+        /** LLMConfigIn */
+        LLMConfigIn: {
+            /** Name */
+            name: string;
+            provider: components["schemas"]["LLMProvider"];
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Base Url
+             * @default
+             */
+            base_url: string;
+            /**
+             * Api Key
+             * @default
+             */
+            api_key: string;
+            /**
+             * Extra Config
+             * @default {}
+             */
+            extra_config: {
+                [key: string]: unknown;
+            };
+        };
+        /** LLMConfigUpdateIn */
+        LLMConfigUpdateIn: {
+            /** Name */
+            name?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Base Url */
+            base_url?: string | null;
+            /** Api Key */
+            api_key?: string | null;
+            /** Extra Config */
+            extra_config?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * PipelineStep
+         * @enum {string}
+         */
+        PipelineStep: "anomaly_double_check" | "bug_classification" | "playbook_similarity_judge" | "playbook_creation" | "playbook_execution";
+        /** StepOverrideOut */
+        StepOverrideOut: {
+            step: components["schemas"]["PipelineStep"];
+            /** Llm Config Id */
+            llm_config_id: number;
+            /** Llm Config Name */
+            llm_config_name: string;
+        };
+        /** StepOverridesIn */
+        StepOverridesIn: {
+            /** Overrides */
+            overrides: {
+                [key: string]: number | null;
+            };
+        };
+        /** PlaybookListOut */
+        PlaybookListOut: {
+            /** Playbooks */
+            playbooks: components["schemas"]["PlaybookOut"][];
+            /** Total */
+            total: number;
+        };
+        /** PlaybookOut */
+        PlaybookOut: {
+            /** Id */
+            id: number;
+            /** Project Id */
+            project_id: number;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Keywords */
+            keywords: string[];
+            /** Steps */
+            steps: {
+                [key: string]: unknown;
+            }[];
+            status: components["schemas"]["Status"];
+            execution_mode_override: components["schemas"]["ExecutionMode"] | null;
+            /** Consecutive Failure Count */
+            consecutive_failure_count: number;
+            /** Source Incident Run Id */
+            source_incident_run_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * Status
+         * @enum {string}
+         */
+        Status: "unconfirmed" | "confirmed" | "failing";
+        /** PlaybookCreateIn */
+        PlaybookCreateIn: {
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Keywords
+             * @default []
+             */
+            keywords: string[];
+            /**
+             * Steps
+             * @default []
+             */
+            steps: {
+                [key: string]: unknown;
+            }[];
+            execution_mode_override?: components["schemas"]["ExecutionMode"] | null;
+        };
+        /** PlaybookUpdateIn */
+        PlaybookUpdateIn: {
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /** Steps */
+            steps?: {
+                [key: string]: unknown;
+            }[] | null;
+            status?: components["schemas"]["Status"] | null;
+            execution_mode_override?: components["schemas"]["ExecutionMode"] | null;
+        };
+        /** IncidentRunListOut */
+        IncidentRunListOut: {
+            /** Runs */
+            runs: components["schemas"]["IncidentRunOut"][];
+            /** Total */
+            total: number;
+        };
+        /** IncidentRunOut */
+        IncidentRunOut: {
+            /** Id */
+            id: number;
+            /** Project Id */
+            project_id: number;
+            /** Trace Id */
+            trace_id: string;
+            /** Uptrace Exception Id */
+            uptrace_exception_id: string;
+            /** Temporal Workflow Id */
+            temporal_workflow_id: string;
+            /** Status */
+            status: string;
+            /** Classification */
+            classification: {
+                [key: string]: unknown;
+            } | null;
+            /** Matched Playbook Id */
+            matched_playbook_id: number | null;
+            /** Created Playbook Id */
+            created_playbook_id: number | null;
+            /** Playbook Run Id */
+            playbook_run_id: number | null;
+            /** Diagnosis Report */
+            diagnosis_report: string;
+            /** Error Message */
+            error_message: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** AttemptOut */
+        AttemptOut: {
+            /** Attempt Number */
+            attempt_number: number;
+            /** Outcome */
+            outcome: string;
+            /** Summary */
+            summary: string;
+            /** Error Output */
+            error_output: string;
+            /** Generated Steps */
+            generated_steps: {
+                [key: string]: unknown;
+            }[];
+            /** Branch Name */
+            branch_name: string;
+            /** Langfuse Trace Id */
+            langfuse_trace_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** PlaybookRunOut */
+        PlaybookRunOut: {
+            /** Id */
+            id: number;
+            /** Incident Run Id */
+            incident_run_id: number;
+            /** Playbook Id */
+            playbook_id: number;
+            execution_mode: components["schemas"]["ExecutionMode"];
+            /** Status */
+            status: string;
+            /** Approved By Id */
+            approved_by_id: number | null;
+            /** Approved At */
+            approved_at: string | null;
+            /** Pr Url */
+            pr_url: string;
+            /** Branch Name */
+            branch_name: string;
+            /** Attempts */
+            attempts: components["schemas"]["AttemptOut"][];
+        };
+        /** ApprovePlaybookRunIn */
+        ApprovePlaybookRunIn: {
+            /** Approve */
+            approve: boolean;
         };
     };
     responses: never;
@@ -748,6 +1444,701 @@ export interface operations {
             };
             /** @description Bad Gateway */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_uptrace_webhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptraceWebhookIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptraceWebhookOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_list_projects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"][];
+                };
+            };
+        };
+    };
+    sre_api_create_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectCreatedOut"];
+                };
+            };
+        };
+    };
+    sre_api_get_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+        };
+    };
+    sre_api_delete_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_api_update_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+        };
+    };
+    sre_api_rotate_webhook_secret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretOut"];
+                };
+            };
+        };
+    };
+    sre_api_list_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberOut"][];
+                };
+            };
+        };
+    };
+    sre_api_add_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberAddIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_remove_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_update_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_list_llm_configs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMConfigOut"][];
+                };
+            };
+        };
+    };
+    sre_api_create_llm_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LLMConfigIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMConfigOut"];
+                };
+            };
+        };
+    };
+    sre_api_delete_llm_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_api_update_llm_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LLMConfigUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LLMConfigOut"];
+                };
+            };
+        };
+    };
+    sre_api_list_step_overrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepOverrideOut"][];
+                };
+            };
+        };
+    };
+    sre_api_set_step_overrides: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepOverridesIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StepOverrideOut"][];
+                };
+            };
+        };
+    };
+    sre_api_list_playbooks: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookListOut"];
+                };
+            };
+        };
+    };
+    sre_api_create_playbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybookCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookOut"];
+                };
+            };
+        };
+    };
+    sre_api_get_playbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playbook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookOut"];
+                };
+            };
+        };
+    };
+    sre_api_delete_playbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playbook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_api_update_playbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playbook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybookUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookOut"];
+                };
+            };
+        };
+    };
+    sre_api_list_incident_runs: {
+        parameters: {
+            query?: {
+                project_id?: number | null;
+                status?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentRunListOut"];
+                };
+            };
+        };
+    };
+    sre_api_get_incident_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentRunOut"];
+                };
+            };
+        };
+    };
+    sre_api_get_playbook_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playbook_run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookRunOut"];
+                };
+            };
+        };
+    };
+    sre_api_approve_playbook_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playbook_run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovePlaybookRunIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookRunOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
