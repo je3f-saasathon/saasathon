@@ -9,7 +9,7 @@ on `main`. Backend and frontend deploy independently via `deploy-backend.yml` /
 - **Tail prod logs**: on the prod host, from the CI-managed checkout:
   `docker compose -f docker-compose.prod.yml logs -f`.
 - **Env vars**: live in `.env.prod` files outside the git checkout (default
-  `~/prod-Je3f-saasathon/{backend,frontend}/.env.prod`, override with `ENV_FILE_DIR`),
+  `~/prod-saasathon/{backend,frontend}/.env.prod`, override with `ENV_FILE_DIR`),
   never committed.
 
 ## One-time manual infra setup

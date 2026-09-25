@@ -2,8 +2,8 @@ name: saasathon-prod
 
 # env_file paths point OUTSIDE this git checkout — production secrets are
 # never committed. Default layout on the prod host:
-#   ${ENV_FILE_DIR:-/home/$(whoami)/prod-Je3f-saasathon}/backend/.env.prod
-#   ${ENV_FILE_DIR:-/home/$(whoami)/prod-Je3f-saasathon}/frontend/.env.prod
+#   ${ENV_FILE_DIR:-/home/$(whoami)/prod-saasathon}/backend/.env.prod
+#   ${ENV_FILE_DIR:-/home/$(whoami)/prod-saasathon}/frontend/.env.prod
 # Set ENV_FILE_DIR in the shell (or a systemd unit / CI runner env) if you
 # want a different location. See docs/DEPLOYMENT.md.
 
@@ -12,7 +12,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     env_file:
-      - ${ENV_FILE_DIR:-/home/nobody/prod-Je3f-saasathon}/backend/.env.prod
+      - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/backend/.env.prod
     volumes:
       - postgres_data_prod:/var/lib/postgresql/data
 
@@ -23,7 +23,7 @@ services:
       target: prod
     restart: unless-stopped
     env_file:
-      - ${ENV_FILE_DIR:-/home/nobody/prod-Je3f-saasathon}/backend/.env.prod
+      - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/backend/.env.prod
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -37,7 +37,7 @@ services:
       target: prod
     restart: unless-stopped
     env_file:
-      - ${ENV_FILE_DIR:-/home/nobody/prod-Je3f-saasathon}/frontend/.env.prod
+      - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/frontend/.env.prod
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     depends_on:
@@ -54,7 +54,7 @@ services:
   #     target: prod
   #   restart: unless-stopped
   #   env_file:
-  #     - ${ENV_FILE_DIR:-/home/nobody/prod-Je3f-saasathon}/services/example/.env.prod
+  #     - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/services/example/.env.prod
   #   ports:
   #     - "8100:8100"
 
