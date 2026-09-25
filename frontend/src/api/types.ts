@@ -17,3 +17,16 @@ export interface HealthResponse {
   status: string;
   version: string;
 }
+
+export type IncidentRun = Schemas["IncidentRunOut"];
+export type IncidentRunList = Schemas["IncidentRunListOut"];
+export type IncidentStatus =
+  | "running"
+  | "no_anomaly"
+  | "new_playbook_created"
+  | "awaiting_approval"
+  | "succeeded"
+  | "failed"
+  | "advisory_complete";
+export type Playbook = Schemas["PlaybookOut"];
+export type PlaybookRun = Schemas["PlaybookRunOut"];

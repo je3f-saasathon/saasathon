@@ -1,31 +1,61 @@
 import type { Column, ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown } from "lucide-react";
+import { ArrowUpDown, ExternalLink } from "lucide-react";
 
+import type { IncidentRun, IncidentStatus } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { LogEntry, LogLevel, LogStatus } from "./mock-logs";
 
-const levelRank: Record<LogLevel, number> = { error: 0, warn: 1, info: 2 };
+type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
 
-const levelVariant: Record<LogLevel, React.ComponentProps<typeof Badge>["variant"]> = {
-  error: "destructive",
-  warn: "default",
-  info: "secondary",
+export const statusVariant: Record<IncidentStatus, BadgeVariant> = {
+  running: "secondary",
+  awaiting_approval: "default",
+  succeeded: "outline",
+  advisory_complete: "outline",
+  new_playbook_created: "secondary",
+  no_anomaly: "outline",
+  failed: "destructive",
 };
 
-// shadcn's Badge has no "warning" variant; tint the default one amber.
-const levelClassName: Partial<Record<LogLevel, string>> = {
-  warn: "bg-amber-500 text-white hover:bg-amber-500/80",
+// shadcn's Badge has no "success"/"warning" variants; tint the outline/default ones.
+export const statusClassName: Partial<Record<IncidentStatus, string>> = {
+  succeeded: "border-emerald-500 text-emerald-700",
+  awaiting_approval: "bg-amber-500 text-white hover:bg-amber-500/80",
 };
 
-const statusVariant: Record<LogStatus, React.ComponentProps<typeof Badge>["variant"]> = {
-  open: "default",
-  investigating: "secondary",
-  resolved: "outline",
-  ignored: "outline",
-};
+export function StatusBadge({ status }: { status: string }) {
+  const s = status as IncidentStatus;
+  return (
+    <Badge variant={statusVariant[s] ?? "outline"} className={`whitespace-nowrap ${statusClassName[s] ?? ""}`}>
+      {status.replace(/_/g, " ")}
+    </Badge>
+  );
+}
 
-function SortableHeader({ column, title }: { column: Column<LogEntry>; title: string }) {
+/** The one-line description of an incident: the classifier's summary, else the trace id. */
+export function incidentSummary(run: IncidentRun): string {
+  const summary = run.classification?.summary;
+  return typeof summary === "string" && summary ? summary : `Trace ${run.trace_id}`;
+}
+
+export function PrLink({ run }: { run: IncidentRun }) {
+  if (!run.pr_url) return <span className="text-muted-foreground">—</span>;
+  const draft = run.playbook_run_status === "pending_approval";
+  return (
+    <a
+      href={run.pr_url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(event) => event.stopPropagation()}
+      className="inline-flex items-center gap-1 whitespace-nowrap text-sm font-medium underline-offset-4 hover:underline"
+    >
+      {draft ? "Draft PR" : "PR"} #{run.pr_url.split("/").pop()}
+      <ExternalLink className="h-3 w-3" />
+    </a>
+  );
+}
+
+function SortableHeader({ column, title }: { column: Column<IncidentRun>; title: string }) {
   return (
     <Button
       variant="ghost"
@@ -38,60 +68,85 @@ function SortableHeader({ column, title }: { column: Column<LogEntry>; title: st
   );
 }
 
-function formatTimestamp(iso: string) {
+export function formatTimestamp(iso: string) {
   return iso.replace("T", " ").slice(0, 19);
 }
 
-export const columns: ColumnDef<LogEntry>[] = [
+export const columns: ColumnDef<IncidentRun>[] = [
   {
-    accessorKey: "timestamp",
-    header: ({ column }) => <SortableHeader column={column} title="Timestamp (UTC)" />,
+    accessorKey: "created_at",
+    header: ({ column }) => <SortableHeader column={column} title="Time (UTC)" />,
     cell: ({ row }) => (
       <span className="whitespace-nowrap font-mono text-xs">
-        {formatTimestamp(row.getValue("timestamp"))}
+        {formatTimestamp(row.getValue("created_at"))}
       </span>
     ),
   },
   {
-    accessorKey: "level",
-    header: ({ column }) => <SortableHeader column={column} title="Level" />,
-    sortingFn: (a, b) =>
-      levelRank[a.getValue<LogLevel>("level")] - levelRank[b.getValue<LogLevel>("level")],
-    cell: ({ row }) => {
-      const level = row.getValue<LogLevel>("level");
-      return (
-        <Badge variant={levelVariant[level]} className={levelClassName[level]}>
-          {level}
-        </Badge>
-      );
-    },
+    accessorKey: "project_name",
+    id: "project",
+    header: ({ column }) => <SortableHeader column={column} title="Project" />,
+    cell: ({ row }) => <span className="whitespace-nowrap">{row.getValue("project")}</span>,
   },
   {
-    accessorKey: "source",
-    header: ({ column }) => <SortableHeader column={column} title="Source" />,
+    id: "incident",
+    accessorFn: incidentSummary,
+    header: "Incident",
     cell: ({ row }) => (
-      <span className="whitespace-nowrap font-mono text-xs">{row.getValue("source")}</span>
-    ),
-  },
-  {
-    accessorKey: "message",
-    header: "Message",
-    cell: ({ row }) => (
-      <div className="min-w-[16rem] max-w-xl truncate" title={row.getValue("message")}>
-        {row.getValue("message")}
+      <div className="min-w-[14rem] max-w-md truncate" title={row.getValue("incident")}>
+        {row.getValue("incident")}
       </div>
     ),
   },
   {
     accessorKey: "status",
     header: ({ column }) => <SortableHeader column={column} title="Status" />,
+    cell: ({ row }) => <StatusBadge status={row.getValue("status")} />,
+  },
+  {
+    id: "playbook",
+    accessorFn: (run) => run.playbook?.title ?? "",
+    header: "Playbook",
     cell: ({ row }) => {
-      const status = row.getValue<LogStatus>("status");
-      return (
-        <Badge variant={statusVariant[status]} className="capitalize">
-          {status}
-        </Badge>
+      const title = row.getValue<string>("playbook");
+      return title ? (
+        <div className="max-w-[14rem] truncate" title={title}>
+          {title}
+        </div>
+      ) : (
+        <span className="text-muted-foreground">—</span>
       );
     },
+  },
+  {
+    id: "pr",
+    header: "PR",
+    cell: ({ row }) => <PrLink run={row.original} />,
+  },
+  {
+    id: "model",
+    accessorFn: (run) => run.usage.models.join(", "),
+    header: "Model",
+    cell: ({ row }) => {
+      const models = row.getValue<string>("model");
+      return models ? (
+        <span className="whitespace-nowrap font-mono text-xs">{models}</span>
+      ) : (
+        <span className="text-muted-foreground">n/a</span>
+      );
+    },
+  },
+  {
+    id: "tokens",
+    accessorFn: (run) => run.usage.total_tokens,
+    header: ({ column }) => <SortableHeader column={column} title="Tokens" />,
+    cell: ({ row }) =>
+      row.original.usage.calls === 0 ? (
+        <span className="text-muted-foreground">n/a</span>
+      ) : (
+        <span className="whitespace-nowrap font-mono text-xs">
+          {row.getValue<number>("tokens").toLocaleString()}
+        </span>
+      ),
   },
 ];
