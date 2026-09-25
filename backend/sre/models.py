@@ -230,3 +230,21 @@ class PlaybookExecutionAttempt(models.Model):
         db_table = "sre_playbook_execution_attempt"
         unique_together = [("playbook_run", "attempt_number")]
         ordering = ["attempt_number"]
+
+
+class LLMUsage(models.Model):
+    """One row per LLM call made for an incident, so the dashboard can show tokens and
+    models without asking Langfuse. `step` is the trace step name (includes
+    "diagnosis_report", which isn't a PipelineStep)."""
+
+    incident_run = models.ForeignKey(IncidentRun, on_delete=models.CASCADE, related_name="llm_usage")
+    step = models.CharField(max_length=64)
+    provider = models.CharField(max_length=32, blank=True, default="")
+    model = models.CharField(max_length=255, blank=True, default="")
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "sre_llm_usage"
+        ordering = ["created_at"]

@@ -2,6 +2,7 @@
 Each LLM-calling activity gets its own Langfuse trace."""
 
 import functools
+from contextlib import contextmanager
 from dataclasses import asdict
 
 from django.core.exceptions import ImproperlyConfigured
@@ -12,6 +13,7 @@ from temporalio.exceptions import ApplicationError
 
 from .llm.clients import LLMError
 from .llm.resolve import NoLLMConfigError
+from .llm.usage import usage_scope
 from .models import ExecutionMode, IncidentRun, Playbook, PlaybookRun, Project
 from .services.executor import PlaybookExecutor, pr_title_body
 from .services.github import GitHubRepo
@@ -54,6 +56,14 @@ def django_activity(fn):
     return activity.defn(name=fn.__name__)(wrapper)
 
 
+@contextmanager
+def llm_step(step: str, run: IncidentRun):
+    """Langfuse trace + DB usage recording for one LLM-calling activity."""
+    with trace_step(step, project_id=run.project_id, incident_run_id=run.id) as span:
+        with usage_scope(run.id, step):
+            yield span
+
+
 def _incident(incident_run_id: int) -> IncidentRun:
     return IncidentRun.objects.select_related("project", "project__default_llm_config").get(
         id=incident_run_id
@@ -63,7 +73,7 @@ def _incident(incident_run_id: int) -> IncidentRun:
 @django_activity
 def confirm_anomaly(inp: IncidentInput) -> AnomalyResult:
     run = _incident(inp.incident_run_id)
-    with trace_step("anomaly_double_check", project_id=run.project_id, incident_run_id=run.id):
+    with llm_step("anomaly_double_check", run):
         result = AnomalyChecker(run).check()
     run.classification = {**(run.classification or {}), "anomaly": asdict(result)}
     run.save(update_fields=["classification", "updated_at"])
@@ -73,7 +83,7 @@ def confirm_anomaly(inp: IncidentInput) -> AnomalyResult:
 @django_activity
 def classify_bug(inp: IncidentInput) -> Classification:
     run = _incident(inp.incident_run_id)
-    with trace_step("bug_classification", project_id=run.project_id, incident_run_id=run.id):
+    with llm_step("bug_classification", run):
         result = BugClassifier(run).classify()
     run.classification = {**(run.classification or {}), **asdict(result)}
     run.save(update_fields=["classification", "updated_at"])
@@ -88,7 +98,7 @@ def find_candidate_playbooks(inp: SearchInput) -> list[int]:
 @django_activity
 def judge_playbook_match(inp: JudgeInput) -> JudgeResult:
     run = _incident(inp.incident_run_id)
-    with trace_step("playbook_similarity_judge", project_id=run.project_id, incident_run_id=run.id):
+    with llm_step("playbook_similarity_judge", run):
         result = PlaybookJudge(run).judge(inp.candidate_ids)
     if result.matched_playbook_id is not None:
         run.matched_playbook_id = result.matched_playbook_id
@@ -107,7 +117,7 @@ def create_playbook(inp: IncidentInput) -> int:
         keywords=data.get("keywords", []),
         suspected_files=data.get("suspected_files", []),
     )
-    with trace_step("playbook_creation", project_id=run.project_id, incident_run_id=run.id):
+    with llm_step("playbook_creation", run):
         playbook = PlaybookAuthor(run).create(classification)
     return playbook.id
 
@@ -132,7 +142,7 @@ def run_playbook_attempt(inp: AttemptInput) -> AttemptResult:
         "incident_run__project", "playbook"
     ).get(id=inp.playbook_run_id)
     run = playbook_run.incident_run
-    with trace_step("playbook_execution", project_id=run.project_id, incident_run_id=run.id) as span:
+    with llm_step("playbook_execution", run) as span:
         executor = PlaybookExecutor(
             playbook_run, inp.attempt_number, inp.previous_feedback, heartbeat=activity.heartbeat
         )
@@ -147,7 +157,7 @@ def run_playbook_attempt(inp: AttemptInput) -> AttemptResult:
 @django_activity
 def write_diagnosis_report(inp: IncidentInput) -> None:
     run = _incident(inp.incident_run_id)
-    with trace_step("diagnosis_report", project_id=run.project_id, incident_run_id=run.id):
+    with llm_step("diagnosis_report", run):
         report = DiagnosisReporter(run, run.matched_playbook).write()
     run.diagnosis_report = report
     run.save(update_fields=["diagnosis_report", "updated_at"])

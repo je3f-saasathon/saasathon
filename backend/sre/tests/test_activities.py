@@ -12,6 +12,7 @@ from sre.models import (
     IncidentRun,
     LLMProviderConfig,
     LLMStepOverride,
+    LLMUsage,
     Playbook,
     PlaybookRun,
 )
@@ -27,15 +28,16 @@ pytestmark = pytest.mark.django_db
 class FakeLLM:
     """Replaces the provider call; replies are consumed in order."""
 
-    def __init__(self, monkeypatch, *replies):
+    def __init__(self, monkeypatch, *replies, usage=None):
         self.replies = list(replies)
+        self.usage = usage or {}
         self.prompts = []
         monkeypatch.setattr(AnthropicClient, "_chat", self._chat)
 
     def _chat(self, system, messages):
         self.prompts.append((system, messages))
         reply = self.replies.pop(0)
-        return (reply if isinstance(reply, str) else json.dumps(reply)), {}
+        return (reply if isinstance(reply, str) else json.dumps(reply)), self.usage
 
 
 @pytest.fixture
@@ -71,6 +73,22 @@ def test_classify_normalizes_output(monkeypatch, incident):
     result = activities.classify_bug(IncidentInput(incident.id, incident.project_id))
     assert result.category == "other" and result.severity == "medium"
     assert result.keywords == ["timeouterror", "pool"]
+
+
+def test_llm_calls_record_usage_against_the_incident(monkeypatch, incident):
+    FakeLLM(monkeypatch, {"category": "database", "severity": "high", "summary": "pool"},
+            usage={"input": 10, "output": 5})
+    activities.classify_bug(IncidentInput(incident.id, incident.project_id))
+    usage = LLMUsage.objects.get(incident_run=incident)
+    assert (usage.step, usage.provider, usage.model) == ("bug_classification", "anthropic", "claude-sonnet-5")
+    assert (usage.input_tokens, usage.output_tokens) == (10, 5)
+
+
+def test_llm_calls_outside_an_activity_record_nothing(monkeypatch, project):
+    from sre.llm.clients import client_for
+    FakeLLM(monkeypatch, "hi", usage={"input": 1, "output": 1})
+    client_for(project.default_llm_config).chat("s", [{"role": "user", "content": "x"}])
+    assert not LLMUsage.objects.exists()
 
 
 def test_step_override_beats_default(monkeypatch, incident, project):

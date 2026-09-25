@@ -7,6 +7,7 @@ from ..crypto import decrypt
 from ..models import LLMProvider, LLMProviderConfig
 from ..tracing import trace_generation
 from ..validators import validate_llm_base_url
+from .usage import record_usage
 
 
 class LLMError(Exception):
@@ -47,6 +48,7 @@ class ChatClient:
         with trace_generation(name, model=self.config.model, input=messages) as generation:
             text, usage = self._chat(system, messages)
             generation.update(output=text, usage_details=usage)
+        record_usage(self.config, usage)
         return text
 
     def complete_json(self, system: str, prompt: str, name: str = "complete") -> dict:
@@ -131,6 +133,7 @@ class JevClient:
                 retryable = exc.status_code >= 500 or exc.status_code == 429
                 raise LLMError(str(exc), retryable=retryable) from exc
             generation.update(output=result.get("answers"))
+        record_usage(self.config, {})  # Jev doesn't report tokens; still record the model
         return result["answers"]["answer"]["choice"]
 
 
