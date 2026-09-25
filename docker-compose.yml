@@ -28,6 +28,11 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgres://saasathon:saasathon@postgres:5432/saasathon
+      # SRE infra (docker-compose.infra.yml) is published on the host.
+      TEMPORAL_ADDRESS: host.docker.internal:${TEMPORAL_PORT:-7243}
+      LANGFUSE_HOST: http://host.docker.internal:${LANGFUSE_PORT:-3100}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -36,6 +41,36 @@ services:
       postgres:
         condition: service_healthy
     command: uv run python manage.py runserver 0.0.0.0:8000
+
+  # SRE agent Temporal worker. Local dev only: it gets the host's Docker
+  # socket to start sandboxes (effectively root on this machine). Prod uses a
+  # docker:dind sidecar instead, see docker-compose.prod.yml.
+  sre-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: dev
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgres://saasathon:saasathon@postgres:5432/saasathon
+      TEMPORAL_ADDRESS: host.docker.internal:${TEMPORAL_PORT:-7243}
+      LANGFUSE_HOST: http://host.docker.internal:${LANGFUSE_PORT:-3100}
+      SRE_WORKDIR: /tmp/sre-work
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same path inside and out: the sandbox bind-mounts checkouts via the host daemon.
+      - /tmp/sre-work:/tmp/sre-work
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    command: uv run python -m sre.worker
 
   frontend:
     build:

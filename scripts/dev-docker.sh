@@ -6,7 +6,8 @@ usage() {
   cat <<'EOF'
 Usage: scripts/dev-docker.sh [--detach] [--force]
 
-Runs the stack via docker-compose.yml (frontend, backend, postgres).
+Runs the stack via docker-compose.yml (frontend, backend, postgres,
+sre-worker), after starting the SRE infra (scripts/infra.sh up).
 Without --detach, follows logs in the foreground; Ctrl+C stops the stack.
 With --detach, starts, waits for health, prints a summary, and returns.
 Detects and stops native mode first, since both share ports.
@@ -60,6 +61,9 @@ ensure_port_free "$DB_PORT_VAL" "$FORCE" || exit 1
 export FRONTEND_PORT="$FE_PORT" BACKEND_PORT="$BE_PORT" DB_PORT="$DB_PORT_VAL"
 
 COMPOSE=(docker compose -p saasathon -f "$REPO_ROOT/docker-compose.yml")
+
+"$REPO_ROOT/scripts/infra.sh" up || log_warn "SRE infra didn't come up; the sre-worker container will retry"
+mkdir -p /tmp/sre-work
 
 if [ "$DETACH" = "1" ]; then
   log_info "starting docker stack (detached)"

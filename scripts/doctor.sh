@@ -91,6 +91,28 @@ if [ -f "$REPO_ROOT/backend/.env" ]; then
   esac
 fi
 
+# ---- SRE agent -----------------------------------------------------------
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  sandbox_image=$(env_get "$REPO_ROOT/backend/.env" SRE_SANDBOX_IMAGE "saasathon-sre-sandbox:latest")
+  if docker image inspect "$sandbox_image" >/dev/null 2>&1; then
+    check "SRE sandbox image present ($sandbox_image)" 0
+  else
+    check "SRE sandbox image present ($sandbox_image)" 1 "make sandbox-image"
+  fi
+  health=$(docker compose -p saasathon-infra -f "$REPO_ROOT/docker-compose.infra.yml" ps --format '{{.Service}}={{.Health}}' 2>/dev/null || true)
+  for svc in temporal langfuse-web; do
+    case "$health" in
+      *"$svc=healthy"*) log_ok "SRE infra: $svc healthy" ;;
+      *) log_warn "SRE infra: $svc not running/healthy (make infra-up)" ;;
+    esac
+  done
+  if [ -f "$REPO_ROOT/backend/.env" ] && [ -z "$(env_get "$REPO_ROOT/backend/.env" SRE_FIELD_ENCRYPTION_KEY "")" ]; then
+    check "SRE_FIELD_ENCRYPTION_KEY set in backend/.env" 1 "uv run python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"  (run in backend/, paste into backend/.env)"
+  fi
+else
+  log_warn "docker not available — SRE agent (Temporal, Langfuse, sandbox) can't run"
+fi
+
 # ---- stale pid files -------------------------------------------------------
 if [ -d "$RUN_DIR" ]; then
   for pidfile in "$RUN_DIR"/*.pid; do

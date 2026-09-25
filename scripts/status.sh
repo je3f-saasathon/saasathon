@@ -17,7 +17,7 @@ BE_PORT=$(backend_port)
 
 log_info "native processes:"
 found_native=0
-for name in frontend backend; do
+for name in frontend backend sre-worker; do
   if [ -f "$RUN_DIR/${name}.pid" ]; then
     pid=$(cat "$RUN_DIR/${name}.pid" 2>/dev/null)
     if [ -n "$pid" ] && pid_alive "$pid"; then
@@ -41,6 +41,17 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   fi
 else
   echo "  (docker not available)"
+fi
+
+echo
+log_info "SRE infra (Temporal + Langfuse):"
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  out=$(docker compose -p saasathon-infra -f "$REPO_ROOT/docker-compose.infra.yml" ps 2>/dev/null || true)
+  if [ -n "$out" ] && [ "$(echo "$out" | wc -l)" -gt 1 ]; then
+    echo "$out" | sed 's/^/  /'
+  else
+    echo "  (none — make infra-up)"
+  fi
 fi
 
 echo

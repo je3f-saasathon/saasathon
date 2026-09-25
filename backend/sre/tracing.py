@@ -27,6 +27,11 @@ class _Noop:
         pass
 
 
+class _Step:
+    def __init__(self, trace_id: str):
+        self.trace_id = trace_id
+
+
 @contextmanager
 def trace_step(step: str, *, project_id: int, incident_run_id: int):
     """One Langfuse trace per LLM-calling activity, grouped by incident run as the session."""
@@ -34,14 +39,16 @@ def trace_step(step: str, *, project_id: int, incident_run_id: int):
     if lf is None:
         yield _Noop()
         return
-    with lf.start_as_current_span(name=f"sre.{step}") as span:
-        lf.update_current_trace(
-            name=f"sre.{step}",
-            session_id=f"incident-run-{incident_run_id}",
-            tags=["sre", step, f"project:{project_id}"],
-            metadata={"project_id": project_id, "incident_run_id": incident_run_id, "step": step},
-        )
-        yield span
+    from langfuse import propagate_attributes
+
+    with propagate_attributes(
+        trace_name=f"sre.{step}",
+        session_id=f"incident-run-{incident_run_id}",
+        tags=["sre", step, f"project:{project_id}"],
+        metadata={"project_id": str(project_id), "incident_run_id": str(incident_run_id)},
+    ):
+        with lf.start_as_current_observation(name=f"sre.{step}", as_type="span"):
+            yield _Step(lf.get_current_trace_id() or "")
     lf.flush()
 
 
@@ -51,5 +58,7 @@ def trace_generation(name: str, *, model: str, input):
     if lf is None:
         yield _Noop()
         return
-    with lf.start_as_current_generation(name=name, model=model, input=input) as generation:
+    with lf.start_as_current_observation(
+        name=name, as_type="generation", model=model, input=input
+    ) as generation:
         yield generation
