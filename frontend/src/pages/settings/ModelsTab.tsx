@@ -181,17 +181,18 @@ function ConfigForm({ editing, onDone }: { editing: LLMConfig | null; onDone: ()
               disabled={form.clear_key}
               onChange={(e) => set({ api_key: e.target.value })}
             />
-            {editing?.has_api_key && (
-              <span className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={form.clear_key}
-                  onChange={(e) => set({ clear_key: e.target.checked, api_key: "" })}
-                />
-                Remove the stored key
-              </span>
-            )}
           </Field>
+        )}
+        {!isJev && editing?.has_api_key && (
+          // Its own label: inside the API key Field's label, a click would focus that input.
+          <label className="flex items-center gap-2 self-start text-sm sm:col-start-1">
+            <input
+              type="checkbox"
+              checked={form.clear_key}
+              onChange={(e) => set({ clear_key: e.target.checked, api_key: "" })}
+            />
+            Remove the stored key
+          </label>
         )}
         {!isJev && (
           <div className="grid grid-cols-2 gap-4">

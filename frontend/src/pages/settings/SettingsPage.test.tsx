@@ -19,6 +19,7 @@ const project = {
 const routes: Record<string, unknown> = {
   "GET /api/sre/llm-configs": configs,
   "POST /api/sre/llm-configs": { ...configs[0], id: 3, name: "claude" },
+  "PATCH /api/sre/llm-configs/1": { ...configs[0], has_api_key: false },
   "GET /api/sre/projects": [project],
   "GET /api/sre/projects/2/step-overrides": [],
   "GET /api/sre/github/status": { configured: true, app_slug: "sre-app-local" },
@@ -62,7 +63,8 @@ describe("SettingsPage", () => {
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "claude" } });
     fireEvent.change(screen.getByLabelText(/^Model\s*e\.g\./), { target: { value: "claude-sonnet-5" } });
     fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "sk-secret" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "Add config" }).at(-1)!);
+    const addButtons = screen.getAllByRole("button", { name: "Add config" });
+    fireEvent.click(addButtons[addButtons.length - 1]);
 
     await vi.waitFor(() =>
       expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(true),
@@ -71,6 +73,18 @@ describe("SettingsPage", () => {
     expect(JSON.parse(init.body)).toMatchObject({
       name: "claude", provider: "anthropic", model: "claude-sonnet-5", api_key: "sk-secret",
     });
+  });
+
+  it("clears a stored key only when asked", async () => {
+    renderAt("/settings?tab=models");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit openai-strong" }));
+    fireEvent.click(screen.getByLabelText("Remove the stored key"));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await vi.waitFor(() =>
+      expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true),
+    );
+    const [, init] = fetchMock.mock.calls.find(([, i]) => i?.method === "PATCH")!;
+    expect(JSON.parse(init.body).api_key).toBe("");
   });
 
   it("shows project models with Jev disabled for steps it can't run", async () => {
