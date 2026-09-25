@@ -1,6 +1,7 @@
 from asgiref.sync import async_to_sync
 from django.conf import settings
 from temporalio.client import Client
+from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from .temporal_types import ApprovalDecision, IncidentInput
@@ -20,6 +21,8 @@ async def _start(workflow_id: str, inp: IncidentInput) -> None:
             inp,
             id=workflow_id,
             task_queue=settings.TEMPORAL_TASK_QUEUE,
+            # Default policy would rerun the whole pipeline if Uptrace retries after completion.
+            id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
         )
     except WorkflowAlreadyStartedError:
         pass  # duplicate callback for the same trace: the first workflow already owns it

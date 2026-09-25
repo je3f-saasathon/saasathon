@@ -1,0 +1,205 @@
+from datetime import datetime
+
+from ninja import Schema
+
+from .models import ExecutionMode, LLMProvider, PipelineStep, Playbook, ProjectRole
+
+
+class UptraceWebhookIn(Schema):
+    trace_id: str
+    exception_id: str | None = None
+    source_id: str | None = None
+    payload: dict = {}
+
+
+class UptraceWebhookOut(Schema):
+    incident_run_id: int
+    temporal_workflow_id: str
+    status: str
+
+
+class ProjectOut(Schema):
+    id: int
+    name: str
+    role: ProjectRole
+    github_installation_id: str
+    github_repo_owner: str
+    github_repo_name: str
+    github_default_branch: str
+    uptrace_source_id: str
+    default_execution_mode: ExecutionMode
+    default_llm_config_id: int | None
+    created_at: datetime
+
+
+class ProjectCreatedOut(ProjectOut):
+    webhook_secret: str
+    webhook_url: str
+
+
+class WebhookSecretOut(Schema):
+    webhook_secret: str
+    webhook_url: str
+
+
+class ProjectCreateIn(Schema):
+    name: str
+    github_installation_id: str
+    github_repo_owner: str
+    github_repo_name: str
+    github_default_branch: str = "main"
+    uptrace_source_id: str = ""
+    default_execution_mode: ExecutionMode = ExecutionMode.DRAFT_ONLY
+
+
+class ProjectUpdateIn(Schema):
+    name: str | None = None
+    github_installation_id: str | None = None
+    github_repo_owner: str | None = None
+    github_repo_name: str | None = None
+    github_default_branch: str | None = None
+    uptrace_source_id: str | None = None
+    default_execution_mode: ExecutionMode | None = None
+    default_llm_config_id: int | None = None
+
+
+class MemberOut(Schema):
+    user_id: int
+    email: str
+    name: str
+    role: ProjectRole
+
+
+class MemberAddIn(Schema):
+    email: str
+    role: ProjectRole
+
+
+class MemberUpdateIn(Schema):
+    role: ProjectRole
+
+
+class LLMConfigOut(Schema):
+    id: int
+    name: str
+    provider: LLMProvider
+    model: str
+    base_url: str
+    has_api_key: bool
+    extra_config: dict
+    created_at: datetime
+
+
+class LLMConfigIn(Schema):
+    name: str
+    provider: LLMProvider
+    model: str = ""
+    base_url: str = ""
+    api_key: str = ""
+    extra_config: dict = {}
+
+
+class LLMConfigUpdateIn(Schema):
+    name: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None  # "" clears the stored key
+    extra_config: dict | None = None
+
+
+class StepOverrideOut(Schema):
+    step: PipelineStep
+    llm_config_id: int
+    llm_config_name: str
+
+
+class StepOverridesIn(Schema):
+    # step -> llm_config_id, or null to remove the override. Unlisted steps are unchanged.
+    overrides: dict[PipelineStep, int | None]
+
+
+class PlaybookOut(Schema):
+    id: int
+    project_id: int
+    title: str
+    description: str
+    keywords: list[str]
+    steps: list[dict]
+    status: Playbook.Status
+    execution_mode_override: ExecutionMode | None
+    consecutive_failure_count: int
+    source_incident_run_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlaybookListOut(Schema):
+    playbooks: list[PlaybookOut]
+    total: int
+
+
+class PlaybookCreateIn(Schema):
+    title: str
+    description: str = ""
+    keywords: list[str] = []
+    steps: list[dict] = []
+    execution_mode_override: ExecutionMode | None = None
+
+
+class PlaybookUpdateIn(Schema):
+    title: str | None = None
+    description: str | None = None
+    keywords: list[str] | None = None
+    steps: list[dict] | None = None
+    status: Playbook.Status | None = None
+    execution_mode_override: ExecutionMode | None = None
+
+
+class AttemptOut(Schema):
+    attempt_number: int
+    outcome: str
+    summary: str
+    error_output: str
+    generated_steps: list[dict]
+    branch_name: str
+    langfuse_trace_id: str
+    created_at: datetime
+
+
+class PlaybookRunOut(Schema):
+    id: int
+    incident_run_id: int
+    playbook_id: int
+    execution_mode: ExecutionMode
+    status: str
+    approved_by_id: int | None
+    approved_at: datetime | None
+    pr_url: str
+    branch_name: str
+    attempts: list[AttemptOut]
+
+
+class IncidentRunOut(Schema):
+    id: int
+    project_id: int
+    trace_id: str
+    uptrace_exception_id: str
+    temporal_workflow_id: str
+    status: str
+    classification: dict | None
+    matched_playbook_id: int | None
+    created_playbook_id: int | None
+    playbook_run_id: int | None
+    diagnosis_report: str
+    error_message: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class IncidentRunListOut(Schema):
+    runs: list[IncidentRunOut]
+    total: int
+
+
+class ApprovePlaybookRunIn(Schema):
+    approve: bool

@@ -39,4 +39,4 @@ dev = [
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
-testpaths = ["accounts", "items", "config", "jev"]
+testpaths = ["accounts", "items", "config", "jev", "sre"]
