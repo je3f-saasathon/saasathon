@@ -6,7 +6,8 @@ import secrets
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q
-from django.http import HttpRequest
+from django.conf import settings
+from django.http import HttpRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
@@ -15,6 +16,7 @@ from ninja.errors import HttpError
 from . import temporal_client
 from .llm.resolve import provider_supports_step
 from .models import (
+    GitHubInstallation,
     IncidentRun,
     LLMProvider,
     LLMProviderConfig,
@@ -28,6 +30,10 @@ from .models import (
 from .permissions import get_membership, get_project_for, member_project_ids
 from .schemas import (
     ApprovePlaybookRunIn,
+    GitHubConnectOut,
+    GitHubInstallationOut,
+    GitHubRepoOut,
+    GitHubStatusOut,
     IncidentRunListOut,
     IncidentRunOut,
     LLMConfigIn,
@@ -51,6 +57,7 @@ from .schemas import (
     UptraceWebhookOut,
     WebhookSecretOut,
 )
+from .services import github_connect
 from .services.playbooks import clean_steps
 from .temporal_types import ApprovalDecision, IncidentInput
 from .validators import UnsafeURLError, validate_llm_base_url
@@ -58,15 +65,43 @@ from .validators import UnsafeURLError, validate_llm_base_url
 logger = logging.getLogger(__name__)
 router = Router(tags=["sre"])
 
-OWNER_ONLY_PROJECT_FIELDS = {
-    "github_installation_id", "github_repo_owner", "github_repo_name", "uptrace_source_id",
-}
+GITHUB_REPO_FIELDS = {"github_installation_id", "github_repo_owner", "github_repo_name"}
+OWNER_ONLY_PROJECT_FIELDS = GITHUB_REPO_FIELDS | {"uptrace_source_id"}
 
 
 # ---- helpers ---------------------------------------------------------------
 
+def _github_verified(project: Project) -> bool:
+    return GitHubInstallation.objects.filter(
+        installation_id=project.github_installation_id,
+        user__sre_memberships__project=project,
+        user__sre_memberships__role=ProjectRole.OWNER,
+    ).exists()
+
+
 def _project_out(project: Project, role: str) -> dict:
-    return {**{f: getattr(project, f) for f in ProjectOut.model_fields if f != "role"}, "role": role}
+    return {
+        **{f: getattr(project, f) for f in ProjectOut.model_fields
+           if f not in ("role", "github_verified")},
+        "role": role,
+        "github_verified": _github_verified(project),
+    }
+
+
+def _check_github_repo(user, installation_id: str, owner: str, name: str) -> None:
+    """A project may only use an installation its editor proved access to (Connect GitHub),
+    and a repo that installation can reach. Otherwise anyone could aim the agent at
+    another customer's installation."""
+    if not GitHubInstallation.objects.filter(user=user, installation_id=installation_id).exists():
+        raise HttpError(400, "Connect GitHub and pick an installation you have access to")
+    try:
+        repos = github_connect.installation_repos(installation_id)
+    except Exception as exc:
+        logger.warning("could not list repos for installation %s: %s", installation_id, exc)
+        raise HttpError(400, "Could not list that installation's repositories; try again") from exc
+    if not any(r["owner"].lower() == owner.lower() and r["name"].lower() == name.lower()
+               for r in repos):
+        raise HttpError(400, f"The GitHub App installation can't access {owner}/{name}")
 
 
 def _webhook_url(request: HttpRequest, project: Project) -> str:
@@ -77,15 +112,57 @@ def _own_config(user, config_id: int) -> LLMProviderConfig:
     return get_object_or_404(LLMProviderConfig, id=config_id, owner=user)
 
 
+INCIDENT_EXTRA_FIELDS = {
+    "created_playbook_id", "playbook_run_id", "project_name", "playbook", "pr_url",
+    "playbook_run_status", "execution_mode", "usage",
+}
+
+
+def _usage_out(rows) -> dict:
+    by_step: dict[tuple, dict] = {}
+    for row in rows:
+        entry = by_step.setdefault((row.step, row.provider, row.model), {
+            "step": row.step, "provider": row.provider, "model": row.model,
+            "calls": 0, "input_tokens": 0, "output_tokens": 0,
+        })
+        entry["calls"] += 1
+        entry["input_tokens"] += row.input_tokens
+        entry["output_tokens"] += row.output_tokens
+    steps = list(by_step.values())
+    input_tokens = sum(s["input_tokens"] for s in steps)
+    output_tokens = sum(s["output_tokens"] for s in steps)
+    return {
+        "calls": sum(s["calls"] for s in steps),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "models": list(dict.fromkeys(s["model"] for s in steps if s["model"])),
+        "by_step": steps,
+    }
+
+
 def _incident_out(run: IncidentRun) -> dict:
     created = getattr(run, "created_playbook", None)
     playbook_run = getattr(run, "playbook_run", None)
+    playbook, source = (run.matched_playbook, "matched") if run.matched_playbook else (created, "created")
     return {
-        **{f: getattr(run, f) for f in IncidentRunOut.model_fields
-           if f not in ("created_playbook_id", "playbook_run_id")},
+        **{f: getattr(run, f) for f in IncidentRunOut.model_fields if f not in INCIDENT_EXTRA_FIELDS},
         "created_playbook_id": created.id if created else None,
         "playbook_run_id": playbook_run.id if playbook_run else None,
+        "project_name": run.project.name,
+        "playbook": {"id": playbook.id, "title": playbook.title, "status": playbook.status,
+                     "source": source} if playbook else None,
+        "pr_url": playbook_run.pr_url if playbook_run else "",
+        "playbook_run_status": playbook_run.status if playbook_run else None,
+        "execution_mode": playbook_run.execution_mode if playbook_run else None,
+        "usage": _usage_out(run.llm_usage.all()),
     }
+
+
+def _incident_runs():
+    return IncidentRun.objects.select_related(
+        "project", "matched_playbook", "created_playbook", "playbook_run"
+    ).prefetch_related("llm_usage")
 
 
 def _detach_user_configs(project: Project, user) -> None:
@@ -150,6 +227,8 @@ def list_projects(request: HttpRequest):
 
 @router.post("/projects", response={201: ProjectCreatedOut})
 def create_project(request: HttpRequest, payload: ProjectCreateIn):
+    _check_github_repo(request.auth, payload.github_installation_id,
+                       payload.github_repo_owner, payload.github_repo_name)
     with transaction.atomic():
         project = Project.objects.create(**payload.dict())
         ProjectMembership.objects.create(project=project, user=request.auth, role=ProjectRole.OWNER)
@@ -174,6 +253,11 @@ def update_project(request: HttpRequest, project_id: int, payload: ProjectUpdate
     project = membership.project
     if "default_llm_config_id" in changes and changes["default_llm_config_id"] is not None:
         _own_config(request.auth, changes["default_llm_config_id"])
+    # Existing wiring is grandfathered: only a change to it has to be proven.
+    repo = {f: changes.get(f) or getattr(project, f) for f in GITHUB_REPO_FIELDS}
+    if any(repo[f] != getattr(project, f) for f in GITHUB_REPO_FIELDS):
+        _check_github_repo(request.auth, repo["github_installation_id"],
+                           repo["github_repo_owner"], repo["github_repo_name"])
     for field, value in changes.items():
         if value is None and field != "default_llm_config_id":
             continue
@@ -195,6 +279,83 @@ def rotate_webhook_secret(request: HttpRequest, project_id: int):
     project.save(update_fields=["uptrace_webhook_secret", "updated_at"])
     return {"webhook_secret": project.uptrace_webhook_secret,
             "webhook_url": _webhook_url(request, project)}
+
+
+# ---- GitHub connect --------------------------------------------------------------
+
+def _settings_redirect(**params) -> HttpResponseRedirect:
+    query = "&".join(f"{k}={v}" for k, v in {"tab": "github", **params}.items())
+    return HttpResponseRedirect(f"{settings.FRONTEND_URL}/settings?{query}")
+
+
+@router.get("/github/status", response=GitHubStatusOut)
+def github_status(request: HttpRequest):
+    return {"configured": github_connect.configured(), "app_slug": settings.GITHUB_APP_SLUG}
+
+
+@router.post("/github/connect", response={200: GitHubConnectOut, 400: dict})
+def github_connect_start(request: HttpRequest):
+    if not github_connect.configured():
+        return 400, {"detail": "The GitHub App isn't configured on this server (see docs/AUTH.md)"}
+    state = github_connect.make_state(request.auth.id)
+    return 200, {"install_url": github_connect.install_url(state),
+                 "authorize_url": github_connect.authorize_url(state)}
+
+
+@router.get("/github/callback", auth=None)
+def github_connect_callback(request: HttpRequest, code: str = "", state: str = ""):
+    """GitHub redirects the browser here after install/authorize. Always answers with a
+    redirect to the settings page, never an error page."""
+    try:
+        if not github_connect.configured():
+            raise github_connect.ConnectError("not_configured")
+        user_id = github_connect.verify_state(state)
+        user = get_user_model().objects.filter(id=user_id).first()
+        if user is None:
+            raise github_connect.ConnectError("invalid_state")
+        if not code:
+            raise github_connect.ConnectError("authorization_missing")
+        installations = github_connect.user_installations(github_connect.exchange_code(code))
+    except github_connect.ConnectError as exc:
+        return _settings_redirect(github_error=exc.code)
+    except Exception:
+        logger.exception("GitHub connect callback failed")
+        return _settings_redirect(github_error="github_api_failed")
+
+    with transaction.atomic():
+        seen = []
+        for inst in installations:
+            GitHubInstallation.objects.update_or_create(
+                user=user, installation_id=inst["installation_id"],
+                defaults={"account_login": inst["account_login"],
+                          "account_type": inst["account_type"]},
+            )
+            seen.append(inst["installation_id"])
+        # Access this GitHub user no longer has (uninstalled, removed from the org) is dropped.
+        GitHubInstallation.objects.filter(user=user).exclude(installation_id__in=seen).delete()
+    return _settings_redirect(github="connected", count=len(seen))
+
+
+@router.get("/github/installations", response=list[GitHubInstallationOut])
+def list_github_installations(request: HttpRequest):
+    return list(GitHubInstallation.objects.filter(user=request.auth))
+
+
+@router.delete("/github/installations/{installation_pk}", response={204: None})
+def unlink_github_installation(request: HttpRequest, installation_pk: int):
+    get_object_or_404(GitHubInstallation, id=installation_pk, user=request.auth).delete()
+    return 204, None
+
+
+@router.get("/github/installations/{installation_pk}/repos",
+            response={200: list[GitHubRepoOut], 502: dict})
+def list_github_repos(request: HttpRequest, installation_pk: int):
+    installation = get_object_or_404(GitHubInstallation, id=installation_pk, user=request.auth)
+    try:
+        return 200, github_connect.installation_repos(installation.installation_id)
+    except Exception:
+        logger.exception("could not list repos for installation %s", installation.installation_id)
+        return 502, {"detail": "Could not list repositories from GitHub"}
 
 
 # ---- members -----------------------------------------------------------------
@@ -413,21 +574,21 @@ def list_incident_runs(request: HttpRequest, project_id: int | None = None,
                        status: str | None = None, page: int = 1, page_size: int = 20):
     page = max(page, 1)
     page_size = max(1, min(page_size, 100))
-    qs = IncidentRun.objects.filter(project_id__in=member_project_ids(request.auth))
+    qs = _incident_runs().filter(project_id__in=member_project_ids(request.auth))
     if project_id is not None:
         qs = qs.filter(project_id=project_id)
     if status:
         qs = qs.filter(status=status)
     total = qs.count()
     start = (page - 1) * page_size
-    runs = qs.select_related("created_playbook", "playbook_run")[start:start + page_size]
+    runs = qs[start:start + page_size]
     return {"runs": [_incident_out(r) for r in runs], "total": total}
 
 
 @router.get("/incident-runs/{run_id}", response=IncidentRunOut)
 def get_incident_run(request: HttpRequest, run_id: int):
     run = get_object_or_404(
-        IncidentRun.objects.select_related("created_playbook", "playbook_run"),
+        _incident_runs(),
         Q(id=run_id) & Q(project_id__in=member_project_ids(request.auth)),
     )
     return _incident_out(run)

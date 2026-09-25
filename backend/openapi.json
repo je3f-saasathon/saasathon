@@ -805,6 +805,223 @@
         ]
       }
     },
+    "/api/sre/github/status": {
+      "get": {
+        "operationId": "sre_api_github_status",
+        "summary": "Github Status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubStatusOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/github/connect": {
+      "post": {
+        "operationId": "sre_api_github_connect_start",
+        "summary": "Github Connect Start",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubConnectOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/github/callback": {
+      "get": {
+        "operationId": "sre_api_github_connect_callback",
+        "summary": "Github Connect Callback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "schema": {
+              "default": "",
+              "title": "Code",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "default": "",
+              "title": "State",
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "GitHub redirects the browser here after install/authorize. Always answers with a\nredirect to the settings page, never an error page.",
+        "tags": [
+          "sre"
+        ]
+      }
+    },
+    "/api/sre/github/installations": {
+      "get": {
+        "operationId": "sre_api_list_github_installations",
+        "summary": "List Github Installations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GitHubInstallationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/github/installations/{installation_pk}": {
+      "delete": {
+        "operationId": "sre_api_unlink_github_installation",
+        "summary": "Unlink Github Installation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "installation_pk",
+            "schema": {
+              "title": "Installation Pk",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/github/installations/{installation_pk}/repos": {
+      "get": {
+        "operationId": "sre_api_list_github_repos",
+        "summary": "List Github Repos",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "installation_pk",
+            "schema": {
+              "title": "Installation Pk",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GitHubRepoOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/sre/projects/{project_id}/members": {
       "get": {
         "operationId": "sre_api_list_members",
@@ -2168,6 +2385,10 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "github_verified": {
+            "title": "Github Verified",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2181,7 +2402,8 @@
           "uptrace_source_id",
           "default_execution_mode",
           "default_llm_config_id",
-          "created_at"
+          "created_at",
+          "github_verified"
         ],
         "title": "ProjectOut",
         "type": "object"
@@ -2247,6 +2469,10 @@
             "title": "Created At",
             "type": "string"
           },
+          "github_verified": {
+            "title": "Github Verified",
+            "type": "boolean"
+          },
           "webhook_secret": {
             "title": "Webhook Secret",
             "type": "string"
@@ -2268,6 +2494,7 @@
           "default_execution_mode",
           "default_llm_config_id",
           "created_at",
+          "github_verified",
           "webhook_secret",
           "webhook_url"
         ],
@@ -2429,6 +2656,98 @@
           "webhook_url"
         ],
         "title": "WebhookSecretOut",
+        "type": "object"
+      },
+      "GitHubStatusOut": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "app_slug": {
+            "title": "App Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "configured",
+          "app_slug"
+        ],
+        "title": "GitHubStatusOut",
+        "type": "object"
+      },
+      "GitHubConnectOut": {
+        "properties": {
+          "install_url": {
+            "title": "Install Url",
+            "type": "string"
+          },
+          "authorize_url": {
+            "title": "Authorize Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "install_url",
+          "authorize_url"
+        ],
+        "title": "GitHubConnectOut",
+        "type": "object"
+      },
+      "GitHubInstallationOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "installation_id": {
+            "title": "Installation Id",
+            "type": "string"
+          },
+          "account_login": {
+            "title": "Account Login",
+            "type": "string"
+          },
+          "account_type": {
+            "title": "Account Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "installation_id",
+          "account_login",
+          "account_type"
+        ],
+        "title": "GitHubInstallationOut",
+        "type": "object"
+      },
+      "GitHubRepoOut": {
+        "properties": {
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "default_branch": {
+            "title": "Default Branch",
+            "type": "string"
+          },
+          "private": {
+            "title": "Private",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "owner",
+          "name",
+          "default_branch",
+          "private"
+        ],
+        "title": "GitHubRepoOut",
         "type": "object"
       },
       "MemberOut": {
@@ -3055,6 +3374,48 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "playbook": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaybookBriefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pr_url": {
+            "title": "Pr Url",
+            "type": "string"
+          },
+          "playbook_run_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playbook Run Status"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/UsageOut"
           }
         },
         "required": [
@@ -3071,9 +3432,124 @@
           "diagnosis_report",
           "error_message",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "project_name",
+          "playbook",
+          "pr_url",
+          "playbook_run_status",
+          "execution_mode",
+          "usage"
         ],
         "title": "IncidentRunOut",
+        "type": "object"
+      },
+      "PlaybookBriefOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "source"
+        ],
+        "title": "PlaybookBriefOut",
+        "type": "object"
+      },
+      "StepUsageOut": {
+        "properties": {
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "step",
+          "provider",
+          "model",
+          "calls",
+          "input_tokens",
+          "output_tokens"
+        ],
+        "title": "StepUsageOut",
+        "type": "object"
+      },
+      "UsageOut": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "by_step": {
+            "items": {
+              "$ref": "#/components/schemas/StepUsageOut"
+            },
+            "title": "By Step",
+            "type": "array"
+          }
+        },
+        "required": [
+          "calls",
+          "input_tokens",
+          "output_tokens",
+          "total_tokens",
+          "models",
+          "by_step"
+        ],
+        "title": "UsageOut",
         "type": "object"
       },
       "AttemptOut": {

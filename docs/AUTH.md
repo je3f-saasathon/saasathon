@@ -22,6 +22,35 @@ Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `backend/.env` (or `.env.pr
 Both callback URLs work unchanged through `scripts/dev-tunnel.sh`, since it forwards
 the same ports back to `localhost`.
 
+## GitHub App (SRE agent)
+
+The SRE agent clones, pushes and opens PRs as a GitHub App (`GITHUB_APP_ID`,
+`GITHUB_APP_PRIVATE_KEY_PATH`). A project can only use an installation that one of its
+editors has proved access to through **Settings → GitHub → Connect GitHub**, so nobody
+can point a project at another account's installation. In the App's settings
+(GitHub → Settings → Developer settings → GitHub Apps → your app):
+
+- **Callback URL**: `{backend}/api/sre/github/callback`, e.g.
+  `http://localhost:8000/api/sre/github/callback` (native dev), `http://localhost:8300/...`
+  (docker dev, also what the tunnel forwards) and `https://api-dev.andrewplescan.com/api/sre/github/callback` (prod).
+  A GitHub App can list several callback URLs.
+- Tick **Request user authorization (OAuth) during installation**. GitHub then sends the
+  user to the callback (with `code` and our `state`) after installing. Leave the separate
+  Setup URL empty; GitHub ignores it when this box is ticked.
+- **Client secrets → Generate a new client secret.**
+- Prod only: **Where can this GitHub App be installed? → Any account**, so customers can install it.
+
+Then set these in `backend/.env` (or `.env.prod`) and recreate the backend container:
+
+- `GITHUB_APP_SLUG`: the `<slug>` in `https://github.com/apps/<slug>`
+- `GITHUB_APP_CLIENT_ID`: the App's Client ID (not the App ID)
+- `GITHUB_APP_CLIENT_SECRET`: the secret you just generated
+
+The callback asks GitHub (with the user's token, which is never stored) for
+`/user/installations` and records the ones for this App, replacing that user's previous list.
+Projects created before this flow keep working and show as "Unverified" until an owner
+connects GitHub. Changing a project's installation or repo always needs the check.
+
 ## Account linking
 
 Accounts are linked by verified email: if a user signs in with GitHub or Google

@@ -299,6 +299,112 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sre/github/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Github Status */
+        get: operations["sre_api_github_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/github/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Github Connect Start */
+        post: operations["sre_api_github_connect_start"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/github/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Github Connect Callback
+         * @description GitHub redirects the browser here after install/authorize. Always answers with a
+         *     redirect to the settings page, never an error page.
+         */
+        get: operations["sre_api_github_connect_callback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/github/installations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Github Installations */
+        get: operations["sre_api_list_github_installations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/github/installations/{installation_pk}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unlink Github Installation */
+        delete: operations["sre_api_unlink_github_installation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/github/installations/{installation_pk}/repos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Github Repos */
+        get: operations["sre_api_list_github_repos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sre/projects/{project_id}/members": {
         parameters: {
             query?: never;
@@ -695,6 +801,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Github Verified */
+            github_verified: boolean;
         };
         /**
          * ProjectRole
@@ -726,6 +834,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Github Verified */
+            github_verified: boolean;
             /** Webhook Secret */
             webhook_secret: string;
             /** Webhook Url */
@@ -778,6 +888,42 @@ export interface components {
             webhook_secret: string;
             /** Webhook Url */
             webhook_url: string;
+        };
+        /** GitHubStatusOut */
+        GitHubStatusOut: {
+            /** Configured */
+            configured: boolean;
+            /** App Slug */
+            app_slug: string;
+        };
+        /** GitHubConnectOut */
+        GitHubConnectOut: {
+            /** Install Url */
+            install_url: string;
+            /** Authorize Url */
+            authorize_url: string;
+        };
+        /** GitHubInstallationOut */
+        GitHubInstallationOut: {
+            /** Id */
+            id: number;
+            /** Installation Id */
+            installation_id: string;
+            /** Account Login */
+            account_login: string;
+            /** Account Type */
+            account_type: string;
+        };
+        /** GitHubRepoOut */
+        GitHubRepoOut: {
+            /** Owner */
+            owner: string;
+            /** Name */
+            name: string;
+            /** Default Branch */
+            default_branch: string;
+            /** Private */
+            private: boolean;
         };
         /** MemberOut */
         MemberOut: {
@@ -1018,6 +1164,55 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Project Name */
+            project_name: string;
+            playbook: components["schemas"]["PlaybookBriefOut"] | null;
+            /** Pr Url */
+            pr_url: string;
+            /** Playbook Run Status */
+            playbook_run_status: string | null;
+            execution_mode: components["schemas"]["ExecutionMode"] | null;
+            usage: components["schemas"]["UsageOut"];
+        };
+        /** PlaybookBriefOut */
+        PlaybookBriefOut: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            status: components["schemas"]["Status"];
+            /** Source */
+            source: string;
+        };
+        /** StepUsageOut */
+        StepUsageOut: {
+            /** Step */
+            step: string;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Calls */
+            calls: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+        };
+        /** UsageOut */
+        UsageOut: {
+            /** Calls */
+            calls: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Total Tokens */
+            total_tokens: number;
+            /** Models */
+            models: string[];
+            /** By Step */
+            by_step: components["schemas"]["StepUsageOut"][];
         };
         /** AttemptOut */
         AttemptOut: {
@@ -1633,6 +1828,151 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookSecretOut"];
+                };
+            };
+        };
+    };
+    sre_api_github_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubStatusOut"];
+                };
+            };
+        };
+    };
+    sre_api_github_connect_start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubConnectOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_github_connect_callback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_api_list_github_installations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubInstallationOut"][];
+                };
+            };
+        };
+    };
+    sre_api_unlink_github_installation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                installation_pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_api_list_github_repos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                installation_pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubRepoOut"][];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

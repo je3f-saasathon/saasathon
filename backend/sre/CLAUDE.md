@@ -70,7 +70,7 @@ Uptrace ─POST /api/sre/webhooks/uptrace/{project_id}─▶ Django (HMAC or sha
   - Langfuse (self-hosted v4) at **3100**, login `admin@localhost.dev` / `localdev-password`, project
     "SRE agent", keys `pk-lf-local-dev` / `sk-lf-local-dev`.
   - Langfuse v4 is "events-only": use the SDK (`lf.api.observations.get_many(...)`), not the old `/traces` endpoint.
-- Tests: `cd backend && uv run pytest` (93 pass). Workflow tests use Temporal's time-skipping server;
+- Tests: `cd backend && uv run pytest` (108 pass). Workflow tests use Temporal's time-skipping server;
   `-m sandbox` tests need Docker and the image (`make sandbox-image`).
 - `.env` changes only reach a docker container when it's recreated
   (`docker compose -p saasathon up -d --no-deps sre-worker`), and the worker never auto-reloads code
@@ -140,21 +140,31 @@ pick per-step defaults. The client code exists for all three, but **only OpenAI 
 4. **Evaluation harness.** Replay the `django-buggy-app` `bug/*` branches (5 bugs) across provider
    and step combinations, grade against `BUGS.md` (kept away from the agent — see above), and
    compare in Langfuse (group by tag `project:{id}`, model, session).
-5. **Model config management.** There's no UI yet; configs are created via `/api/sre/llm-configs` or
-   the ORM. `extra_config` supports `max_tokens` and `temperature`.
+5. **Model config management.** Done: `/settings` → Models (CRUD, keys never shown) and
+   Projects → "Models for this project" (default config + per-step overrides, Jev disabled
+   where it can't run). `extra_config` supports `max_tokens` and `temperature`.
 
 ## Other open items (not started)
 
-- **Security: GitHub connect flow.** Projects take a raw `github_installation_id`, and nothing checks
-  that it belongs to the user, so a user could point a project at another customer's installation.
-  Build: install link with a signed `state` → Setup URL endpoint → exchange the OAuth `code` → confirm
-  via `GET /user/installations` → store it, and remove the manual field. The prod app needs "Any
-  account", a Setup/Callback URL, and "Request user authorization during installation". **Do this
-  before real users.**
-- An approve/reject UI in the frontend (approval is API-only today), and wiring the `/dashboard` mock
-  table to `/api/sre/incident-runs`.
+- **GitHub connect flow: built, not yet live-tested.** `/settings` → GitHub → Connect sends
+  the user to install/authorize the App. `GET /api/sre/github/callback` verifies a signed `state`
+  (user id, 10 min), exchanges the `code` and stores the caller's `/user/installations` as
+  `GitHubInstallation` rows. Project create, and any *change* to a project's installation or
+  repo, require an installation the caller connected plus a repo it can reach. Old projects are
+  grandfathered and show `github_verified: false`. **To finish:** apply the App settings in
+  `docs/AUTH.md` (Callback URL, "Request user authorization during installation", client
+  secret; "Any account" for prod), set `GITHUB_APP_SLUG` / `GITHUB_APP_CLIENT_ID` /
+  `GITHUB_APP_CLIENT_SECRET`, recreate the backend container and run it once over the tunnel.
+  Residual risk (state not bound to a cookie) is in `docs/tradeoffs.md` §4.
+- An approve/reject UI in the frontend (approval is API-only today). `/dashboard` is wired to
+  `/api/sre/incident-runs` (PR link, playbook, models, tokens; diagnosis behind a click).
+- LLM usage: each call writes an `LLMUsage` row (tokens, model, step) through `llm/usage.py`'s
+  scope, which `activities.llm_step` opens. Runs from before that are filled from Langfuse by
+  `manage.py backfill_llm_usage` (already run on the docker-mode Postgres).
 - Prod: provision Temporal and Langfuse (not in `docker-compose.prod.yml`), create the prod GitHub App
   and `.env.prod` values, and run `make sandbox-image-prod` (see `docs/DEPLOYMENT.md`).
 - Incident grouping (a crash loop means N workflows and N PRs) and semantic playbook search
   (`docs/tradeoffs.md`).
 - Already broken before this branch: `scripts/test-scripts.sh` test 1 fails, and Node 26 vs `.nvmrc` 20.17.0.
+  On Node 26, frontend tests need `NODE_OPTIONS=--no-experimental-webstorage pnpm test`
+  (Node's built-in localStorage shadows jsdom's). Node 20 doesn't know that flag.

@@ -6,9 +6,9 @@ usage() {
   cat <<'EOF'
 Usage: scripts/stop.sh [--all]
 
-Stops anything this repo started, in either native or docker mode.
-Succeeds quietly if nothing is running. Leaves the SRE infra (Temporal +
-Langfuse) running; stop that with `make infra-down`.
+Stops anything this repo started, in either native or docker mode, and
+also stops the SRE infra (Temporal + Langfuse, compose project
+"saasathon-infra"). Succeeds quietly if nothing is running.
 
   --all   also sweep the known ports for matching processes and project
           docker containers even if .run/ was deleted
@@ -38,6 +38,10 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   if docker compose -p saasathon -f "$REPO_ROOT/docker-compose.yml" ps -q 2>/dev/null | grep -q .; then
     log_info "stopping docker compose stack"
     docker compose -p saasathon -f "$REPO_ROOT/docker-compose.yml" down
+    did_something=1
+  fi
+  if docker compose -p saasathon-infra -f "$REPO_ROOT/docker-compose.infra.yml" ps -q 2>/dev/null | grep -q .; then
+    "$REPO_ROOT/scripts/infra.sh" down
     did_something=1
   fi
 fi

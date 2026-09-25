@@ -30,6 +30,8 @@ class ProjectOut(Schema):
     default_execution_mode: ExecutionMode
     default_llm_config_id: int | None
     created_at: datetime
+    # True when an owner has proved (via Connect GitHub) access to the installation.
+    github_verified: bool
 
 
 class ProjectCreatedOut(ProjectOut):
@@ -179,6 +181,31 @@ class PlaybookRunOut(Schema):
     attempts: list[AttemptOut]
 
 
+class PlaybookBriefOut(Schema):
+    id: int
+    title: str
+    status: Playbook.Status
+    source: str  # "matched" (reused) or "created" (written from this incident)
+
+
+class StepUsageOut(Schema):
+    step: str
+    provider: str
+    model: str
+    calls: int
+    input_tokens: int
+    output_tokens: int
+
+
+class UsageOut(Schema):
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    models: list[str]
+    by_step: list[StepUsageOut]
+
+
 class IncidentRunOut(Schema):
     id: int
     project_id: int
@@ -194,6 +221,12 @@ class IncidentRunOut(Schema):
     error_message: str
     created_at: datetime
     updated_at: datetime
+    project_name: str
+    playbook: PlaybookBriefOut | None
+    pr_url: str
+    playbook_run_status: str | None
+    execution_mode: ExecutionMode | None
+    usage: UsageOut
 
 
 class IncidentRunListOut(Schema):
@@ -203,3 +236,27 @@ class IncidentRunListOut(Schema):
 
 class ApprovePlaybookRunIn(Schema):
     approve: bool
+
+
+class GitHubStatusOut(Schema):
+    configured: bool
+    app_slug: str
+
+
+class GitHubConnectOut(Schema):
+    install_url: str
+    authorize_url: str
+
+
+class GitHubInstallationOut(Schema):
+    id: int
+    installation_id: str
+    account_login: str
+    account_type: str
+
+
+class GitHubRepoOut(Schema):
+    owner: str
+    name: str
+    default_branch: str
+    private: bool

@@ -39,6 +39,11 @@ interface DataTableProps<TData, TValue> {
   /** Extra controls rendered in the toolbar next to the search input. */
   toolbar?: React.ReactNode;
   pageSize?: number;
+  /** Makes rows clickable. */
+  onRowClick?: (row: TData) => void;
+  /** Row id (from getRowId) to highlight as selected. */
+  selectedRowId?: string;
+  getRowId?: (row: TData) => string;
 }
 
 export function DataTable<TData, TValue>({
@@ -48,6 +53,9 @@ export function DataTable<TData, TValue>({
   filterPlaceholder = "Filter...",
   toolbar,
   pageSize = 10,
+  onRowClick,
+  selectedRowId,
+  getRowId,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -56,6 +64,7 @@ export function DataTable<TData, TValue>({
   const table = useReactTable({
     data,
     columns,
+    getRowId,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -124,7 +133,12 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow
+                  key={row.id}
+                  data-state={row.id === selectedRowId ? "selected" : undefined}
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                  className={onRowClick ? "cursor-pointer" : undefined}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

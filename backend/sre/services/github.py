@@ -2,10 +2,8 @@ import base64
 import subprocess
 from pathlib import Path
 
-from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured
-
 from ..models import Project
+from .github_connect import installation_token
 
 # Never let repo-controlled config run code in the worker (which holds every secret).
 SAFE_GIT_CONFIG = [
@@ -39,13 +37,7 @@ class GitHubRepo:
 
     def token(self) -> str:
         if self._token is None:
-            from github import Auth, GithubIntegration
-
-            if not (settings.GITHUB_APP_ID and settings.GITHUB_APP_PRIVATE_KEY_PATH):
-                raise ImproperlyConfigured("GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY_PATH not set")
-            private_key = Path(settings.GITHUB_APP_PRIVATE_KEY_PATH).read_text()
-            integration = GithubIntegration(auth=Auth.AppAuth(settings.GITHUB_APP_ID, private_key))
-            self._token = integration.get_access_token(int(self.project.github_installation_id)).token
+            self._token = installation_token(self.project.github_installation_id)
         return self._token
 
     def _auth_config(self) -> list[str]:
