@@ -67,6 +67,9 @@ services:
     volumes:
       - ./backend:/app
       - /app/.venv
+      # Local secrets (GitHub App .pem) at the same path as on the host, so
+      # GITHUB_APP_PRIVATE_KEY_PATH in backend/.env works in both modes.
+      - ${HOME}/.config/saasathon:${HOME}/.config/saasathon:ro
       - /var/run/docker.sock:/var/run/docker.sock
       # Same path inside and out: the sandbox bind-mounts checkouts via the host daemon.
       - /tmp/sre-work:/tmp/sre-work
