@@ -110,16 +110,20 @@ Uptrace ─POST /api/sre/webhooks/uptrace/{project_id}─▶ Django (HMAC or sha
 Goal: run every pipeline step on each provider family, compare quality/cost/latency in Langfuse, and
 pick per-step defaults. The client code exists for all three, but **only OpenAI has been run for real**.
 
-1. **Jev (Cloudflare Workers AI, `jev_cloudflare`)**
-   - `JevClient` asks one `choice` question through `jev.client.run_jev`. Only
-     `anomaly_double_check`, `bug_classification` and `playbook_similarity_judge` are allowed
-     (`JEV_STEPS`); it can't author or execute playbooks. Classification gets its keywords from
-     `heuristic_keywords` because Jev can't emit them.
-   - It currently uses the **server's** `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`, not the user's
-     config. Make it per-user: token in `api_key_encrypted`, account id in `extra_config`, which means
-     extending `run_jev` or adding a variant that takes credentials.
-   - Never live-tested: needs Cloudflare credentials and gateway balance/BYOK (otherwise it returns 402).
-     Also check the question types (`noul`/`score`) — `score` could give the judge a confidence value.
+1. **Jev (Cloudflare Workers AI, `jev_cloudflare`)** — integrated and live-tested (branch
+   `feat/jev-sre-integration`, 2026-09-26).
+   - `JevClient.choose` / `choose_many` ask `choice` questions through `jev.client.run_jev` (one
+     call can ask several). Only `anomaly_double_check`, `bug_classification` (category + severity
+     in one call) and `playbook_similarity_judge` are allowed (`JEV_STEPS`); keywords for
+     classification come from `heuristic_keywords` because Jev can't emit them.
+   - Jev returns `probabilities` per option; the chosen option's probability is the judge's
+     confidence, so `MATCH_CONFIDENCE_THRESHOLD` applies as for chat models. Token usage is recorded.
+   - Credentials: the config's API key is a Cloudflare token, `extra_config.account_id` its account;
+     each falls back to the server's `CLOUDFLARE_*` (backend `.env` has a working test account).
+     The frontend can't set `account_id` yet (it keeps unknown `extra_config` keys on edit).
+   - Live check (2026-09-26): correct answers on a NoneType crash (yes / null_reference / high /
+     right playbook) and a crawler 404 (no, p=0.99); ~0.3-2 s per call.
+   - Not yet: a full webhook → Temporal run with Jev on the triage steps, and Langfuse comparison.
 2. **Anthropic (`anthropic`)**
    - `AnthropicClient` exists and is untested live. Use the `claude-api` skill for current model ids and
      parameters; don't guess from memory. Check `max_tokens` limits, whether temperature is supported

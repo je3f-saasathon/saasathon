@@ -117,7 +117,7 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | GET | `/sre/projects/{id}/step-overrides` | viewer | `{step, llm_config_id, llm_config_name}[]` |
 | PUT | `/sre/projects/{id}/step-overrides` | admin; `{overrides: {[step]: llm_config_id \| null}}` — null removes, unlisted steps unchanged; configs must be the caller's own | `StepOverride[]`; `400` for Jev on a step it can't run |
 
-`LLMConfig`: `{id, name, provider, model, base_url, has_api_key, extra_config, created_at}`. The API key is encrypted at rest and **never** returned. A step uses its override if set, else the project's default config; with neither, the incident fails with a clear `error_message`.
+`LLMConfig`: `{id, name, provider, model, base_url, has_api_key, extra_config, created_at}`. The API key is encrypted at rest and **never** returned. `extra_config` accepts `max_tokens` and `temperature`; for `jev_cloudflare` the API key is a Cloudflare API token and `extra_config.account_id` its account id, and an empty key, account id or `model` falls back to the server's `CLOUDFLARE_*` settings. A step uses its override if set, else the project's default config; with neither, the incident fails with a clear `error_message`.
 
 ### Playbooks
 
@@ -143,7 +143,7 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 `IncidentRun`: `{id, project_id, trace_id, uptrace_exception_id, temporal_workflow_id, status, classification, matched_playbook_id, created_playbook_id, playbook_run_id, diagnosis_report, error_message, created_at, updated_at, project_name, playbook, pr_url, playbook_run_status, execution_mode, generate_tests, usage}`. It backs the frontend `/dashboard` table.
 - `playbook`: `{id, title, status, source}` or `null` — the matched playbook (`source: "matched"`), else the one written from this incident (`"created"`).
 - `pr_url` is `""` when no PR was opened; `playbook_run_status` / `execution_mode` / `generate_tests` (the run's frozen setting) are `null` without a playbook run.
-- `usage`: `{calls, input_tokens, output_tokens, total_tokens, models: string[], by_step: [{step, provider, model, calls, input_tokens, output_tokens}]}` — one entry per LLM call the incident made (a retried activity counts again; those tokens were spent). `step` is the pipeline step, or `diagnosis_report`. Jev calls count as calls with 0 tokens.
+- `usage`: `{calls, input_tokens, output_tokens, total_tokens, models: string[], by_step: [{step, provider, model, calls, input_tokens, output_tokens}]}` — one entry per LLM call the incident made (a retried activity counts again; those tokens were spent). `step` is the pipeline step, or `diagnosis_report`. Jev calls report the tokens Cloudflare returns.
 
 `PlaybookRun`: `{id, incident_run_id, playbook_id, execution_mode, generate_tests, status, approved_by_id, approved_at, pr_url, branch_name, attempts: Attempt[]}` where `Attempt` is `{attempt_number, outcome, summary, error_output, generated_steps, branch_name, langfuse_trace_id, created_at}` (up to 3; each re-plans from the previous attempt's error). `approved_by_id` / `approved_at` record whoever decided, for approvals and rejections alike.
 
