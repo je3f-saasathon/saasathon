@@ -18,7 +18,7 @@ export function Layout() {
           <Link to="/" className="text-lg font-semibold">
             App
           </Link>
-          <Link to="/" className="text-sm text-gray-600 hover:text-gray-900">
+          <Link to="/items" className="text-sm text-gray-600 hover:text-gray-900">
             Items
           </Link>
           <Link to="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">

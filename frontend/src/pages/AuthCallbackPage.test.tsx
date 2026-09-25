@@ -17,7 +17,7 @@ function renderCallback(hash: string) {
       <AuthProvider>
         <Routes>
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
-          <Route path="/" element={<WhoAmI />} />
+          <Route path="/dashboard" element={<WhoAmI />} />
         </Routes>
       </AuthProvider>
     </MemoryRouter>,

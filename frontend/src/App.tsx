@@ -6,6 +6,7 @@ import { Layout } from "./components/Layout";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { DashboardPage } from "./pages/dashboard/DashboardPage";
 import { ItemsPage } from "./pages/ItemsPage";
+import { LandingPage } from "./pages/landing/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -19,12 +20,13 @@ export function App() {
       <BrowserRouter>
         <AuthProvider>
           <Routes>
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
             <Route element={<Layout />}>
               <Route
-                path="/"
+                path="/items"
                 element={
                   <ProtectedRoute>
                     <ItemsPage />
