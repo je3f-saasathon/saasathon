@@ -93,7 +93,7 @@ export const columns: ColumnDef<IncidentRun>[] = [
     accessorFn: incidentSummary,
     header: "Incident",
     cell: ({ row }) => (
-      <div className="min-w-[14rem] max-w-md truncate" title={row.getValue("incident")}>
+      <div className="min-w-[10rem] max-w-[16rem] truncate" title={row.getValue("incident")}>
         {row.getValue("incident")}
       </div>
     ),
@@ -110,7 +110,7 @@ export const columns: ColumnDef<IncidentRun>[] = [
     cell: ({ row }) => {
       const title = row.getValue<string>("playbook");
       return title ? (
-        <div className="max-w-[14rem] truncate" title={title}>
+        <div className="max-w-[11rem] truncate" title={title}>
           {title}
         </div>
       ) : (
@@ -130,7 +130,13 @@ export const columns: ColumnDef<IncidentRun>[] = [
     cell: ({ row }) => {
       const models = row.getValue<string>("model");
       return models ? (
-        <span className="whitespace-nowrap font-mono text-xs">{models}</span>
+        <div className="font-mono text-xs">
+          {models.split(", ").map((model) => (
+            <div key={model} className="whitespace-nowrap">
+              {model}
+            </div>
+          ))}
+        </div>
       ) : (
         <span className="text-muted-foreground">n/a</span>
       );
