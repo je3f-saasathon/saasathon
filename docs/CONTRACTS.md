@@ -59,7 +59,7 @@ All routes are under `/api/sre` and require `Authorization: Bearer <token>`, exc
 **Access.** A project's members have a role: `owner` > `admin` > `viewer`. Not a member → `404` (the project's existence isn't revealed). Member without the needed role → `403`. Reads need `viewer`; approvals, playbook edits, execution mode and LLM config changes need `admin`; members, repo wiring, webhook secret and deletion need `owner`. A project always keeps at least one owner (`409` otherwise).
 
 **Enums.**
-- `execution_mode`: `autonomous` (opens the PR itself) · `draft_only` (default; pushes a branch, waits for an admin to approve before opening the PR) · `advisory_only` (writes a diagnosis only, never touches the repo). An `unconfirmed` playbook never runs above `draft_only`.
+- `execution_mode`: `autonomous` (opens the PR itself) · `draft_only` (default; opens a GitHub **draft** PR right away, and an admin's approval marks it ready for review while rejection closes it. On repos whose plan doesn't allow drafts it opens a normal PR titled `[Awaiting approval] …` instead, and approval removes the prefix) · `advisory_only` (writes a diagnosis only, never touches the repo). An `unconfirmed` playbook never runs above `draft_only`.
 - `provider`: `anthropic` · `openai` · `self_hosted` (any OpenAI-compatible server; needs `base_url`) · `jev_cloudflare` (only for `anomaly_double_check`, `bug_classification`, `playbook_similarity_judge`).
 - `step`: `anomaly_double_check` · `bug_classification` · `playbook_similarity_judge` · `playbook_creation` · `playbook_execution`.
 - incident `status`: `running` · `no_anomaly` · `new_playbook_created` · `awaiting_approval` · `succeeded` · `failed` · `advisory_complete`.
@@ -125,7 +125,7 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | GET | `/sre/incident-runs` | member (across all your projects) | `?project_id=&status=&page=1&page_size=20` | `{runs: IncidentRun[], total}` |
 | GET | `/sre/incident-runs/{id}` | viewer | — | `IncidentRun` |
 | GET | `/sre/playbook-runs/{id}` | viewer | — | `PlaybookRun` |
-| POST | `/sre/playbook-runs/{id}/approve` | admin | `{approve: bool}` | `PlaybookRun`; `409` if not `pending_approval` or already decided; `503` if the workflow can't be reached (decision released, retry) |
+| POST | `/sre/playbook-runs/{id}/approve` | admin | `{approve: bool}` — `true` marks the PR ready for review, `false` closes it | `PlaybookRun`; `409` if not `pending_approval` or already decided; `503` if the workflow can't be reached (decision released, retry) |
 
 `IncidentRun`: `{id, project_id, trace_id, uptrace_exception_id, temporal_workflow_id, status, classification, matched_playbook_id, created_playbook_id, playbook_run_id, diagnosis_report, error_message, created_at, updated_at}`. This is the intended backing data for the frontend `/dashboard` table (currently mock data in `frontend/src/pages/dashboard/mock-logs.ts`).
 

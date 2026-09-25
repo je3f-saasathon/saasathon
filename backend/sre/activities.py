@@ -155,18 +155,28 @@ def write_diagnosis_report(inp: IncidentInput) -> None:
 
 @django_activity
 def open_pull_request(playbook_run_id: int) -> str:
+    """Runs on approval: makes the draft PR ready for review, or opens a PR if the
+    attempt didn't leave one (e.g. runs from before draft PRs existed)."""
     playbook_run = PlaybookRun.objects.select_related(
         "incident_run__project", "playbook"
     ).get(id=playbook_run_id)
-    if playbook_run.pr_url:
-        return playbook_run.pr_url
-    attempt = playbook_run.attempts.filter(outcome="succeeded").order_by("-attempt_number").first()
-    summary = attempt.summary if attempt else ""
     repo = GitHubRepo(playbook_run.incident_run.project)
-    pr_url = repo.open_pull_request(playbook_run.branch_name, *pr_title_body(playbook_run, summary))
+    pr_url = repo.mark_pull_request_approved(playbook_run.branch_name)
+    if pr_url is None:
+        attempt = playbook_run.attempts.filter(outcome="succeeded").order_by("-attempt_number").first()
+        summary = attempt.summary if attempt else ""
+        pr_url = repo.open_pull_request(playbook_run.branch_name, *pr_title_body(playbook_run, summary))
     playbook_run.pr_url = pr_url
     playbook_run.save(update_fields=["pr_url", "updated_at"])
     return pr_url
+
+
+@django_activity
+def close_pull_request(playbook_run_id: int) -> None:
+    playbook_run = PlaybookRun.objects.select_related("incident_run__project").get(id=playbook_run_id)
+    GitHubRepo(playbook_run.incident_run.project).close_pull_request(
+        playbook_run.branch_name, "Rejected in the SRE agent; closing without merging."
+    )
 
 
 @django_activity
@@ -219,6 +229,7 @@ ALL_ACTIVITIES = [
     run_playbook_attempt,
     write_diagnosis_report,
     open_pull_request,
+    close_pull_request,
     set_playbook_run_status,
     record_playbook_outcome,
     mark_incident_status,

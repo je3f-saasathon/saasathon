@@ -92,6 +92,10 @@ def stub_activities(s: Scenario):
         s.calls.append("open_pull_request")
         return "https://github.com/o/r/pull/1"
 
+    @activity.defn(name="close_pull_request")
+    async def close_pull_request(playbook_run_id: int) -> None:
+        s.calls.append("close_pull_request")
+
     @activity.defn(name="set_playbook_run_status")
     async def set_playbook_run_status(inp: PlaybookRunStatus) -> None:
         s.run_status.append(inp.status)
@@ -106,7 +110,7 @@ def stub_activities(s: Scenario):
 
     return [confirm_anomaly, classify_bug, find_candidate_playbooks, judge_playbook_match,
             create_playbook, create_playbook_run, run_playbook_attempt, write_diagnosis_report,
-            open_pull_request, set_playbook_run_status, record_playbook_outcome,
+            open_pull_request, close_pull_request, set_playbook_run_status, record_playbook_outcome,
             mark_incident_status]
 
 
@@ -188,6 +192,7 @@ def test_draft_only_rejection_opens_no_pr():
     assert run_workflow(s, ApprovalDecision(approve=False, user_id=3)) == "failed"
     assert s.run_status == ["pending_approval", "rejected"]
     assert "open_pull_request" not in s.calls
+    assert "close_pull_request" in s.calls
     assert "record_playbook_outcome" not in s.calls
 
 

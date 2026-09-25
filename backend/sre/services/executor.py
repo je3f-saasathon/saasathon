@@ -99,9 +99,12 @@ class PlaybookExecutor:
         repo.commit_and_push(git_dir, work_tree, self.branch, self._commit_message(summary))
         self.heartbeat("pushed")
 
-        pr_url = ""
-        if self.playbook_run.execution_mode == ExecutionMode.AUTONOMOUS:
-            pr_url = repo.open_pull_request(self.branch, *pr_title_body(self.playbook_run, summary))
+        # Draft-only still opens the PR (as a draft) so it can be reviewed on GitHub;
+        # approval in our app is what makes it ready for review.
+        draft = self.playbook_run.execution_mode == ExecutionMode.DRAFT_ONLY
+        pr_url = repo.open_pull_request(
+            self.branch, *pr_title_body(self.playbook_run, summary), draft=draft
+        )
         return AttemptResult("succeeded", "", self.branch, pr_url, summary=summary)
 
     def _agent_loop(self, box: Sandbox) -> tuple[str, bool]:

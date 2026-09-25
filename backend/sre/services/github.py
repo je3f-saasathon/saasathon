@@ -16,6 +16,13 @@ SAFE_GIT_CONFIG = [
 ]
 
 
+AWAITING_APPROVAL_PREFIX = "[Awaiting approval] "
+AWAITING_APPROVAL_NOTE = (
+    "> **Awaiting approval in the SRE agent.** This repo's plan doesn't allow draft PRs, "
+    "so this PR is marked by its title instead. Don't merge until it's approved.\n\n"
+)
+
+
 class GitError(Exception):
     pass
 
@@ -83,15 +90,55 @@ class GitHubRepo:
         self._git(git_dir, work_tree, "push", "--force", "origin", f"HEAD:refs/heads/{branch}",
                   auth=True)
 
-    def open_pull_request(self, branch: str, title: str, body: str) -> str:
-        """Idempotent: returns the existing open PR for the branch if there is one."""
+    def _repo(self):
         from github import Auth, Github
 
-        repo = Github(auth=Auth.Token(self.token())).get_repo(self.full_name)
-        existing = repo.get_pulls(state="open", head=f"{self.project.github_repo_owner}:{branch}")
-        for pr in existing:
-            return pr.html_url
-        pr = repo.create_pull(
-            base=self.project.github_default_branch, head=branch, title=title, body=body
-        )
+        return Github(auth=Auth.Token(self.token())).get_repo(self.full_name)
+
+    def _open_pr(self, repo, branch: str):
+        for pr in repo.get_pulls(state="open", head=f"{self.project.github_repo_owner}:{branch}"):
+            return pr
+        return None
+
+    def open_pull_request(self, branch: str, title: str, body: str, draft: bool = False) -> str:
+        """Idempotent: returns the existing open PR for the branch if there is one.
+        With draft=True it opens a draft PR, or, where the plan doesn't allow drafts
+        (private repos on free plans), a normal PR marked as awaiting approval."""
+        from github import GithubException
+
+        repo = self._repo()
+        existing = self._open_pr(repo, branch)
+        if existing is not None:
+            return existing.html_url
+        base = self.project.github_default_branch
+        if not draft:
+            return repo.create_pull(base=base, head=branch, title=title, body=body).html_url
+        try:
+            return repo.create_pull(base=base, head=branch, title=title, body=body, draft=True).html_url
+        except GithubException as exc:
+            if exc.status != 422 or "draft" not in str(exc.data).lower():
+                raise
+        return repo.create_pull(
+            base=base, head=branch, title=AWAITING_APPROVAL_PREFIX + title,
+            body=AWAITING_APPROVAL_NOTE + body,
+        ).html_url
+
+    def mark_pull_request_approved(self, branch: str) -> str | None:
+        """Draft → ready for review (or drop the awaiting-approval marker). None if no open PR."""
+        repo = self._repo()
+        pr = self._open_pr(repo, branch)
+        if pr is None:
+            return None
+        if pr.draft:
+            pr.mark_ready_for_review()
+        if pr.title.startswith(AWAITING_APPROVAL_PREFIX):
+            pr.edit(title=pr.title[len(AWAITING_APPROVAL_PREFIX):],
+                    body=(pr.body or "").replace(AWAITING_APPROVAL_NOTE, ""))
         return pr.html_url
+
+    def close_pull_request(self, branch: str, comment: str) -> None:
+        repo = self._repo()
+        pr = self._open_pr(repo, branch)
+        if pr is not None:
+            pr.create_issue_comment(comment)
+            pr.edit(state="closed")

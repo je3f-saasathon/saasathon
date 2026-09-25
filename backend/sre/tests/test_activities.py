@@ -232,8 +232,8 @@ class FakeRepo:
     def commit_and_push(self, git_dir, work_tree, branch, message):
         self.pushed.append(branch)
 
-    def open_pull_request(self, branch, title, body):
-        self.prs.append(branch)
+    def open_pull_request(self, branch, title, body, draft=False):
+        self.prs.append((branch, draft))
         return f"https://github.com/acme/shop/pull/{len(self.prs)}"
 
 
@@ -294,11 +294,17 @@ def test_autonomous_attempt_pushes_and_opens_pr(monkeypatch, fake_infra, project
     assert [s["type"] for s in attempt.generated_steps] == ["edit_file", "run_command"]
 
 
-def test_draft_attempt_pushes_but_opens_no_pr(monkeypatch, fake_infra, project, incident):
+def test_draft_attempt_opens_draft_pr(monkeypatch, fake_infra, project, incident):
     FakeLLM(monkeypatch, *AGENT_TURNS)
     result = PlaybookExecutor(_playbook_run(project, incident, "draft_only"), 1, "").execute()
-    assert result.outcome == "succeeded" and result.pr_url == ""
-    assert FakeRepo.instances[0].prs == []
+    assert result.outcome == "succeeded" and result.pr_url.endswith("/pull/1")
+    assert FakeRepo.instances[0].prs == [(f"sre/incident-{incident.id}-a1", True)]
+
+
+def test_autonomous_attempt_opens_ready_pr(monkeypatch, fake_infra, project, incident):
+    FakeLLM(monkeypatch, *AGENT_TURNS)
+    PlaybookExecutor(_playbook_run(project, incident, "autonomous"), 1, "").execute()
+    assert FakeRepo.instances[0].prs == [(f"sre/incident-{incident.id}-a1", False)]
 
 
 def test_attempt_fails_when_tests_fail(monkeypatch, fake_infra, project, incident):
@@ -363,3 +369,76 @@ def test_temperature_sent_only_when_configured(monkeypatch, project):
                                               extra_config={"temperature": 0.2})
     client_for(config).complete_json("sys", "hi")
     assert _CapturingOpenAI.calls[0]["temperature"] == 0.2
+
+
+
+# ---- GitHub PR lifecycle (fake PyGithub repo) ----------------------------------------
+
+class _FakePR:
+    def __init__(self, title, body, draft):
+        self.title, self.body, self.draft = title, body, draft
+        self.html_url, self.state, self.comments = "https://github.com/acme/shop/pull/7", "open", []
+
+    def mark_ready_for_review(self):
+        self.draft = False
+
+    def edit(self, title=None, body=None, state=None):
+        self.title = title if title is not None else self.title
+        self.body = body if body is not None else self.body
+        self.state = state or self.state
+
+    def create_issue_comment(self, text):
+        self.comments.append(text)
+
+
+class _FakeGhRepo:
+    def __init__(self, drafts_allowed=True):
+        self.drafts_allowed, self.prs = drafts_allowed, []
+
+    def get_pulls(self, state, head):
+        return [p for p in self.prs if p.state == "open"]
+
+    def create_pull(self, base, head, title, body, draft=False):
+        from github import GithubException
+        if draft and not self.drafts_allowed:
+            raise GithubException(422, {"message": "Draft pull requests are not supported in this repository."})
+        self.prs.append(_FakePR(title, body, draft))
+        return self.prs[-1]
+
+
+def _gh(monkeypatch, fake):
+    from types import SimpleNamespace
+    from sre.services.github import GitHubRepo
+    repo = GitHubRepo(SimpleNamespace(github_repo_owner="acme", github_repo_name="shop",
+                                      github_default_branch="main"))
+    monkeypatch.setattr(repo, "_repo", lambda: fake)
+    return repo
+
+
+def test_draft_pr_then_approve_marks_ready(monkeypatch):
+    fake = _FakeGhRepo()
+    repo = _gh(monkeypatch, fake)
+    repo.open_pull_request("b", "Fix it", "body", draft=True)
+    assert fake.prs[0].draft is True
+    assert repo.open_pull_request("b", "Fix it", "body", draft=True) == fake.prs[0].html_url  # idempotent
+    repo.mark_pull_request_approved("b")
+    assert fake.prs[0].draft is False and len(fake.prs) == 1
+
+
+def test_no_draft_support_falls_back_to_marked_title(monkeypatch):
+    from sre.services.github import AWAITING_APPROVAL_PREFIX
+    fake = _FakeGhRepo(drafts_allowed=False)
+    repo = _gh(monkeypatch, fake)
+    repo.open_pull_request("b", "Fix it", "body", draft=True)
+    assert fake.prs[0].title == AWAITING_APPROVAL_PREFIX + "Fix it" and fake.prs[0].draft is False
+    repo.mark_pull_request_approved("b")
+    assert fake.prs[0].title == "Fix it" and fake.prs[0].body == "body"
+
+
+def test_reject_closes_pr_with_comment(monkeypatch):
+    fake = _FakeGhRepo()
+    repo = _gh(monkeypatch, fake)
+    repo.open_pull_request("b", "Fix it", "body", draft=True)
+    repo.close_pull_request("b", "rejected")
+    assert fake.prs[0].state == "closed" and fake.prs[0].comments == ["rejected"]
+    assert repo.mark_pull_request_approved("b") is None
