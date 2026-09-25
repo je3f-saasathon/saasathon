@@ -15,21 +15,31 @@ from .sandbox import Sandbox, SandboxError
 
 MAX_TURNS = 40
 
-AGENT_SYSTEM = (
-    "You are an SRE agent fixing a production bug in a git repository checked out at "
-    "/workspace. Follow the playbook, adapting it to this incident. Work in small steps: "
-    "inspect, edit, then run the relevant tests. Add or update a test that covers the fix "
-    "when the repo has tests. " + UNTRUSTED_NOTICE + "\n\n"
-    "Each reply must be exactly one JSON object choosing one action:\n"
-    '{"action": "list_files", "path": "."}\n'
-    '{"action": "read_file", "path": "src/app.py"}\n'
-    '{"action": "write_file", "path": "src/app.py", "content": "<full new file content>"}\n'
-    '{"action": "run_command", "command": "pytest -x tests/test_app.py"}\n'
-    '{"action": "finish", "summary": "<what you changed and why>", "tests_passed": true|false}\n'
-    "Paths are relative to /workspace. You cannot commit, push or open pull requests; "
-    "that happens after you finish. Call finish with tests_passed=false if you could not "
-    "get the tests passing."
+WRITE_TESTS = (
+    "Add or update a test that covers the fix when the repo has tests. "
 )
+NO_NEW_TESTS = (
+    "Do not write new tests or edit test files, and skip any playbook step that does; "
+    "only run the repo's existing relevant tests to check the fix. "
+)
+
+
+def agent_system(generate_tests: bool) -> str:
+    return (
+        "You are an SRE agent fixing a production bug in a git repository checked out at "
+        "/workspace. Follow the playbook, adapting it to this incident. Work in small steps: "
+        "inspect, edit, then run the relevant tests. "
+        + (WRITE_TESTS if generate_tests else NO_NEW_TESTS) + UNTRUSTED_NOTICE + "\n\n"
+        "Each reply must be exactly one JSON object choosing one action:\n"
+        '{"action": "list_files", "path": "."}\n'
+        '{"action": "read_file", "path": "src/app.py"}\n'
+        '{"action": "write_file", "path": "src/app.py", "content": "<full new file content>"}\n'
+        '{"action": "run_command", "command": "pytest -x tests/test_app.py"}\n'
+        '{"action": "finish", "summary": "<what you changed and why>", "tests_passed": true|false}\n'
+        "Paths are relative to /workspace. You cannot commit, push or open pull requests; "
+        "that happens after you finish. Call finish with tests_passed=false if you could not "
+        "get the tests passing."
+    )
 
 
 def branch_name_for(playbook_run: PlaybookRun, attempt_number: int) -> str:
@@ -123,10 +133,11 @@ class PlaybookExecutor:
                 "needed. Its error output:\n" + untrusted("previous_attempt", self.previous_feedback)
             )
         messages = [{"role": "user", "content": kickoff}]
+        system = agent_system(self.playbook_run.generate_tests)
 
         for turn in range(MAX_TURNS):
             self.heartbeat(f"turn {turn}")
-            reply = client.chat(AGENT_SYSTEM, messages, name=f"agent_turn_{turn}")
+            reply = client.chat(system, messages, name=f"agent_turn_{turn}")
             messages.append({"role": "assistant", "content": reply})
             try:
                 action = parse_json(reply)

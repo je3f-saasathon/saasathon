@@ -197,6 +197,7 @@ type FormState = {
   repo: RepoValue;
   default_execution_mode: ExecutionMode;
   uptrace_source_id: string;
+  generate_tests: boolean;
 };
 
 function formFor(project?: Project): FormState {
@@ -210,6 +211,7 @@ function formFor(project?: Project): FormState {
     },
     default_execution_mode: project?.default_execution_mode ?? "draft_only",
     uptrace_source_id: project?.uptrace_source_id ?? "",
+    generate_tests: project?.generate_tests ?? true,
   };
 }
 
@@ -237,14 +239,15 @@ function ProjectForm({
         github_default_branch: form.repo.branch || "main",
         default_execution_mode: form.default_execution_mode,
         uptrace_source_id: form.uptrace_source_id,
+        generate_tests: form.generate_tests,
       };
       if (!project) {
         return api.post<ProjectCreated>("/sre/projects", fields as ProjectCreateRequest);
       }
       // Send only what changed: admins may not touch the owner-only GitHub/Uptrace fields.
       const changes: ProjectUpdateRequest = {};
-      for (const [key, value] of Object.entries(fields) as [keyof typeof fields, string][]) {
-        if (project[key] !== value) (changes as Record<string, string>)[key] = value;
+      for (const [key, value] of Object.entries(fields) as [keyof typeof fields, unknown][]) {
+        if (project[key] !== value) (changes as Record<string, unknown>)[key] = value;
       }
       return api.patch<Project>(`/sre/projects/${project.id}`, changes);
     },
@@ -307,6 +310,23 @@ function ProjectForm({
           />
         </Field>
       </div>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={form.generate_tests}
+          disabled={readOnly}
+          onChange={(e) => setForm({ ...form, generate_tests: e.target.checked })}
+        />
+        <span>
+          <span className="font-medium">Generate tests</span>
+          <span className="block text-xs text-muted-foreground">
+            The fix agent writes a test covering each fix. Turn this off for cheaper runs: it then
+            only runs the repo's existing tests. Each incident on the dashboard shows which setting
+            it ran with, so you can compare the tokens.
+          </span>
+        </span>
+      </label>
       {project && !isOwner && canAdmin(project) && (
         <p className="text-xs text-muted-foreground">Only owners can change the GitHub wiring.</p>
       )}

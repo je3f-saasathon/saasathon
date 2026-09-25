@@ -81,7 +81,7 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | Method | Path | Role | Body / Params | Returns |
 |---|---|---|---|---|
 | GET | `/sre/projects` | member | — | `Project[]` |
-| POST | `/sre/projects` | any user | `{name, github_installation_id, github_repo_owner, github_repo_name, github_default_branch?, uptrace_source_id?, default_execution_mode?}` | `201 Project & {webhook_secret, webhook_url}` — the only time the secret is shown besides rotation. Caller becomes owner. `400` unless the caller has connected that installation (see GitHub connect) and it can reach the repo. |
+| POST | `/sre/projects` | any user | `{name, github_installation_id, github_repo_owner, github_repo_name, github_default_branch?, uptrace_source_id?, default_execution_mode?, generate_tests?}` | `201 Project & {webhook_secret, webhook_url}` — the only time the secret is shown besides rotation. Caller becomes owner. `400` unless the caller has connected that installation (see GitHub connect) and it can reach the repo. |
 | GET | `/sre/projects/{id}` | viewer | — | `Project` |
 | PATCH | `/sre/projects/{id}` | admin (owner for `github_*` / `uptrace_source_id`) | any subset of the create fields, plus `default_llm_config_id: int\|null` (must be one of the caller's own configs) | `Project`; `400` if the installation/repo *changes* and fails the same check as create (unchanged wiring is grandfathered) |
 | DELETE | `/sre/projects/{id}` | owner | — | `204` |
@@ -91,7 +91,7 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | PATCH | `/sre/projects/{id}/members/{user_id}` | owner | `{role}` | `Member`, `409` if it would remove the last owner |
 | DELETE | `/sre/projects/{id}/members/{user_id}` | owner, or the member themself | — | `204`, `409` last owner. The member's LLM configs are detached from the project. |
 
-`Project`: `{id, name, role, github_installation_id, github_repo_owner, github_repo_name, github_default_branch, uptrace_source_id, default_execution_mode, default_llm_config_id, created_at, github_verified}` (`role` is the caller's; `github_verified` is true when an owner has connected the project's installation).
+`Project`: `{id, name, role, github_installation_id, github_repo_owner, github_repo_name, github_default_branch, uptrace_source_id, default_execution_mode, default_llm_config_id, generate_tests, created_at, github_verified}` (`role` is the caller's; `github_verified` is true when an owner has connected the project's installation). `generate_tests` (default `true`, admin-editable): when `false` the fix agent writes no new tests and only runs the repo's existing ones, a cheaper run. It's frozen onto each playbook run when the run starts.
 
 ### GitHub connect (prove access to a GitHub App installation)
 
@@ -140,12 +140,12 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | GET | `/sre/playbook-runs/{id}` | viewer | — | `PlaybookRun` |
 | POST | `/sre/playbook-runs/{id}/approve` | admin | `{approve: bool}` — `true` marks the PR ready for review, `false` closes it | `PlaybookRun`; `409` if not `pending_approval` or already decided; `503` if the workflow can't be reached (decision released, retry) |
 
-`IncidentRun`: `{id, project_id, trace_id, uptrace_exception_id, temporal_workflow_id, status, classification, matched_playbook_id, created_playbook_id, playbook_run_id, diagnosis_report, error_message, created_at, updated_at, project_name, playbook, pr_url, playbook_run_status, execution_mode, usage}`. It backs the frontend `/dashboard` table.
+`IncidentRun`: `{id, project_id, trace_id, uptrace_exception_id, temporal_workflow_id, status, classification, matched_playbook_id, created_playbook_id, playbook_run_id, diagnosis_report, error_message, created_at, updated_at, project_name, playbook, pr_url, playbook_run_status, execution_mode, generate_tests, usage}`. It backs the frontend `/dashboard` table.
 - `playbook`: `{id, title, status, source}` or `null` — the matched playbook (`source: "matched"`), else the one written from this incident (`"created"`).
-- `pr_url` is `""` when no PR was opened; `playbook_run_status` / `execution_mode` are `null` without a playbook run.
+- `pr_url` is `""` when no PR was opened; `playbook_run_status` / `execution_mode` / `generate_tests` (the run's frozen setting) are `null` without a playbook run.
 - `usage`: `{calls, input_tokens, output_tokens, total_tokens, models: string[], by_step: [{step, provider, model, calls, input_tokens, output_tokens}]}` — one entry per LLM call the incident made (a retried activity counts again; those tokens were spent). `step` is the pipeline step, or `diagnosis_report`. Jev calls count as calls with 0 tokens.
 
-`PlaybookRun`: `{id, incident_run_id, playbook_id, execution_mode, status, approved_by_id, approved_at, pr_url, branch_name, attempts: Attempt[]}` where `Attempt` is `{attempt_number, outcome, summary, error_output, generated_steps, branch_name, langfuse_trace_id, created_at}` (up to 3; each re-plans from the previous attempt's error). `approved_by_id` / `approved_at` record whoever decided, for approvals and rejections alike.
+`PlaybookRun`: `{id, incident_run_id, playbook_id, execution_mode, generate_tests, status, approved_by_id, approved_at, pr_url, branch_name, attempts: Attempt[]}` where `Attempt` is `{attempt_number, outcome, summary, error_output, generated_steps, branch_name, langfuse_trace_id, created_at}` (up to 3; each re-plans from the previous attempt's error). `approved_by_id` / `approved_at` record whoever decided, for approvals and rejections alike.
 
 ## Errors
 

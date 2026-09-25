@@ -55,6 +55,16 @@ export function PrLink({ run }: { run: IncidentRun }) {
   );
 }
 
+/** Whether the fix agent wrote tests on this run (frozen per run), for comparing token costs. */
+export function TestsNote({ run }: { run: IncidentRun }) {
+  if (run.generate_tests == null) return null;
+  return (
+    <div className="text-[11px] text-muted-foreground">
+      tests {run.generate_tests ? "on" : "off"}
+    </div>
+  );
+}
+
 function SortableHeader({ column, title }: { column: Column<IncidentRun>; title: string }) {
   return (
     <Button
@@ -150,9 +160,10 @@ export const columns: ColumnDef<IncidentRun>[] = [
       row.original.usage.calls === 0 ? (
         <span className="text-muted-foreground">n/a</span>
       ) : (
-        <span className="whitespace-nowrap font-mono text-xs">
-          {row.getValue<number>("tokens").toLocaleString()}
-        </span>
+        <div className="whitespace-nowrap">
+          <div className="font-mono text-xs">{row.getValue<number>("tokens").toLocaleString()}</div>
+          <TestsNote run={row.original} />
+        </div>
       ),
   },
 ];

@@ -219,6 +219,9 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
             <span className="font-mono">trace {run.trace_id}</span>
             <span className="font-mono">{formatTimestamp(run.created_at)} UTC</span>
             {run.execution_mode && <span>{run.execution_mode.replace(/_/g, " ")}</span>}
+            {run.generate_tests != null && (
+              <Badge variant="outline">tests {run.generate_tests ? "on" : "off"}</Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
