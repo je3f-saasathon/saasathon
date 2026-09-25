@@ -13,7 +13,7 @@ const project = {
   id: 2, name: "django-buggy-app", role: "owner", github_installation_id: "164850677",
   github_repo_owner: "je3f-saasathon", github_repo_name: "django-buggy-app",
   github_default_branch: "main", uptrace_source_id: "", default_execution_mode: "draft_only",
-  default_llm_config_id: 1, generate_tests: true, created_at: "2026-09-25T00:00:00Z",
+  default_llm_config_id: 1, generate_tests: true, platform_tokens_this_month: 0, created_at: "2026-09-25T00:00:00Z",
   github_verified: false,
 };
 
@@ -22,6 +22,8 @@ const routes: Record<string, unknown> = {
   "POST /api/sre/llm-configs": { ...configs[0], id: 3, name: "claude" },
   "PATCH /api/sre/llm-configs/1": { ...configs[0], has_api_key: false },
   "GET /api/sre/projects": [project],
+  "GET /api/sre/projects/3/step-overrides": [],
+  "GET /api/sre/platform": { available: true, triage_model: "jev", strong_model: "gpt-5.5", monthly_token_cap: 2000000 },
   "PATCH /api/sre/projects/2": { ...project, generate_tests: false },
   "GET /api/sre/projects/2/step-overrides": [],
   "GET /api/sre/github/status": { configured: true, app_slug: "sre-app-local" },
@@ -112,6 +114,19 @@ describe("SettingsPage", () => {
     );
     const [, init] = fetchMock.mock.calls.find(([, i]) => i?.method === "PATCH")!;
     expect(JSON.parse(init.body)).toEqual({ generate_tests: false });
+  });
+
+  it("offers the company default for a project without its own model, with its usage", async () => {
+    routes["GET /api/sre/projects"] = [
+      project,
+      { ...project, id: 3, name: "bare-project", default_llm_config_id: null, platform_tokens_this_month: 500000 },
+    ];
+    renderAt("/settings?tab=projects");
+    fireEvent.click(await screen.findByText("bare-project"));
+    expect(await screen.findByRole("option", { name: "Company default (Jev + gpt-5.5)" })).toBeInTheDocument();
+    expect(await screen.findByTestId("company-usage")).toHaveTextContent("500,000 / 2,000,000 tokens");
+    expect(screen.queryByText(/No default model/)).not.toBeInTheDocument();
+    routes["GET /api/sre/projects"] = [project];
   });
 
   it("shows the connected banner and installations on the GitHub tab", async () => {

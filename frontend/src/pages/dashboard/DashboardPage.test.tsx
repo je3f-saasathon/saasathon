@@ -8,10 +8,11 @@ const usage = {
   input_tokens: 1000,
   output_tokens: 234,
   total_tokens: 1234,
+  platform_tokens: 1234,
   models: ["gpt-5.4-mini", "gpt-5.5"],
   by_step: [
-    { step: "bug_classification", provider: "openai", model: "gpt-5.4-mini", calls: 1, input_tokens: 400, output_tokens: 34 },
-    { step: "playbook_execution", provider: "openai", model: "gpt-5.5", calls: 2, input_tokens: 600, output_tokens: 200 },
+    { step: "bug_classification", provider: "openai", model: "gpt-5.4-mini", billed_to: "platform", calls: 1, input_tokens: 400, output_tokens: 34 },
+    { step: "playbook_execution", provider: "openai", model: "gpt-5.5", billed_to: "platform", calls: 2, input_tokens: 600, output_tokens: 200 },
   ],
 };
 
@@ -86,7 +87,7 @@ describe("DashboardPage", () => {
     expect(screen.getByText("gpt-5.4-mini")).toBeInTheDocument();
     expect(screen.getByText("gpt-5.5")).toBeInTheDocument();
     expect(screen.getAllByText((1234).toLocaleString()).length).toBeGreaterThan(0);
-    expect(screen.getByText("tests off")).toBeInTheDocument();
+    expect(screen.getByText("tests off · our key")).toBeInTheDocument();
   });
 
   it("shows details on row click, with the diagnosis hidden until asked for", async () => {

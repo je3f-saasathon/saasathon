@@ -10,6 +10,7 @@ import type {
   GitHubRepo,
   LLMConfig,
   PipelineStep,
+  Platform,
   Project,
   ProjectCreated,
   ProjectCreateRequest,
@@ -354,6 +355,10 @@ function ProjectModels({ project }: { project: Project }) {
     queryKey: ["step-overrides", project.id],
     queryFn: () => api.get<StepOverride[]>(`/sre/projects/${project.id}/step-overrides`),
   });
+  const platform = useQuery({
+    queryKey: ["platform"],
+    queryFn: () => api.get<Platform>("/sre/platform"),
+  });
   const editable = canAdmin(project);
 
   const setDefault = useMutation({
@@ -380,18 +385,29 @@ function ProjectModels({ project }: { project: Project }) {
         )
       : [];
 
+  const company = platform.data?.available ? platform.data : null;
+  const companyLabel = company
+    ? `Company default (${company.triage_model === "jev" ? "Jev" : company.triage_model} + ${company.strong_model})`
+    : "None";
+  const cap = company?.monthly_token_cap ?? 0;
+  const used = project.platform_tokens_this_month;
+
   return (
     <div className="space-y-4">
       <Field
         label="Default model"
-        hint="Used for every step without an override. You can pick from your own configs."
+        hint={
+          company
+            ? "Used for every step without an override. The company default runs on our keys at no setup; pick your own config to use your key instead."
+            : "Used for every step without an override. You can pick from your own configs."
+        }
       >
         <Select
           value={defaultId?.toString() ?? ""}
           disabled={!editable || setDefault.isPending}
           onChange={(e) => setDefault.mutate(e.target.value ? Number(e.target.value) : null)}
         >
-          <option value="">None</option>
+          <option value="">{companyLabel}</option>
           {defaultId != null && !defaultConfig && (
             <option value={defaultId}>Another member's config (#{defaultId})</option>
           )}
@@ -402,10 +418,35 @@ function ProjectModels({ project }: { project: Project }) {
           ))}
         </Select>
       </Field>
-      {defaultId == null && (
+      {defaultId == null && !company && platform.isSuccess && (
         <p className="text-sm text-amber-700">
           No default model: incidents fail unless every step has an override.
         </p>
+      )}
+      {company && (defaultId == null || used > 0) && (
+        <div className="space-y-1 text-sm" data-testid="company-usage">
+          <div className="flex justify-between text-muted-foreground">
+            <span>Company model this month</span>
+            <span className="font-mono text-xs">
+              {used.toLocaleString()}
+              {cap ? ` / ${cap.toLocaleString()}` : ""} tokens
+            </span>
+          </div>
+          {cap > 0 && (
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className={`h-full ${used >= cap ? "bg-destructive" : "bg-primary"}`}
+                style={{ width: `${Math.min(100, (used / cap) * 100)}%` }}
+              />
+            </div>
+          )}
+          {cap > 0 && used >= cap && (
+            <p className="text-destructive">
+              Monthly limit reached: incidents stop until next month or until you pick your own
+              model.
+            </p>
+          )}
+        </div>
       )}
       {jevDefaultGaps.length > 0 && (
         <p className="text-sm text-amber-700">
