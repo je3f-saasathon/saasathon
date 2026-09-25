@@ -77,15 +77,57 @@ def _own_config(user, config_id: int) -> LLMProviderConfig:
     return get_object_or_404(LLMProviderConfig, id=config_id, owner=user)
 
 
+INCIDENT_EXTRA_FIELDS = {
+    "created_playbook_id", "playbook_run_id", "project_name", "playbook", "pr_url",
+    "playbook_run_status", "execution_mode", "usage",
+}
+
+
+def _usage_out(rows) -> dict:
+    by_step: dict[tuple, dict] = {}
+    for row in rows:
+        entry = by_step.setdefault((row.step, row.provider, row.model), {
+            "step": row.step, "provider": row.provider, "model": row.model,
+            "calls": 0, "input_tokens": 0, "output_tokens": 0,
+        })
+        entry["calls"] += 1
+        entry["input_tokens"] += row.input_tokens
+        entry["output_tokens"] += row.output_tokens
+    steps = list(by_step.values())
+    input_tokens = sum(s["input_tokens"] for s in steps)
+    output_tokens = sum(s["output_tokens"] for s in steps)
+    return {
+        "calls": sum(s["calls"] for s in steps),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "models": list(dict.fromkeys(s["model"] for s in steps if s["model"])),
+        "by_step": steps,
+    }
+
+
 def _incident_out(run: IncidentRun) -> dict:
     created = getattr(run, "created_playbook", None)
     playbook_run = getattr(run, "playbook_run", None)
+    playbook, source = (run.matched_playbook, "matched") if run.matched_playbook else (created, "created")
     return {
-        **{f: getattr(run, f) for f in IncidentRunOut.model_fields
-           if f not in ("created_playbook_id", "playbook_run_id")},
+        **{f: getattr(run, f) for f in IncidentRunOut.model_fields if f not in INCIDENT_EXTRA_FIELDS},
         "created_playbook_id": created.id if created else None,
         "playbook_run_id": playbook_run.id if playbook_run else None,
+        "project_name": run.project.name,
+        "playbook": {"id": playbook.id, "title": playbook.title, "status": playbook.status,
+                     "source": source} if playbook else None,
+        "pr_url": playbook_run.pr_url if playbook_run else "",
+        "playbook_run_status": playbook_run.status if playbook_run else None,
+        "execution_mode": playbook_run.execution_mode if playbook_run else None,
+        "usage": _usage_out(run.llm_usage.all()),
     }
+
+
+def _incident_runs():
+    return IncidentRun.objects.select_related(
+        "project", "matched_playbook", "created_playbook", "playbook_run"
+    ).prefetch_related("llm_usage")
 
 
 def _detach_user_configs(project: Project, user) -> None:
@@ -413,21 +455,21 @@ def list_incident_runs(request: HttpRequest, project_id: int | None = None,
                        status: str | None = None, page: int = 1, page_size: int = 20):
     page = max(page, 1)
     page_size = max(1, min(page_size, 100))
-    qs = IncidentRun.objects.filter(project_id__in=member_project_ids(request.auth))
+    qs = _incident_runs().filter(project_id__in=member_project_ids(request.auth))
     if project_id is not None:
         qs = qs.filter(project_id=project_id)
     if status:
         qs = qs.filter(status=status)
     total = qs.count()
     start = (page - 1) * page_size
-    runs = qs.select_related("created_playbook", "playbook_run")[start:start + page_size]
+    runs = qs[start:start + page_size]
     return {"runs": [_incident_out(r) for r in runs], "total": total}
 
 
 @router.get("/incident-runs/{run_id}", response=IncidentRunOut)
 def get_incident_run(request: HttpRequest, run_id: int):
     run = get_object_or_404(
-        IncidentRun.objects.select_related("created_playbook", "playbook_run"),
+        _incident_runs(),
         Q(id=run_id) & Q(project_id__in=member_project_ids(request.auth)),
     )
     return _incident_out(run)

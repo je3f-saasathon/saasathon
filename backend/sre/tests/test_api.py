@@ -7,6 +7,7 @@ import pytest
 from sre import temporal_client
 from sre.models import (
     IncidentRun,
+    LLMUsage,
     LLMProviderConfig,
     LLMStepOverride,
     Playbook,
@@ -283,6 +284,45 @@ def test_incident_runs_are_scoped_to_member_projects(api_for, make_user, make_pr
     body = api.get("/incident-runs").json()
     assert body["total"] == 1 and body["runs"][0]["trace_id"] == "a"
     assert api.get(f"/incident-runs/{other.id}").status_code == 404
+
+
+def test_incident_run_includes_pr_playbook_and_usage(api_for, make_user, make_project):
+    project = make_project(make_user(), name="shop")
+    playbook_run = make_pending_run(project, status=PlaybookRun.Status.SUCCEEDED)
+    run = playbook_run.incident_run
+    run.matched_playbook = playbook_run.playbook
+    run.save()
+    playbook_run.pr_url = "https://github.com/acme/shop/pull/1"
+    playbook_run.save()
+    for step, model, tokens in [("bug_classification", "small", (10, 2)),
+                                ("playbook_execution", "big", (100, 20)),
+                                ("playbook_execution", "big", (50, 5))]:
+        LLMUsage.objects.create(incident_run=run, step=step, provider="openai", model=model,
+                                input_tokens=tokens[0], output_tokens=tokens[1])
+
+    body = api_for(project.memberships.get().user).get("/incident-runs").json()["runs"][0]
+    assert body["project_name"] == "shop"
+    assert body["pr_url"] == "https://github.com/acme/shop/pull/1"
+    assert body["playbook_run_status"] == "succeeded" and body["execution_mode"] == "draft_only"
+    assert body["playbook"] == {"id": playbook_run.playbook_id, "title": "p",
+                                "status": "unconfirmed", "source": "matched"}
+    usage = body["usage"]
+    assert (usage["calls"], usage["input_tokens"], usage["output_tokens"], usage["total_tokens"]) == (3, 160, 27, 187)
+    assert usage["models"] == ["small", "big"]
+    execution = next(s for s in usage["by_step"] if s["step"] == "playbook_execution")
+    assert (execution["calls"], execution["input_tokens"]) == (2, 150)
+
+
+def test_incident_run_without_playbook_run_reports_created_playbook(api_for, make_user, make_project):
+    project = make_project(make_user())
+    run = IncidentRun.objects.create(project=project, trace_id="n", temporal_workflow_id="w-n",
+                                     status=IncidentRun.Status.NEW_PLAYBOOK_CREATED)
+    playbook = Playbook.objects.create(project=project, title="new", source_incident_run=run)
+    body = api_for(project.memberships.get().user).get(f"/incident-runs/{run.id}").json()
+    assert body["playbook"]["id"] == playbook.id and body["playbook"]["source"] == "created"
+    assert body["pr_url"] == "" and body["playbook_run_status"] is None
+    assert body["usage"] == {"calls": 0, "input_tokens": 0, "output_tokens": 0,
+                             "total_tokens": 0, "models": [], "by_step": []}
 
 
 def test_viewer_cannot_approve_admin_can(api_for, make_user, make_project, add_member, temporal_calls):

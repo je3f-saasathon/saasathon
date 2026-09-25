@@ -1018,6 +1018,55 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Project Name */
+            project_name: string;
+            playbook: components["schemas"]["PlaybookBriefOut"] | null;
+            /** Pr Url */
+            pr_url: string;
+            /** Playbook Run Status */
+            playbook_run_status: string | null;
+            execution_mode: components["schemas"]["ExecutionMode"] | null;
+            usage: components["schemas"]["UsageOut"];
+        };
+        /** PlaybookBriefOut */
+        PlaybookBriefOut: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            status: components["schemas"]["Status"];
+            /** Source */
+            source: string;
+        };
+        /** StepUsageOut */
+        StepUsageOut: {
+            /** Step */
+            step: string;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Calls */
+            calls: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+        };
+        /** UsageOut */
+        UsageOut: {
+            /** Calls */
+            calls: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Total Tokens */
+            total_tokens: number;
+            /** Models */
+            models: string[];
+            /** By Step */
+            by_step: components["schemas"]["StepUsageOut"][];
         };
         /** AttemptOut */
         AttemptOut: {

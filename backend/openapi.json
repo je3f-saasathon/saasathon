@@ -3055,6 +3055,48 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "playbook": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaybookBriefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pr_url": {
+            "title": "Pr Url",
+            "type": "string"
+          },
+          "playbook_run_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playbook Run Status"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/UsageOut"
           }
         },
         "required": [
@@ -3071,9 +3113,124 @@
           "diagnosis_report",
           "error_message",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "project_name",
+          "playbook",
+          "pr_url",
+          "playbook_run_status",
+          "execution_mode",
+          "usage"
         ],
         "title": "IncidentRunOut",
+        "type": "object"
+      },
+      "PlaybookBriefOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "source"
+        ],
+        "title": "PlaybookBriefOut",
+        "type": "object"
+      },
+      "StepUsageOut": {
+        "properties": {
+          "step": {
+            "title": "Step",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "step",
+          "provider",
+          "model",
+          "calls",
+          "input_tokens",
+          "output_tokens"
+        ],
+        "title": "StepUsageOut",
+        "type": "object"
+      },
+      "UsageOut": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "by_step": {
+            "items": {
+              "$ref": "#/components/schemas/StepUsageOut"
+            },
+            "title": "By Step",
+            "type": "array"
+          }
+        },
+        "required": [
+          "calls",
+          "input_tokens",
+          "output_tokens",
+          "total_tokens",
+          "models",
+          "by_step"
+        ],
+        "title": "UsageOut",
         "type": "object"
       },
       "AttemptOut": {

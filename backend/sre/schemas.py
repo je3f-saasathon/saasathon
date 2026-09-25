@@ -179,6 +179,31 @@ class PlaybookRunOut(Schema):
     attempts: list[AttemptOut]
 
 
+class PlaybookBriefOut(Schema):
+    id: int
+    title: str
+    status: Playbook.Status
+    source: str  # "matched" (reused) or "created" (written from this incident)
+
+
+class StepUsageOut(Schema):
+    step: str
+    provider: str
+    model: str
+    calls: int
+    input_tokens: int
+    output_tokens: int
+
+
+class UsageOut(Schema):
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    models: list[str]
+    by_step: list[StepUsageOut]
+
+
 class IncidentRunOut(Schema):
     id: int
     project_id: int
@@ -194,6 +219,12 @@ class IncidentRunOut(Schema):
     error_message: str
     created_at: datetime
     updated_at: datetime
+    project_name: str
+    playbook: PlaybookBriefOut | None
+    pr_url: str
+    playbook_run_status: str | None
+    execution_mode: ExecutionMode | None
+    usage: UsageOut
 
 
 class IncidentRunListOut(Schema):

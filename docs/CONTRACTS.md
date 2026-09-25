@@ -127,7 +127,10 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | GET | `/sre/playbook-runs/{id}` | viewer | — | `PlaybookRun` |
 | POST | `/sre/playbook-runs/{id}/approve` | admin | `{approve: bool}` — `true` marks the PR ready for review, `false` closes it | `PlaybookRun`; `409` if not `pending_approval` or already decided; `503` if the workflow can't be reached (decision released, retry) |
 
-`IncidentRun`: `{id, project_id, trace_id, uptrace_exception_id, temporal_workflow_id, status, classification, matched_playbook_id, created_playbook_id, playbook_run_id, diagnosis_report, error_message, created_at, updated_at}`. This is the intended backing data for the frontend `/dashboard` table (currently mock data in `frontend/src/pages/dashboard/mock-logs.ts`).
+`IncidentRun`: `{id, project_id, trace_id, uptrace_exception_id, temporal_workflow_id, status, classification, matched_playbook_id, created_playbook_id, playbook_run_id, diagnosis_report, error_message, created_at, updated_at, project_name, playbook, pr_url, playbook_run_status, execution_mode, usage}`. It backs the frontend `/dashboard` table.
+- `playbook`: `{id, title, status, source}` or `null` — the matched playbook (`source: "matched"`), else the one written from this incident (`"created"`).
+- `pr_url` is `""` when no PR was opened; `playbook_run_status` / `execution_mode` are `null` without a playbook run.
+- `usage`: `{calls, input_tokens, output_tokens, total_tokens, models: string[], by_step: [{step, provider, model, calls, input_tokens, output_tokens}]}` — one entry per LLM call the incident made (a retried activity counts again; those tokens were spent). `step` is the pipeline step, or `diagnosis_report`. Jev calls count as calls with 0 tokens.
 
 `PlaybookRun`: `{id, incident_run_id, playbook_id, execution_mode, status, approved_by_id, approved_at, pr_url, branch_name, attempts: Attempt[]}` where `Attempt` is `{attempt_number, outcome, summary, error_output, generated_steps, branch_name, langfuse_trace_id, created_at}` (up to 3; each re-plans from the previous attempt's error). `approved_by_id` / `approved_at` record whoever decided, for approvals and rejections alike.
 
