@@ -28,7 +28,7 @@ jobs:
           echo "BACKEND_PORT=${port:-8000}" >> "$GITHUB_ENV"
 
       - name: Build and start backend
-        run: docker compose --env-file "$ENV_FILE_DIR/backend/.env.prod" -f docker-compose.prod.yml up -d --build backend
+        run: docker compose --env-file "$ENV_FILE_DIR/backend/.env.prod" -f docker-compose.prod.yml up -d --no-deps --build backend
 
       - name: Health check
         run: |

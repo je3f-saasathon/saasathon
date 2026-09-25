@@ -28,7 +28,7 @@ jobs:
           echo "FRONTEND_PORT=${port:-5173}" >> "$GITHUB_ENV"
 
       - name: Build and start frontend
-        run: docker compose --env-file "$ENV_FILE_DIR/frontend/.env.prod" -f docker-compose.prod.yml up -d --build frontend
+        run: docker compose --env-file "$ENV_FILE_DIR/frontend/.env.prod" -f docker-compose.prod.yml up -d --no-deps --build frontend
 
       - name: Health check
         run: |
