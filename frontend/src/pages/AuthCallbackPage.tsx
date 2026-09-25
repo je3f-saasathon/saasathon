@@ -45,7 +45,7 @@ export function AuthCallbackPage() {
 
   return (
     <div className="mx-auto mt-16 max-w-sm text-center">
-      {error ? <p className="text-red-600">{error}</p> : <p>Signing you in...</p>}
+      {error ? <p className="text-destructive">{error}</p> : <p className="text-muted-foreground">Signing you in...</p>}
     </div>
   );
 }
