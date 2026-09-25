@@ -9,7 +9,6 @@ import { ThemeToggle } from "./theme";
 const navItems = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/settings", label: "Settings" },
-  { to: "/items", label: "Items" },
 ];
 
 export function Layout() {

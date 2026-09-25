@@ -28,20 +28,6 @@ All auth endpoints are public except `/auth/me` and `/auth/logout` (require `Aut
 |--------|-----------------|------------------------------|
 | GET    | `/health`       | `{status: "ok", version}`   |
 
-## Core entities (generic placeholder set — replace when IDEA is defined)
-
-### Item
-
-| Method | Path            | Body / Params        | Returns          |
-|--------|------------------|------------------------|--------------------|
-| GET    | `/items`         | `?page=&page_size=`   | `{items: [Item], total}` |
-| POST   | `/items`         | `{title, description?}` | `Item`           |
-| GET    | `/items/{id}`     | —                      | `Item` or 404      |
-| PATCH  | `/items/{id}`     | `{title?, description?}` | `Item`          |
-| DELETE | `/items/{id}`     | —                      | 204                |
-
-`Item` shape: `{id, owner_id, title, description, created_at, updated_at}`. Ownership: users can only see/modify their own items (queryset filtered by `request.user`).
-
 ## Jev (Cloudflare Workers AI, experimental)
 
 Requires `Authorization: Bearer <token>`. Requires `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` to be set on the backend, and gateway balance (or BYOK) on the Cloudflare account — otherwise upstream calls fail and this returns 502.
