@@ -8,9 +8,11 @@ Usage: scripts/dev-docker.sh [--detach] [--force]
 
 Runs the stack via docker-compose.yml (frontend, backend, postgres,
 sre-worker), after starting the SRE infra (scripts/infra.sh up).
-Without --detach, follows logs in the foreground; Ctrl+C stops the stack.
-With --detach, starts, waits for health, prints a summary, and returns.
-Detects and stops native mode first, since both share ports.
+Without --detach, follows logs in the foreground; Ctrl+C stops the stack
+and the SRE infra. With --detach, starts, waits for health, prints a
+summary, and returns; stop everything (including the SRE infra) later
+with scripts/stop.sh. Detects and stops native mode first, since both
+share ports.
 
   --detach   start in the background and return
   --force    forcibly free ports held by unrelated processes
@@ -76,7 +78,7 @@ if [ "$DETACH" = "1" ]; then
   printf '  %-10s %s\n' "frontend" "http://localhost:$FE_PORT"
   printf '  %-10s %s\n' "backend"  "http://localhost:$BE_PORT"
 else
-  cleanup() { log_info "stopping docker stack"; "${COMPOSE[@]}" down; }
+  cleanup() { log_info "stopping docker stack"; "${COMPOSE[@]}" down; "$REPO_ROOT/scripts/infra.sh" down; }
   trap cleanup INT TERM
   log_info "starting docker stack (foreground)"
   "${COMPOSE[@]}" up --build

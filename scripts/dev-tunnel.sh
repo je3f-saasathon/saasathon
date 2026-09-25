@@ -16,8 +16,8 @@ SRE agent's Langfuse and Temporal UIs when those local ports are free.
 
 Commands (default: up):
   up       ensure the remote stack is running, then open the tunnel (foreground)
-  down     stop the remote stack (ssh `make stop`), no tunnel
-  kill     hard-stop the remote stack (`make stop ALL=1` + compose kill/down), no tunnel
+  down     stop the remote stack and SRE infra (ssh `make stop` + `make infra-down`), no tunnel
+  kill     hard-stop the remote stack and SRE infra (`make stop ALL=1` + compose kill/down, both projects), no tunnel
   tunnel   just open the tunnel to whatever is already running remotely
   status   ssh `make status` on the remote
   logs     ssh `make logs SERVICE=<svc>`, streamed
@@ -254,6 +254,7 @@ EOF
     preflight
     log_info "stopping remote stack"
     ssh_run "cd $REMOTE_PROJECT_DIR && make stop" || true
+    ssh_run "cd $REMOTE_PROJECT_DIR && make infra-down" || true
     log_ok "remote stack stopped (if it was running)"
     ;;
   kill)
@@ -261,6 +262,8 @@ EOF
     log_info "hard-stopping remote stack"
     ssh_run "cd $REMOTE_PROJECT_DIR && make stop ALL=1" || true
     ssh_run "cd $REMOTE_PROJECT_DIR && docker compose kill 2>/dev/null; docker compose down --remove-orphans 2>/dev/null; true" || true
+    ssh_run "cd $REMOTE_PROJECT_DIR && make infra-down" || true
+    ssh_run "cd $REMOTE_PROJECT_DIR && docker compose -p saasathon-infra kill 2>/dev/null; docker compose -p saasathon-infra -f docker-compose.infra.yml down --remove-orphans 2>/dev/null; true" || true
     log_ok "remote stack killed (if it was running)"
     ;;
   tunnel)
