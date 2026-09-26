@@ -92,13 +92,10 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("link", { name: /PR #1/ })).toHaveAttribute("href", run.pr_url);
     expect(screen.getByText("Guard division by zero")).toBeInTheDocument();
     expect(screen.getAllByText((1234).toLocaleString()).length).toBeGreaterThan(0);
-    // Each model's tokens are shown on their own, in the table and the "Tokens used" tile.
-    const lists = screen.getAllByTestId("model-tokens");
-    expect(lists).toHaveLength(2);
-    for (const list of lists) {
-      expect(within(list).getByText("gpt-5.5").parentElement).toHaveTextContent(`gpt-5.5${(800).toLocaleString()}`);
-      expect(within(list).getByText("gpt-5.4-mini").parentElement).toHaveTextContent("gpt-5.4-mini434");
-    }
+    // Each model's tokens are shown on their own in the table's Model column.
+    const list = screen.getByTestId("model-tokens");
+    expect(within(list).getByText("gpt-5.5").parentElement).toHaveTextContent(`gpt-5.5${(800).toLocaleString()}`);
+    expect(within(list).getByText("gpt-5.4-mini").parentElement).toHaveTextContent("gpt-5.4-mini434");
     expect(screen.getByText("tests off · our key")).toBeInTheDocument();
   });
 
