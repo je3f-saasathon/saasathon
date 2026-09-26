@@ -53,6 +53,22 @@ Two flags, both **off** by default (off = exactly the flow above):
   pre-milestone history (paused awaiting approval) that must keep replaying.
 - Rollout and rollback order: see "Verification" in `~/.claude/plans/plan-this-change-ask-elegant-kurzweil.md`.
 
+### Managed Uptrace (merged 2026-09-26, off until `UPTRACE_MANAGED_TOKEN` is set)
+
+`services/uptrace_admin.py` + `UptraceSyncWorkflow`: with the platform's own Uptrace admin token,
+a new project gets an Uptrace project (or shares another project's, alerts split by
+`service_names`), an error monitor `platform: project {id}` on **exception events only**
+(Django's `django.request` log line would otherwise open a second alert per bug) and a webhook
+channel only that monitor notifies. `resolve_credential` returns the platform token for managed
+projects, so the telemetry fetch, the mesh and quiet-error scans need no user credential.
+Rotate / delete / service-name changes resync the group. Contract: `docs/CONTRACTS.md`
+("Managed Uptrace"); tests: `tests/test_uptrace_admin.py` (a fake of Uptrace 2.1's internal API).
+Uptrace quirks this relies on: saving a channel POSTs a test message and fails unless it gets a
+2xx; monitor/channel **lists** leave `channelIds`/`monitorIds` empty (read one monitor to see
+its links); `/users/current` lists projects (with `orgId`), not orgs; there's no API to delete a
+project. Alerts in 2.1 use `status: unresolved` and underscore event names (`state_changed`).
+A reopened alert starts a new incident once the last one finished (`uptrace-alert-{id}-r{n}`).
+
 ## Files
 
 - `models.py` — Project, ProjectMembership (owner/admin/viewer), LLMProviderConfig (**owned by a
