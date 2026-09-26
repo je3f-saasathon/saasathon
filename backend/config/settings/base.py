@@ -220,6 +220,9 @@ SRE_AGENT_JEV_LOCALIZE = env_bool("SRE_AGENT_JEV_LOCALIZE", default=True)
 # Remediation agents: org-level agents that scan repos for bugs before they alert and feed
 # findings into the incident pipeline (docs/MESH_AND_REMEDIATION.md).
 SRE_REMEDIATION_AGENTS_ENABLED = env_bool("SRE_REMEDIATION_AGENTS_ENABLED", default=False)
+# At most this many of a repo's remediation-agent findings have a PR open (or being written)
+# at once; further findings get a diagnosis until some are merged or closed.
+SRE_AGENT_MAX_OPEN_PRS_PER_REPO = int(os.environ.get("SRE_AGENT_MAX_OPEN_PRS_PER_REPO", "3"))
 # Installing the GitHub App creates a project per repo it can reach (draft-only, managed
 # Uptrace when configured), so `buggly run` works with no setup in the app.
 SRE_GITHUB_AUTO_PROJECTS = env_bool("SRE_GITHUB_AUTO_PROJECTS", default=False)

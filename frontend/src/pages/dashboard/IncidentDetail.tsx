@@ -451,6 +451,22 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
             when you do.
           </p>
         )}
+        {run.mode_note && (
+          <p className="rounded-md border p-3 text-sm text-muted-foreground" data-testid="mode-note">
+            {run.mode_note}.{" "}
+            {run.covered_by_pr_url && (
+              <a
+                href={run.covered_by_pr_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                See PR #{run.covered_by_pr_url.split("/").pop()}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </p>
+        )}
         {run.playbook_run_status === "rejected" && (
           <RejectedNote rejectedAt={playbookRun.data?.approved_at ?? null} hasPr={!!run.pr_url} />
         )}

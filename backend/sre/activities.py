@@ -21,7 +21,7 @@ from .models import (
 )
 from .services.executor import PlaybookExecutor, pr_title_body
 from .services.github import GitHubRepo
-from .services import mesh, scanning, uptrace_admin
+from .services import mesh, pr_guard, scanning, uptrace_admin
 from .services import runbooks as runbook_outcomes
 from .services.knowledge import GenericPlaybookAuthor, KnowledgeJudge, KnowledgeSearch
 from .services.playbooks import DiagnosisReporter, PlaybookAuthor, PlaybookJudge, PlaybookSearch, visible_playbooks
@@ -250,6 +250,9 @@ def create_playbook(inp: IncidentInput) -> int:
 @django_activity
 def create_playbook_run(inp: RunInput) -> PlaybookRunInfo:
     run = _incident(inp.incident_run_id)
+    existing = PlaybookRun.objects.filter(incident_run=run).first()
+    if existing is not None:  # a retry: the mode was decided the first time
+        return PlaybookRunInfo(existing.id, existing.execution_mode)
     runbook = None
     if settings.SRE_RUNBOOKS_ENABLED:
         playbook = visible_playbooks(run.project).get(id=inp.playbook_id)
@@ -273,11 +276,20 @@ def create_playbook_run(inp: RunInput) -> PlaybookRunInfo:
         mode = scanning.lower_mode(mode, run.execution_mode_cap)
     if run.source == IncidentRun.Source.SCAN:
         mode = scanning.lower_mode(mode, ExecutionMode.DRAFT_ONLY)
-    playbook_run, _ = PlaybookRun.objects.get_or_create(
-        incident_run=run,
-        defaults={"playbook": playbook, "runbook": runbook, "execution_mode": mode,
-                  "generate_tests": run.project.generate_tests},
-    )
+    with transaction.atomic():
+        note, covered_by = "", None
+        if mode != ExecutionMode.ADVISORY_ONLY:
+            # One PR per bug per repo, and a few per repo from agents' findings.
+            pr_guard.lock_repo(run.project)
+            note, covered_by = pr_guard.hold_back(run, playbook.id)
+            if note:
+                mode = ExecutionMode.ADVISORY_ONLY
+        playbook_run, _ = PlaybookRun.objects.get_or_create(
+            incident_run=run,
+            defaults={"playbook": playbook, "runbook": runbook, "execution_mode": mode,
+                      "generate_tests": run.project.generate_tests, "mode_note": note,
+                      "covered_by": covered_by},
+        )
     return PlaybookRunInfo(playbook_run.id, playbook_run.execution_mode)
 
 
@@ -304,6 +316,11 @@ def write_diagnosis_report(inp: IncidentInput) -> None:
     run = _incident(inp.incident_run_id)
     with llm_step("diagnosis_report", run):
         report = DiagnosisReporter(run, run.matched_playbook, run.matched_runbook).write()
+    playbook_run = PlaybookRun.objects.filter(incident_run=run).select_related("covered_by").first()
+    if playbook_run is not None and playbook_run.mode_note:
+        # Held to a diagnosis although its mode allowed a PR: say why, first.
+        pr = playbook_run.covered_by.pr_url if playbook_run.covered_by else ""
+        report = f"> {playbook_run.mode_note}{f' ({pr})' if pr else ''}.\n\n{report}"
     run.diagnosis_report = report
     run.save(update_fields=["diagnosis_report", "updated_at"])
 

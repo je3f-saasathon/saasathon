@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 
 import { api } from "@/api/client";
 import type { IncidentRun, RemediationAgent, ScanRun, ScanRunList } from "@/api/types";
@@ -52,19 +52,46 @@ function Repos({ run, onOpenIncident }: { run: ScanRun; onOpenIncident: (id: num
               <TableCell className="font-medium">{repo.project_name}</TableCell>
               <TableCell>
                 <ScanStatusBadge status={repo.status} />
-                {repo.error && <p className="mt-1 text-xs text-destructive">{repo.error}</p>}
+                {repo.error && (
+                  <p
+                    className={`mt-1 text-xs ${repo.status === "skipped" ? "text-muted-foreground" : "text-destructive"}`}
+                  >
+                    {repo.error}
+                  </p>
+                )}
               </TableCell>
               <TableCell>
-                {repo.incident_run_ids.length === 0 ? (
+                {repo.findings.length === 0 ? (
                   <span className="text-muted-foreground">{repo.finding_count || "—"}</span>
                 ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {repo.incident_run_ids.map((id) => (
-                      <Button key={id} variant="outline" size="sm" onClick={() => onOpenIncident(id)}>
-                        Incident #{id}
-                      </Button>
+                  <ul className="space-y-1">
+                    {repo.findings.map((finding) => (
+                      <li key={finding.incident_run_id} className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onOpenIncident(finding.incident_run_id)}
+                        >
+                          Incident #{finding.incident_run_id}
+                        </Button>
+                        {finding.pr_url ? (
+                          <a
+                            href={finding.pr_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                          >
+                            PR #{finding.pr_url.split("/").pop()}
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : (
+                          finding.mode_note && (
+                            <span className="text-xs text-muted-foreground">{finding.mode_note}</span>
+                          )
+                        )}
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
               </TableCell>
             </TableRow>
