@@ -182,7 +182,7 @@ function buildParticles() {
       varying float vAlpha;
       void main() {
         float d = length(gl_PointCoord - 0.5);
-        float glow = smoothstep(0.5, 0.0, d);
+        float glow = 1.0 - smoothstep(0.0, 0.5, d);
         gl_FragColor = vec4(vColor * glow * 1.6, glow * vAlpha);
       }
     `,
@@ -209,8 +209,10 @@ function buildBeam() {
       uniform float uTime;
       varying vec2 vUv;
       void main() {
-        float rise = pow(1.0 - vUv.y, 2.2);
-        float edge = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
+        // Interpolated UVs can land just outside 0..1, and pow() of a negative base is NaN, which
+        // the bloom pass would smear across the whole frame as a one-frame blackout.
+        float rise = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 2.2);
+        float edge = smoothstep(0.0, 0.12, vUv.x) * (1.0 - smoothstep(0.88, 1.0, vUv.x));
         float scan = 0.75 + 0.25 * sin(vUv.y * 60.0 - uTime * 14.0);
         vec3 color = vec3(1.4, 0.6, 0.3);
         gl_FragColor = vec4(color, rise * edge * scan * 0.55);
