@@ -20,7 +20,8 @@ from .models import (
 from .permissions import get_org_membership
 from .schemas import AgentIn, AgentOut, AgentUpdateIn, ScanRunListOut, ScanRunOut
 from .services import agents as agent_service
-from .services.scanning import agent_tokens_this_month
+from .llm.usage import tokens_by_model
+from .services.scanning import agent_tokens_this_month, agent_usage_this_month
 
 # Five fields of digits, *, /, -, ',' (Temporal validates the rest).
 _CRON_FIELD = re.compile(r"^[\d*/,\-]+$")
@@ -43,10 +44,12 @@ def _agent_out(agent: RemediationAgent) -> dict:
     last = agent.scan_runs.order_by("-started_at").values_list("id", flat=True).first()
     return {
         **{f: getattr(agent, f) for f in AgentOut.model_fields
-           if f not in ("project_ids", "playbook_ids", "tokens_this_month", "last_scan_run_id")},
+           if f not in ("project_ids", "playbook_ids", "tokens_this_month",
+                        "tokens_by_model_this_month", "last_scan_run_id")},
         "project_ids": list(agent.projects.values_list("id", flat=True)),
         "playbook_ids": list(agent.playbooks.values_list("id", flat=True)),
         "tokens_this_month": agent_tokens_this_month(agent),
+        "tokens_by_model_this_month": tokens_by_model(agent_usage_this_month(agent)),
         "last_scan_run_id": last,
     }
 

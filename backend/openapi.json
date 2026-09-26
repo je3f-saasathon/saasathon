@@ -3997,6 +3997,50 @@
         "title": "ExecutionMode",
         "type": "string"
       },
+      "ModelTokensOut": {
+        "description": "One model's share of a token total: tokens of different models cost different amounts,\nso they're never only reported summed together.",
+        "properties": {
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "cached_input_tokens": {
+            "title": "Cached Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "calls",
+          "input_tokens",
+          "cached_input_tokens",
+          "output_tokens",
+          "total_tokens"
+        ],
+        "title": "ModelTokensOut",
+        "type": "object"
+      },
       "ProjectOut": {
         "properties": {
           "id": {
@@ -4055,6 +4099,13 @@
           "platform_tokens_this_month": {
             "title": "Platform Tokens This Month",
             "type": "integer"
+          },
+          "platform_tokens_by_model_this_month": {
+            "items": {
+              "$ref": "#/components/schemas/ModelTokensOut"
+            },
+            "title": "Platform Tokens By Model This Month",
+            "type": "array"
           },
           "created_at": {
             "format": "date-time",
@@ -4151,6 +4202,7 @@
           "generate_tests",
           "platform_preset",
           "platform_tokens_this_month",
+          "platform_tokens_by_model_this_month",
           "created_at",
           "github_verified",
           "organization_id",
@@ -4369,6 +4421,13 @@
             "title": "Platform Tokens This Month",
             "type": "integer"
           },
+          "platform_tokens_by_model_this_month": {
+            "items": {
+              "$ref": "#/components/schemas/ModelTokensOut"
+            },
+            "title": "Platform Tokens By Model This Month",
+            "type": "array"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -4476,6 +4535,7 @@
           "generate_tests",
           "platform_preset",
           "platform_tokens_this_month",
+          "platform_tokens_by_model_this_month",
           "created_at",
           "github_verified",
           "organization_id",
@@ -6517,6 +6577,54 @@
         "title": "IncidentRunOut",
         "type": "object"
       },
+      "ModelUsageOut": {
+        "properties": {
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "cached_input_tokens": {
+            "title": "Cached Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          },
+          "platform_tokens": {
+            "title": "Platform Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "calls",
+          "input_tokens",
+          "cached_input_tokens",
+          "output_tokens",
+          "total_tokens",
+          "platform_tokens"
+        ],
+        "title": "ModelUsageOut",
+        "type": "object"
+      },
       "PlaybookBriefOut": {
         "properties": {
           "id": {
@@ -6631,6 +6739,13 @@
             },
             "title": "By Step",
             "type": "array"
+          },
+          "by_model": {
+            "items": {
+              "$ref": "#/components/schemas/ModelUsageOut"
+            },
+            "title": "By Model",
+            "type": "array"
           }
         },
         "required": [
@@ -6641,7 +6756,8 @@
           "total_tokens",
           "platform_tokens",
           "models",
-          "by_step"
+          "by_step",
+          "by_model"
         ],
         "title": "UsageOut",
         "type": "object"
@@ -6870,6 +6986,13 @@
             "title": "Tokens This Month",
             "type": "integer"
           },
+          "tokens_by_model_this_month": {
+            "items": {
+              "$ref": "#/components/schemas/ModelTokensOut"
+            },
+            "title": "Tokens By Model This Month",
+            "type": "array"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -6921,6 +7044,7 @@
           "max_findings_per_repo",
           "monthly_token_budget",
           "tokens_this_month",
+          "tokens_by_model_this_month",
           "enabled",
           "created_by_id",
           "created_at",

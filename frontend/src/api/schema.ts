@@ -1215,6 +1215,27 @@ export interface components {
          * @enum {string}
          */
         ExecutionMode: "autonomous" | "draft_only" | "advisory_only";
+        /**
+         * ModelTokensOut
+         * @description One model's share of a token total: tokens of different models cost different amounts,
+         *     so they're never only reported summed together.
+         */
+        ModelTokensOut: {
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Calls */
+            calls: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Cached Input Tokens */
+            cached_input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Total Tokens */
+            total_tokens: number;
+        };
         /** ProjectOut */
         ProjectOut: {
             /** Id */
@@ -1241,6 +1262,8 @@ export interface components {
             platform_preset: string;
             /** Platform Tokens This Month */
             platform_tokens_this_month: number;
+            /** Platform Tokens By Model This Month */
+            platform_tokens_by_model_this_month: components["schemas"]["ModelTokensOut"][];
             /**
              * Created At
              * Format: date-time
@@ -1347,6 +1370,8 @@ export interface components {
             platform_preset: string;
             /** Platform Tokens This Month */
             platform_tokens_this_month: number;
+            /** Platform Tokens By Model This Month */
+            platform_tokens_by_model_this_month: components["schemas"]["ModelTokensOut"][];
             /**
              * Created At
              * Format: date-time
@@ -2107,6 +2132,25 @@ export interface components {
             /** Scan Kind */
             scan_kind: string;
         };
+        /** ModelUsageOut */
+        ModelUsageOut: {
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Calls */
+            calls: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Cached Input Tokens */
+            cached_input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Total Tokens */
+            total_tokens: number;
+            /** Platform Tokens */
+            platform_tokens: number;
+        };
         /** PlaybookBriefOut */
         PlaybookBriefOut: {
             /** Id */
@@ -2154,6 +2198,8 @@ export interface components {
             models: string[];
             /** By Step */
             by_step: components["schemas"]["StepUsageOut"][];
+            /** By Model */
+            by_model: components["schemas"]["ModelUsageOut"][];
         };
         /** AttemptOut */
         AttemptOut: {
@@ -2240,6 +2286,8 @@ export interface components {
             monthly_token_budget: number;
             /** Tokens This Month */
             tokens_this_month: number;
+            /** Tokens By Model This Month */
+            tokens_by_model_this_month: components["schemas"]["ModelTokensOut"][];
             /** Enabled */
             enabled: boolean;
             /** Created By Id */

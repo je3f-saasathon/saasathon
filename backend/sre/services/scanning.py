@@ -65,9 +65,12 @@ def month_start():
     return timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
+def agent_usage_this_month(agent):
+    return LLMUsage.objects.filter(scan_repo__scan_run__agent=agent, created_at__gte=month_start())
+
+
 def agent_tokens_this_month(agent) -> int:
-    totals = LLMUsage.objects.filter(scan_repo__scan_run__agent=agent, created_at__gte=month_start()) \
-        .aggregate(input=Sum("input_tokens"), output=Sum("output_tokens"))
+    totals = agent_usage_this_month(agent).aggregate(input=Sum("input_tokens"), output=Sum("output_tokens"))
     return (totals["input"] or 0) + (totals["output"] or 0)
 
 

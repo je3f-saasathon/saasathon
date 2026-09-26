@@ -103,12 +103,17 @@ def billed_to(config: LLMProviderConfig) -> str:
     return USER
 
 
-def tokens_this_month(project: Project) -> int:
+def usage_this_month(project: Project):
+    """The project's LLM calls this month billed to our keys."""
     start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    totals = LLMUsage.objects.filter(
+    return LLMUsage.objects.filter(
         Q(incident_run__project=project) | Q(scan_repo__project=project),
         billed_to=PLATFORM, created_at__gte=start,
-    ).aggregate(input=Sum("input_tokens"), output=Sum("output_tokens"))
+    )
+
+
+def tokens_this_month(project: Project) -> int:
+    totals = usage_this_month(project).aggregate(input=Sum("input_tokens"), output=Sum("output_tokens"))
     return (totals["input"] or 0) + (totals["output"] or 0)
 
 
