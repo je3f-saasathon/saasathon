@@ -147,6 +147,36 @@ def run_workflow(scenario: Scenario, decision: ApprovalDecision | None = None) -
     return asyncio.run(go())
 
 
+def run_review(scenario: Scenario, steps: list[tuple[str, str | None]]) -> str:
+    """Draft-only run driven by GitHub events. Each step is (event, state): the event
+    ("merge", "close" or "reopen") is sent once the run's latest status is `state`, or
+    straight away if `state` is None."""
+    async def go():
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            queue = f"test-{uuid.uuid4()}"
+            async with Worker(env.client, task_queue=queue,
+                              workflows=[IncidentDiagnosisWorkflow],
+                              activities=stub_activities(scenario)):
+                handle = await env.client.start_workflow(
+                    IncidentDiagnosisWorkflow.run, IncidentInput(1, 1),
+                    id=f"wf-{uuid.uuid4()}", task_queue=queue,
+                )
+                for event, state in steps:
+                    while state and (not scenario.run_status or scenario.run_status[-1] != state):
+                        await asyncio.sleep(0.05)
+                    if event == "reopen":
+                        await handle.signal(IncidentDiagnosisWorkflow.pull_request_reopened)
+                    else:
+                        await handle.signal(IncidentDiagnosisWorkflow.approval_decision,
+                                            ApprovalDecision(event == "merge", 0, via_github=True))
+                return await handle.result()
+
+    return asyncio.run(go())
+
+
+PENDING, REJECTED = "pending_approval", "rejected"
+
+
 def test_no_anomaly_stops_early():
     s = Scenario(is_anomaly=False)
     assert run_workflow(s) == "no_anomaly"
@@ -203,7 +233,7 @@ def test_draft_only_waits_for_approval_then_opens_pr():
 
 def test_draft_only_rejection_opens_no_pr():
     s = Scenario(mode="draft_only")
-    assert run_workflow(s, ApprovalDecision(approve=False, user_id=3)) == "failed"
+    assert run_workflow(s, ApprovalDecision(approve=False, user_id=3)) == "rejected"
     assert s.run_status == ["pending_approval", "rejected"]
     assert "open_pull_request" not in s.calls
     assert "close_pull_request" in s.calls
@@ -220,9 +250,56 @@ def test_draft_only_merged_on_github_touches_no_pr():
 
 def test_draft_only_closed_on_github_is_rejected_without_closing_again():
     s = Scenario(mode="draft_only")
-    assert run_workflow(s, ApprovalDecision(approve=False, user_id=0, via_github=True)) == "failed"
+    assert run_workflow(s, ApprovalDecision(approve=False, user_id=0, via_github=True)) == "rejected"
     assert s.run_status == ["pending_approval", "rejected"]
     assert "close_pull_request" not in s.calls and "open_pull_request" not in s.calls
+
+
+def test_closed_then_reopened_then_merged_succeeds():
+    s = Scenario(mode="draft_only")
+    steps = [("close", PENDING), ("reopen", REJECTED), ("merge", PENDING)]
+    assert run_review(s, steps) == "succeeded"
+    assert s.run_status == [PENDING, REJECTED, PENDING, "succeeded"]
+    statuses = [status for status, _ in s.incident_status]
+    assert statuses == ["awaiting_approval", "rejected", "awaiting_approval", "succeeded"]
+    assert s.calls.count("record_playbook_outcome") == 1
+    assert "open_pull_request" not in s.calls and "close_pull_request" not in s.calls
+
+
+def test_reopened_pr_can_be_rejected_again():
+    s = Scenario(mode="draft_only")
+    steps = [("close", PENDING), ("reopen", REJECTED), ("close", PENDING)]
+    assert run_review(s, steps) == "rejected"
+    assert s.run_status == [PENDING, REJECTED, PENDING, REJECTED]
+    assert "record_playbook_outcome" not in s.calls
+
+
+def test_rejected_pr_never_reopened_ends_after_the_window():
+    s = Scenario(mode="draft_only")
+    assert run_review(s, [("close", PENDING)]) == "rejected"  # time-skips past REOPEN_WINDOW
+    assert s.run_status == [PENDING, REJECTED]
+    # Rejected, not failed: the agent did produce a fix.
+    assert "failed" not in [status for status, _ in s.incident_status]
+
+
+def test_merge_after_rejection_counts_even_if_reopen_was_missed():
+    s = Scenario(mode="draft_only")
+    assert run_review(s, [("close", PENDING), ("merge", REJECTED)]) == "succeeded"
+    assert s.run_status == [PENDING, REJECTED, "succeeded"]
+    assert s.calls.count("record_playbook_outcome") == 1
+
+
+def test_reopen_and_merge_arriving_together_approve():
+    s = Scenario(mode="draft_only")
+    assert run_review(s, [("close", PENDING), ("reopen", REJECTED), ("merge", None)]) == "succeeded"
+    assert s.run_status[-1] == "succeeded"
+    assert s.calls.count("record_playbook_outcome") == 1
+
+
+def test_duplicate_close_while_rejected_does_not_block_reopen():
+    s = Scenario(mode="draft_only")
+    steps = [("close", PENDING), ("close", REJECTED), ("reopen", REJECTED), ("merge", PENDING)]
+    assert run_review(s, steps) == "succeeded"
 
 
 def test_advisory_writes_report_and_never_runs_agent():
@@ -252,15 +329,20 @@ def test_only_runbook_candidates_still_get_judged():
     assert "judge_match" in s.calls
 
 
-def test_workflow_from_before_runbooks_still_replays():
-    """Recorded with the pre-runbooks workflow (origin/main before this milestone): a
-    draft_only run paused awaiting approval, which a deploy must not break. The new
-    activities sit behind workflow.patched(), so replaying it must not raise."""
+@pytest.mark.parametrize("fixture,workflow_id", [
+    # Main before this milestone, and main after PR #8 (reopen after reject): what prod ran.
+    ("workflow_history_pre_runbooks.json", "pre-runbooks-awaiting-approval"),
+    ("workflow_history_pr8_awaiting_approval.json", "main-pr8-awaiting-approval"),
+])
+def test_workflow_from_before_runbooks_still_replays(fixture, workflow_id):
+    """Recorded with the pre-runbooks workflow: a draft_only run paused awaiting approval,
+    which a deploy must not break. The new activities sit behind workflow.patched(), so
+    replaying it must not raise."""
     from pathlib import Path
 
     from temporalio.client import WorkflowHistory
     from temporalio.worker import Replayer
 
-    raw = (Path(__file__).parent / "fixtures" / "workflow_history_pre_runbooks.json").read_text()
-    history = WorkflowHistory.from_json("pre-runbooks-awaiting-approval", raw)
+    raw = (Path(__file__).parent / "fixtures" / fixture).read_text()
+    history = WorkflowHistory.from_json(workflow_id, raw)
     asyncio.run(Replayer(workflows=[IncidentDiagnosisWorkflow]).replay_workflow(history))

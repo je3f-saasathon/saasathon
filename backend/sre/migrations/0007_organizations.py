@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('sre', '0005_llmusage_billed_to'),
+        ('sre', '0006_incidentrun_rejected_status'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

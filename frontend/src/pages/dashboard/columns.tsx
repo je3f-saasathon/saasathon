@@ -15,12 +15,15 @@ export const statusVariant: Record<IncidentStatus, BadgeVariant> = {
   new_playbook_created: "secondary",
   no_anomaly: "outline",
   failed: "destructive",
+  // A person closed the PR unmerged: a decision, not an error, so not red.
+  rejected: "outline",
 };
 
 // shadcn's Badge has no "success"/"warning" variants; tint the outline/default ones.
 export const statusClassName: Partial<Record<IncidentStatus, string>> = {
   succeeded: "border-emerald-500 text-emerald-700 dark:text-emerald-300",
   awaiting_approval: "bg-amber-500 text-white hover:bg-amber-500/80",
+  rejected: "border-muted-foreground/50 text-muted-foreground",
 };
 
 export function StatusBadge({ status }: { status: string }) {

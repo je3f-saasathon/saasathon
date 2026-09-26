@@ -45,8 +45,8 @@ def test_personal_org_is_created_on_first_use_if_missing(make_user):
 @pytest.mark.django_db(transaction=True)
 def test_backfill_gives_projects_their_earliest_owners_org_and_reverses():
     executor = MigrationExecutor(connection)
-    executor.migrate([("sre", "0006_organizations")])
-    apps = executor.loader.project_state([("sre", "0006_organizations")]).apps
+    executor.migrate([("sre", "0007_organizations")])
+    apps = executor.loader.project_state([("sre", "0007_organizations")]).apps
     User = apps.get_model("accounts", "User")
     Project_ = apps.get_model("sre", "Project")
     Membership = apps.get_model("sre", "ProjectMembership")
@@ -60,9 +60,9 @@ def test_backfill_gives_projects_their_earliest_owners_org_and_reverses():
     Membership.objects.create(project=project, user=viewer, role="viewer")
 
     executor = MigrationExecutor(connection)
-    executor.migrate([("sre", "0007_backfill_personal_orgs")])
+    executor.migrate([("sre", "0008_backfill_personal_orgs")])
     # Historical models: later migrations add columns the current models expect.
-    apps = executor.loader.project_state([("sre", "0007_backfill_personal_orgs")]).apps
+    apps = executor.loader.project_state([("sre", "0008_backfill_personal_orgs")]).apps
     Org = apps.get_model("sre", "Organization")
     OrgMembership = apps.get_model("sre", "OrganizationMembership")
     project = apps.get_model("sre", "Project").objects.get(id=project.id)
@@ -73,7 +73,7 @@ def test_backfill_gives_projects_their_earliest_owners_org_and_reverses():
                                             user_id=viewer.id).exists()
 
     executor = MigrationExecutor(connection)
-    executor.migrate([("sre", "0006_organizations")])
+    executor.migrate([("sre", "0007_organizations")])
     assert Org.objects.count() == 0
     assert Project_.objects.get(id=project.id).organization_id is None
 

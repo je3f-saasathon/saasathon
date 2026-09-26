@@ -52,7 +52,7 @@ All routes are under `/api/sre` and require `Authorization: Bearer <token>`, exc
 - `execution_mode`: `autonomous` (opens the PR itself) · `draft_only` (default; opens a GitHub **draft** PR right away, and an admin's approval marks it ready for review while rejection closes it. On repos whose plan doesn't allow drafts it opens a normal PR titled `[Awaiting approval] …` instead, and approval removes the prefix) · `advisory_only` (writes a diagnosis only, never touches the repo). An `unconfirmed` playbook never runs above `draft_only`. With runbooks on, `autonomous` needs a `confirmed` **runbook**: a run from a playbook alone (even a confirmed built-in), or from an unconfirmed runbook, is capped at `draft_only`.
 - `provider`: `anthropic` · `openai` · `self_hosted` (any OpenAI-compatible server; needs `base_url`) · `jev_cloudflare` (only for `anomaly_double_check`, `bug_classification`, `playbook_similarity_judge`).
 - `step`: `anomaly_double_check` · `bug_classification` · `playbook_similarity_judge` · `playbook_creation` · `playbook_execution`.
-- incident `status`: `running` · `no_anomaly` · `new_playbook_created` · `awaiting_approval` · `succeeded` · `failed` · `advisory_complete`.
+- incident `status`: `running` · `no_anomaly` · `new_playbook_created` · `awaiting_approval` · `succeeded` · `failed` · `rejected` (a draft-only fix whose PR was closed unmerged; not a failure) · `advisory_complete`.
 - playbook / runbook `status`: `unconfirmed` · `confirmed` · `failing` (3 failed runs in a row; excluded from matching). A run counts toward its runbook's streak when it used one, else toward the playbook's. Built-in playbooks' status never changes from runs.
 - playbook `origin`: `builtin` · `agent` · `human`. runbook `origin`: `agent` · `human` · `migrated` (converted from an old, specific playbook).
 - playbook `category` (and the classifier's): `null_reference` · `timeout` · `database` · `dependency_failure` · `configuration` · `validation` · `resource_exhaustion` · `logic_error` · `other`.
@@ -202,9 +202,14 @@ With runbooks off, every runbook route returns `404`.
 
 ### GitHub webhook (called by the GitHub App)
 
-`POST /sre/github/webhook` — no bearer token; GitHub signs the body with the App's webhook secret (`X-Hub-Signature-256`, `GITHUB_APP_WEBHOOK_SECRET`). This is how a **draft-only** run is approved: the agent opens a draft PR, and on `pull_request` `closed` for that PR's branch, **merged** approves the fix (the run and incident become `succeeded` and the playbook's outcome is recorded) and **closed without merging** rejects it (`rejected` / `failed`). The PR must be in the project's repo and on the run's `branch_name`.
+`POST /sre/github/webhook` — no bearer token; GitHub signs the body with the App's webhook secret (`X-Hub-Signature-256`, `GITHUB_APP_WEBHOOK_SECRET`). This is how a **draft-only** run is approved: the agent opens a draft PR, and for `pull_request` events on that PR's branch:
+- `closed`, **merged** → approves the fix: the run and incident become `succeeded` and the playbook's outcome is recorded. Also accepted from `rejected`, in case the reopen delivery was lost.
+- `closed`, **not merged** → rejects it: the run and the incident become `rejected`. This is distinct from `failed` (the agent couldn't produce a fix, or the pipeline errored): the fix exists, a person declined it.
+- `reopened`, or `opened` (a new PR from the same branch), on a **`rejected`** run → back up for review: `pending_approval` / `awaiting_approval`, `approved_at` cleared. The workflow listens for this for **30 days** after a rejection, then ends for good.
 
-Returns `200 {detail}` when it decided a run; `202 {detail}` for anything ignored (other events or actions, PRs the agent isn't waiting on, autonomous runs, a run already decided — so redeliveries are harmless); `401 {detail}` for a bad signature; `503 {detail}` if `GITHUB_APP_WEBHOOK_SECRET` isn't set, or if the workflow can't be reached (the decision is released; redeliver the webhook from the App's settings).
+The PR must be in the project's repo and on the run's `branch_name`.
+
+Returns `200 {detail}` when it changed a run; `202 {detail}` for anything ignored (other events or actions, PRs the agent isn't waiting on, autonomous runs, an event that doesn't fit the run's state — so redeliveries are harmless — or a workflow that has already finished); `401 {detail}` for a bad signature; `503 {detail}` if `GITHUB_APP_WEBHOOK_SECRET` isn't set, or if the workflow can't be reached (the change is released; redeliver the webhook from the App's settings).
 
 ## Errors
 

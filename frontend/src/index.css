@@ -3,60 +3,61 @@
 @tailwind utilities;
 
 @layer base {
-  /* Light: slate neutrals with a deeper cyan so the brand colour holds contrast on white. */
+  /* Light: the pitch deck's warm off-white (#efe9e8) with the buggly coral (#ce4c32), deepened
+     slightly so white text on it holds contrast. */
   :root {
-    --background: 210 40% 98%;
-    --foreground: 225 45% 8%;
-    --card: 0 0% 100%;
-    --card-foreground: 225 45% 8%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 225 45% 8%;
-    --primary: 192 91% 36%;
+    --background: 8 19% 93%;
+    --foreground: 345 18% 12%;
+    --card: 12 30% 98%;
+    --card-foreground: 345 18% 12%;
+    --popover: 12 30% 98%;
+    --popover-foreground: 345 18% 12%;
+    --primary: 10 62% 47%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 214 32% 93%;
-    --secondary-foreground: 225 45% 8%;
-    --muted: 214 32% 93%;
-    --muted-foreground: 215 16% 42%;
-    --accent: 188 60% 92%;
-    --accent-foreground: 225 45% 8%;
-    --destructive: 350 80% 50%;
+    --secondary: 8 35% 88%;
+    --secondary-foreground: 345 18% 12%;
+    --muted: 8 28% 89%;
+    --muted-foreground: 350 10% 40%;
+    --accent: 12 70% 90%;
+    --accent-foreground: 10 60% 30%;
+    --destructive: 352 72% 42%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 28% 87%;
-    --input: 214 28% 85%;
-    --ring: 192 91% 36%;
-    --chart-1: 192 91% 36%;
-    --chart-2: 160 84% 35%;
-    --chart-3: 350 80% 50%;
-    --chart-4: 38 92% 50%;
-    --chart-5: 262 70% 58%;
+    --border: 10 20% 85%;
+    --input: 10 20% 82%;
+    --ring: 10 62% 47%;
+    --chart-1: 10 62% 50%;
+    --chart-2: 11 70% 79%;
+    --chart-3: 322 74% 61%;
+    --chart-4: 32 90% 55%;
+    --chart-5: 275 67% 26%;
     --radius: 0.5rem;
   }
-  /* Dark: matches the landing page (#05070d, cyan-300 accent, rose for danger). */
+  /* Dark: a warm near-black (matches the landing page, #120a0c) with a lighter coral accent. */
   .dark {
-    --background: 225 44% 4%;
-    --foreground: 210 40% 96%;
-    --card: 224 35% 7%;
-    --card-foreground: 210 40% 96%;
-    --popover: 224 35% 7%;
-    --popover-foreground: 210 40% 96%;
-    --primary: 187 92% 69%;
-    --primary-foreground: 229 84% 5%;
-    --secondary: 223 25% 12%;
-    --secondary-foreground: 210 40% 96%;
-    --muted: 223 25% 12%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 223 25% 14%;
-    --accent-foreground: 210 40% 96%;
-    --destructive: 350 89% 60%;
+    --background: 348 29% 5%;
+    --foreground: 12 30% 94%;
+    --card: 345 18% 9%;
+    --card-foreground: 12 30% 94%;
+    --popover: 345 18% 9%;
+    --popover-foreground: 12 30% 94%;
+    --primary: 11 80% 64%;
+    --primary-foreground: 348 29% 5%;
+    --secondary: 345 12% 14%;
+    --secondary-foreground: 12 30% 94%;
+    --muted: 345 12% 14%;
+    --muted-foreground: 10 12% 66%;
+    --accent: 345 12% 16%;
+    --accent-foreground: 12 30% 94%;
+    --destructive: 352 85% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 223 20% 15%;
-    --input: 223 20% 18%;
-    --ring: 187 92% 69%;
-    --chart-1: 187 92% 69%;
-    --chart-2: 156 72% 67%;
-    --chart-3: 350 89% 60%;
-    --chart-4: 43 96% 56%;
-    --chart-5: 263 70% 71%;
+    --border: 345 12% 17%;
+    --input: 345 12% 20%;
+    --ring: 11 80% 64%;
+    --chart-1: 11 80% 64%;
+    --chart-2: 11 70% 79%;
+    --chart-3: 322 74% 66%;
+    --chart-4: 38 92% 60%;
+    --chart-5: 275 55% 68%;
   }
 }
 

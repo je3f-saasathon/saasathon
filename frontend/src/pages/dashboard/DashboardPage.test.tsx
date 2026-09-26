@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DashboardPage } from "./DashboardPage";
 
@@ -150,5 +150,28 @@ describe("DashboardPage", () => {
     expect(screen.getByText("built-in")).toBeInTheDocument();
     responses["/api/sre/incident-runs"] = { runs: [run], total: 1 };
     responses["/api/sre/playbooks/3"] = playbook;
+  });
+
+  it.each([
+    ["2026-10-01T00:00:00Z", /Reopen the PR on GitHub by/],
+    ["2026-11-30T00:00:00Z", /can no longer be reopened/],
+  ])("shows a rejected run as rejected, not failed (today %s)", async (today, note) => {
+    // Fake only Date: the reopen deadline is 30 days after the PR was closed (approved_at).
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(today));
+    responses["/api/sre/incident-runs"] = {
+      runs: [{ ...run, status: "rejected", playbook_run_status: "rejected" }],
+      total: 1,
+    };
+    renderPage();
+    const table = within(await screen.findByRole("table"));
+    expect(await table.findByText("rejected")).toBeInTheDocument();
+    expect(table.queryByText("failed")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("ZeroDivisionError in checkout"));
+    expect(await screen.findByText(note)).toBeInTheDocument();
+    expect(screen.getByText(/closed without merging/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open PR" })).toHaveAttribute("href", run.pr_url);
+    responses["/api/sre/incident-runs"] = { runs: [run], total: 1 };
+    vi.useRealTimers();
   });
 });

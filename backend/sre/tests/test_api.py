@@ -3,6 +3,7 @@ import hmac
 import json
 
 import pytest
+from django.utils import timezone
 
 from sre import temporal_client
 from sre.models import (
@@ -20,11 +21,13 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def temporal_calls(monkeypatch):
-    calls = {"start": [], "signal": []}
+    calls = {"start": [], "signal": [], "reopen": []}
     monkeypatch.setattr(temporal_client, "start_incident_workflow",
                         lambda wid, inp: calls["start"].append((wid, inp)))
     monkeypatch.setattr(temporal_client, "signal_approval",
                         lambda wid, decision: calls["signal"].append((wid, decision)))
+    monkeypatch.setattr(temporal_client, "signal_pull_request_reopened",
+                        lambda wid: calls["reopen"].append(wid))
     return calls
 
 
@@ -571,3 +574,56 @@ def test_github_decision_is_released_if_signal_fails(client, make_user, make_pro
     assert post_github(client, pr_closed(playbook_run, True)).status_code == 503
     playbook_run.refresh_from_db()
     assert playbook_run.approved_at is None  # a redelivery can decide
+
+
+def rejected_run(project):
+    playbook_run = pending_with_branch(project, status=PlaybookRun.Status.REJECTED)
+    playbook_run.approved_at = timezone.now()
+    playbook_run.save()
+    return playbook_run
+
+
+@pytest.mark.parametrize("action", ["reopened", "opened"])
+def test_github_reopen_puts_a_rejected_run_back_up_for_review(client, make_user, make_project,
+                                                              temporal_calls, github_secret, action):
+    playbook_run = rejected_run(make_project(make_user()))
+    resp = post_github(client, {**pr_closed(playbook_run, False), "action": action})
+    assert resp.status_code == 200
+    assert temporal_calls["reopen"] == [playbook_run.incident_run.temporal_workflow_id]
+    playbook_run.refresh_from_db()
+    assert playbook_run.approved_at is None  # undecided again
+
+
+def test_github_merge_of_a_rejected_run_approves(client, make_user, make_project, temporal_calls,
+                                                 github_secret):
+    playbook_run = rejected_run(make_project(make_user()))
+    assert post_github(client, pr_closed(playbook_run, True)).status_code == 200
+    assert temporal_calls["signal"][0][1].approve is True
+    # ...but closing it again unmerged is nothing new.
+    assert post_github(client, pr_closed(playbook_run, False)).status_code == 202
+
+
+def test_github_reopen_ignored_unless_rejected(client, make_user, make_project, temporal_calls,
+                                               github_secret):
+    project = make_project(make_user())
+    pending = pending_with_branch(project)
+    assert post_github(client, {**pr_closed(pending, False), "action": "reopened"}).status_code == 202
+    for status in (PlaybookRun.Status.SUCCEEDED, PlaybookRun.Status.FAILED):
+        PlaybookRun.objects.filter(id=pending.id).update(status=status)
+        assert post_github(client, {**pr_closed(pending, False), "action": "reopened"}).status_code == 202
+        assert post_github(client, pr_closed(pending, True)).status_code == 202
+    assert temporal_calls["reopen"] == [] and temporal_calls["signal"] == []
+
+
+def test_github_event_for_a_finished_workflow_is_ignored(client, make_user, make_project,
+                                                         monkeypatch, github_secret):
+    def finished(wid):
+        raise temporal_client.WorkflowFinished(wid)
+
+    monkeypatch.setattr(temporal_client, "signal_pull_request_reopened", finished)
+    playbook_run = rejected_run(make_project(make_user()))
+    before = playbook_run.approved_at
+    resp = post_github(client, {**pr_closed(playbook_run, False), "action": "reopened"})
+    assert resp.status_code == 202 and "finished" in resp.json()["detail"]
+    playbook_run.refresh_from_db()
+    assert playbook_run.approved_at == before  # claim released

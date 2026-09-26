@@ -34,6 +34,6 @@ def backwards(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("sre", "0009_generic_playbooks")]
+    dependencies = [("sre", "0010_generic_playbooks")]
 
     operations = [migrations.RunPython(forwards, backwards)]

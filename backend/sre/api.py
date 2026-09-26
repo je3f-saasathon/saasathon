@@ -1085,6 +1085,10 @@ def approve_playbook_run(request: HttpRequest, playbook_run_id: int, payload: Ap
     return 200, _playbook_run_out(playbook_run)
 
 
+# "opened" too: someone can open a fresh PR from the agent's branch instead of reopening.
+GITHUB_PR_ACTIONS = {"closed", "reopened", "opened"}
+
+
 def _github_signature_valid(request: HttpRequest) -> bool:
     secret = settings.GITHUB_APP_WEBHOOK_SECRET.encode()
     expected = "sha256=" + hmac.new(secret, request.body, hashlib.sha256).hexdigest()
@@ -1094,8 +1098,9 @@ def _github_signature_valid(request: HttpRequest) -> bool:
 @router.post("/github/webhook", auth=None, response={200: dict, 202: dict, 401: dict, 503: dict})
 def github_webhook(request: HttpRequest):
     """The GitHub App's webhook. A draft-only run is decided on GitHub: merging its PR
-    approves the fix, closing it unmerged rejects it. Everything else is acknowledged
-    and ignored."""
+    approves the fix, closing it unmerged rejects it, and reopening a rejected PR (or opening
+    a new one from the same branch) puts the run back up for review. Everything else is
+    acknowledged and ignored."""
     if not settings.GITHUB_APP_WEBHOOK_SECRET:
         return 503, {"detail": "GitHub webhooks are not configured"}
     if not _github_signature_valid(request):
@@ -1103,8 +1108,9 @@ def github_webhook(request: HttpRequest):
 
     event = request.headers.get("X-GitHub-Event", "")
     payload = json.loads(request.body or b"{}")
-    if event != "pull_request" or payload.get("action") != "closed":
-        return 202, {"detail": f"Ignored: {event or 'unknown'} {payload.get('action') or ''}".strip()}
+    action = payload.get("action") or ""
+    if event != "pull_request" or action not in GITHUB_PR_ACTIONS:
+        return 202, {"detail": f"Ignored: {event or 'unknown'} {action}".strip()}
 
     pr = payload.get("pull_request") or {}
     owner, _, name = str((payload.get("repository") or {}).get("full_name", "")).partition("/")
@@ -1117,24 +1123,36 @@ def github_webhook(request: HttpRequest):
     if playbook_run is None:
         return 202, {"detail": "Ignored: not a pull request the agent is waiting on"}
 
+    Status = PlaybookRun.Status
+    undecided = Q(status__in=[Status.RUNNING, Status.PENDING_APPROVAL], approved_at__isnull=True)
+    pr_url = pr.get("html_url") or playbook_run.pr_url
     merged = bool(pr.get("merged"))
-    # Conditional update, as in approve: a redelivery or an in-app decision can't decide twice.
-    # RUNNING too: the PR can close before the workflow has marked the run pending.
-    claimed = PlaybookRun.objects.filter(
-        id=playbook_run.id, approved_at__isnull=True,
-        status__in=[PlaybookRun.Status.RUNNING, PlaybookRun.Status.PENDING_APPROVAL],
-    ).update(approved_by=None, approved_at=timezone.now(),
-             pr_url=pr.get("html_url") or playbook_run.pr_url)
-    if not claimed:
-        return 202, {"detail": "Ignored: this run was already decided"}
+    # Each transition is a conditional update, so a redelivery (or an in-app decision) can't
+    # apply it twice. RUNNING counts as undecided: the PR can close before the workflow has
+    # marked the run pending. A merge is also taken from REJECTED in case the reopen was lost.
+    if action in ("opened", "reopened"):
+        claim, changes = Q(status=Status.REJECTED), {"approved_by": None, "approved_at": None}
+        send = lambda wid: temporal_client.signal_pull_request_reopened(wid)
+        done = "Reopened: awaiting review again"
+    else:
+        claim = undecided | Q(status=Status.REJECTED) if merged else undecided
+        changes = {"approved_by": None, "approved_at": timezone.now()}
+        decision = ApprovalDecision(approve=merged, user_id=0, via_github=True)
+        send = lambda wid: temporal_client.signal_approval(wid, decision)
+        done = "Approved: PR merged" if merged else "Rejected: PR closed without merging"
+
+    if not PlaybookRun.objects.filter(claim, id=playbook_run.id).update(**changes, pr_url=pr_url):
+        return 202, {"detail": f"Ignored: nothing to do for a {action} PR on a {playbook_run.status} run"}
     try:
-        temporal_client.signal_approval(
-            playbook_run.incident_run.temporal_workflow_id,
-            ApprovalDecision(approve=merged, user_id=0, via_github=True),
+        send(playbook_run.incident_run.temporal_workflow_id)
+    except Exception as exc:
+        PlaybookRun.objects.filter(id=playbook_run.id).update(
+            approved_by_id=playbook_run.approved_by_id, approved_at=playbook_run.approved_at,
         )
-    except Exception:
+        if isinstance(exc, temporal_client.WorkflowFinished):
+            return 202, {"detail": "Ignored: this run's workflow has finished (a rejected PR is "
+                                   "only watched for reopening for 30 days)"}
         logger.exception("could not signal workflow for playbook run %s", playbook_run.id)
-        PlaybookRun.objects.filter(id=playbook_run.id).update(approved_at=None)
         # GitHub doesn't retry; redeliver from the App's "Advanced" settings.
         return 503, {"detail": "Could not reach the workflow; redeliver this webhook"}
-    return 200, {"detail": "Approved: PR merged" if merged else "Rejected: PR closed without merging"}
+    return 200, {"detail": done}

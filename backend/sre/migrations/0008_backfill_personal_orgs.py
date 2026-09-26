@@ -41,7 +41,7 @@ def backwards(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("sre", "0006_organizations"),
+        ("sre", "0007_organizations"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('sre', '0010_backfill_playbook_orgs_and_seed_builtins'),
+        ('sre', '0011_backfill_playbook_orgs_and_seed_builtins'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

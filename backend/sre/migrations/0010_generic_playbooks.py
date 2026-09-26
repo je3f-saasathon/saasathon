@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('sre', '0008_uptrace_credentials_and_telemetry'),
+        ('sre', '0009_uptrace_credentials_and_telemetry'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
