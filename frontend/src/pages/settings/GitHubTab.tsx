@@ -38,9 +38,17 @@ function Banner() {
   }
   if (params.get("github") === "connected") {
     const count = Number(params.get("count") ?? 0);
+    const projects = params.get("projects");
     return (
       <p className="rounded-md border border-emerald-500/50 p-3 text-sm text-emerald-700 dark:text-emerald-300">
         GitHub connected: {count} installation{count === 1 ? "" : "s"} available.
+        {projects !== null && Number(projects) > 0 && (
+          <>
+            {" "}
+            Created {projects} project{projects === "1" ? "" : "s"}, one per repo: run your app with{" "}
+            <code>uvx buggly run</code> and its errors come here.
+          </>
+        )}
       </p>
     );
   }

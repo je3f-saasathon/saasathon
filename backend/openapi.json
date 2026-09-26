@@ -161,6 +161,144 @@
         ]
       }
     },
+    "/api/auth/cli/start": {
+      "post": {
+        "operationId": "accounts_api_cli_start",
+        "summary": "Cli Start",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliStartOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "`buggly login`: the CLI shows the user code and opens verification_url, then polls.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/cli/approve": {
+      "post": {
+        "operationId": "accounts_api_cli_approve",
+        "summary": "Cli Approve",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliApproveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/auth/cli/poll": {
+      "post": {
+        "operationId": "accounts_api_cli_poll",
+        "summary": "Cli Poll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenOut"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliPendingOut"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliPollIn"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
     "/api/auth/logout": {
       "post": {
         "operationId": "accounts_api_logout",
@@ -378,6 +516,96 @@
             }
           }
         },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/cli/project": {
+      "get": {
+        "operationId": "sre_api_cli_project",
+        "summary": "Cli Project",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliProjectOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "description": "What `buggly run` needs to send a repo's telemetry: its project's DSN and service\nname. The DSN is admin-only, like on the project page.",
         "tags": [
           "sre"
         ],
@@ -3498,6 +3726,39 @@
         "title": "IssuedTokenOut",
         "type": "object"
       },
+      "CliStartOut": {
+        "properties": {
+          "device_code": {
+            "title": "Device Code",
+            "type": "string"
+          },
+          "user_code": {
+            "title": "User Code",
+            "type": "string"
+          },
+          "verification_url": {
+            "title": "Verification Url",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "interval": {
+            "title": "Interval",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_url",
+          "expires_in",
+          "interval"
+        ],
+        "title": "CliStartOut",
+        "type": "object"
+      },
       "OkOut": {
         "properties": {
           "ok": {
@@ -3507,6 +3768,45 @@
           }
         },
         "title": "OkOut",
+        "type": "object"
+      },
+      "CliApproveIn": {
+        "properties": {
+          "user_code": {
+            "title": "User Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_code"
+        ],
+        "title": "CliApproveIn",
+        "type": "object"
+      },
+      "CliPendingOut": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "CliPendingOut",
+        "type": "object"
+      },
+      "CliPollIn": {
+        "properties": {
+          "device_code": {
+            "title": "Device Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_code"
+        ],
+        "title": "CliPollIn",
         "type": "object"
       },
       "ProvidersOut": {
@@ -3630,6 +3930,49 @@
           "url"
         ],
         "title": "ManagedUptraceOut",
+        "type": "object"
+      },
+      "CliProjectOut": {
+        "properties": {
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "uptrace_status": {
+            "title": "Uptrace Status",
+            "type": "string"
+          },
+          "dsn": {
+            "title": "Dsn",
+            "type": "string"
+          },
+          "otlp_endpoint": {
+            "title": "Otlp Endpoint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "name",
+          "repo",
+          "service_name",
+          "uptrace_status",
+          "dsn",
+          "otlp_endpoint"
+        ],
+        "title": "CliProjectOut",
         "type": "object"
       },
       "ExecutionMode": {
@@ -4210,6 +4553,11 @@
               }
             ],
             "title": "Uptrace Share With Project Id"
+          },
+          "uptrace_managed": {
+            "default": true,
+            "title": "Uptrace Managed",
+            "type": "boolean"
           },
           "platform_preset": {
             "default": "openai_jev",

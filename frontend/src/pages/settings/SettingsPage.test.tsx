@@ -192,6 +192,35 @@ describe("SettingsPage", () => {
     expect(JSON.parse(init.body)).toEqual({ share_with_project_id: null });
   });
 
+  it("creates a project on the user's own Uptrace even when managed Uptrace is on", async () => {
+    routes["GET /api/sre/uptrace/managed"] = { enabled: true, url: "https://uptrace.buggly.dev" };
+    routes["POST /api/sre/projects"] = { ...project, id: 7, name: "shop", webhook_secret: "s", webhook_url: "u" };
+    renderAt("/settings?tab=projects");
+    fireEvent.click(await screen.findByRole("button", { name: /New project/ }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "shop" } });
+    await screen.findByRole("option", { name: /je3f-saasathon/ });
+    fireEvent.change(screen.getByLabelText("GitHub installation"), { target: { value: "164850677" } });
+    const repo = await screen.findByRole("option", { name: "je3f-saasathon/django-buggy-app" });
+    fireEvent.change(repo.closest("select")!, { target: { value: "je3f-saasathon/django-buggy-app" } });
+
+    // Managed by default: no pin field until the user picks their own Uptrace.
+    expect(screen.queryByLabelText(/^Uptrace project/)).not.toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText(/^Monitoring/), { target: { value: "own" } });
+    expect(screen.getByLabelText(/^Uptrace project/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Create/ }));
+
+    await vi.waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url, init]) =>
+        init?.method === "POST" && new URL(String(url)).pathname === "/api/sre/projects")).toBe(true),
+    );
+    const [, init] = fetchMock.mock.calls.find(([url, i]) =>
+      i?.method === "POST" && new URL(String(url)).pathname === "/api/sre/projects")!;
+    const body = JSON.parse(init.body);
+    expect(body.uptrace_managed).toBe(false);
+    expect(body.uptrace_share_with_project_id).toBeNull();
+    delete routes["POST /api/sre/projects"];
+  });
+
   it("saves service names as a list, only when they change", async () => {
     renderAt("/settings?tab=projects");
     fireEvent.click(await screen.findByText("django-buggy-app"));
@@ -214,6 +243,11 @@ describe("SettingsPage", () => {
     expect(await screen.findByRole("button", { name: /Add another account/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh from GitHub" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Connect GitHub/ })).not.toBeInTheDocument();
+  });
+
+  it("says how many projects connecting created", () => {
+    renderAt("/settings?tab=github&github=connected&count=1&projects=2");
+    expect(screen.getByText(/Created 2 projects, one per repo/)).toBeInTheDocument();
   });
 
   it("explains a connect error", () => {

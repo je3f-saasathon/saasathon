@@ -69,6 +69,24 @@ its links); `/users/current` lists projects (with `orgId`), not orgs; there's no
 project. Alerts in 2.1 use `status: unresolved` and underscore event names (`state_changed`).
 A reopened alert starts a new incident once the last one finished (`uptrace-alert-{id}-r{n}`).
 
+### One-step onboarding: projects on install + `buggly` CLI (branch `feat/buggly-cli`, 2026-09-26)
+
+Goal: install the GitHub App, then `buggly run python app.py`, nothing else.
+- `SRE_GITHUB_AUTO_PROJECTS` (off by default): `services/auto_projects.py` creates a draft-only
+  project per repo (personal org, `service_names=[repo]`, managed Uptrace when configured) from
+  the connect callback (newly connected installations only) and the GitHub webhook's
+  `installation` / `installation_repositories` events (owner = the connected user whose
+  `github_id` sent it, else the only connected user). A repo with a project on that
+  installation is skipped. Tests: `tests/test_auto_projects.py`.
+- `GET /api/sre/cli/project?repo=owner/name` gives the CLI the DSN, OTLP endpoint and service name.
+- Device-code login in `accounts` (`CliLogin`, DB not cache: 3 gunicorn workers), approved at
+  the frontend's `/cli?code=`.
+- The CLI is `cli/` (see `cli/README.md`): a `sitecustomize.py` on `PYTHONPATH` turns on OTel
+  auto-instrumentation and an excepthook that records the crash on a span. Live-checked
+  against local Uptrace: the crash lands as `log:error` / `_event_name=exception`, which the
+  managed monitor fires on. Not yet run live: GitHub install → project, and a full
+  crash → alert → incident through managed Uptrace.
+
 ### Agent loop token savings (2026-09-26)
 
 The fix agent's loop resends the whole conversation every turn, so playbook execution is

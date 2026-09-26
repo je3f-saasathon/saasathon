@@ -144,3 +144,55 @@ class AuthToken(models.Model):
     def revoke(self):
         self.revoked_at = timezone.now()
         self.save(update_fields=["revoked_at"])
+
+
+CLI_LOGIN_TTL = timedelta(minutes=10)
+# No 0/O/1/I: the user reads this code off a terminal and may type it.
+USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def _new_user_code() -> str:
+    code = "".join(secrets.choice(USER_CODE_ALPHABET) for _ in range(8))
+    return f"{code[:4]}-{code[4:]}"
+
+
+def _cli_login_expiry():
+    return timezone.now() + CLI_LOGIN_TTL
+
+
+class CliLogin(models.Model):
+    """A device-code login for the `buggly` CLI. The CLI holds the secret device code and
+    polls; a signed-in user approves the short user code in the browser; the next poll
+    gets a token and the row is deleted. Stored in the database, not the cache, because
+    the cache is per gunicorn worker."""
+
+    device_code_hash = models.CharField(max_length=64, unique=True)
+    user_code = models.CharField(max_length=9, unique=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE,
+        related_name="cli_logins",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(default=_cli_login_expiry)
+
+    class Meta:
+        db_table = "accounts_cli_login"
+
+    @property
+    def is_expired(self) -> bool:
+        return timezone.now() >= self.expires_at
+
+    @classmethod
+    def start(cls) -> tuple["CliLogin", str]:
+        """A new login. Returns (login, raw_device_code)."""
+        cls.objects.filter(expires_at__lte=timezone.now()).delete()
+        raw = secrets.token_urlsafe(32)
+        for _ in range(5):
+            code = _new_user_code()
+            if not cls.objects.filter(user_code=code).exists():
+                break
+        return cls.objects.create(device_code_hash=_hash_token(raw), user_code=code), raw
+
+    @classmethod
+    def by_device_code(cls, raw: str) -> "CliLogin | None":
+        return cls.objects.select_related("user").filter(device_code_hash=_hash_token(raw)).first()
