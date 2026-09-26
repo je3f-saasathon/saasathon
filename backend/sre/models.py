@@ -527,7 +527,11 @@ class LLMUsage(models.Model):
     # Whose credentials paid: "platform" (our keys, counts toward the monthly cap) or "user".
     billed_to = models.CharField(max_length=16, default="user", db_index=True)
     input_tokens = models.PositiveIntegerField(default=0)
+    # The part of input_tokens the provider served from its prompt cache (billed at a discount).
+    cached_input_tokens = models.PositiveIntegerField(default=0)
     output_tokens = models.PositiveIntegerField(default=0)
+    # The agent loop's turn (0-based) for a playbook_execution call; null for other steps.
+    turn = models.PositiveSmallIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

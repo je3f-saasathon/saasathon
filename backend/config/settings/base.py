@@ -208,6 +208,12 @@ SRE_SERVICE_MESH_ENABLED = env_bool("SRE_SERVICE_MESH_ENABLED", default=False)
 SRE_SERVICE_GRAPH_TTL_DAYS = int(os.environ.get("SRE_SERVICE_GRAPH_TTL_DAYS", "7"))
 # How many mapped neighbour repos a fix agent gets read-only.
 SRE_MAX_NEIGHBOUR_REPOS = int(os.environ.get("SRE_MAX_NEIGHBOUR_REPOS", "3"))
+
+# Agent loop token savings. Trimming replaces old tool results the agent no longer needs
+# with short stubs. Jev assist (when the project's similarity-judge step runs on Jev) picks
+# files to preload, reads failed command output, and judges old results and progress.
+SRE_AGENT_COMPACT_HISTORY = env_bool("SRE_AGENT_COMPACT_HISTORY", default=True)
+SRE_AGENT_JEV_ASSIST = env_bool("SRE_AGENT_JEV_ASSIST", default=True)
 # Remediation agents: org-level agents that scan repos for bugs before they alert and feed
 # findings into the incident pipeline (docs/MESH_AND_REMEDIATION.md).
 SRE_REMEDIATION_AGENTS_ENABLED = env_bool("SRE_REMEDIATION_AGENTS_ENABLED", default=False)

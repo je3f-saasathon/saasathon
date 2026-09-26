@@ -372,12 +372,14 @@ class StepUsageOut(Schema):
     billed_to: str  # "platform" (our keys) or "user"
     calls: int
     input_tokens: int
+    cached_input_tokens: int  # the part of input_tokens served from the provider's prompt cache
     output_tokens: int
 
 
 class UsageOut(Schema):
     calls: int
     input_tokens: int
+    cached_input_tokens: int
     output_tokens: int
     total_tokens: int
     platform_tokens: int  # the part of total_tokens billed to our keys

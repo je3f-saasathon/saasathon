@@ -2002,6 +2002,8 @@ export interface components {
             calls: number;
             /** Input Tokens */
             input_tokens: number;
+            /** Cached Input Tokens */
+            cached_input_tokens: number;
             /** Output Tokens */
             output_tokens: number;
         };
@@ -2011,6 +2013,8 @@ export interface components {
             calls: number;
             /** Input Tokens */
             input_tokens: number;
+            /** Cached Input Tokens */
+            cached_input_tokens: number;
             /** Output Tokens */
             output_tokens: number;
             /** Total Tokens */

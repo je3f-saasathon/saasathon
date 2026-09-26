@@ -7,7 +7,7 @@ nothing is written. Each activity runs in its own worker thread, so scopes can't
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-# {"incident_run_id" | "scan_repo_id": id, "step": step}
+# {"incident_run_id" | "scan_repo_id": id, "step": step[, "turn": n]}
 _scope: ContextVar[dict | None] = ContextVar("sre_llm_usage_scope", default=None)
 
 
@@ -28,6 +28,17 @@ def scan_usage_scope(scan_repo_id: int, step: str):
     return _scoped({"scan_repo_id": scan_repo_id, "step": step})
 
 
+@contextmanager
+def usage_turn(turn: int):
+    """Tags the calls made inside it with the agent loop's turn (no-op outside a scope)."""
+    scope = _scope.get()
+    if scope is None:
+        yield
+        return
+    with _scoped({**scope, "turn": turn}):
+        yield
+
+
 def record_usage(config, usage: dict) -> None:
     scope = _scope.get()
     if scope is None:
@@ -41,5 +52,6 @@ def record_usage(config, usage: dict) -> None:
         model=config.model,
         billed_to=billed_to(config),
         input_tokens=int(usage.get("input") or 0),
+        cached_input_tokens=int(usage.get("cached_input") or 0),
         output_tokens=int(usage.get("output") or 0),
     )

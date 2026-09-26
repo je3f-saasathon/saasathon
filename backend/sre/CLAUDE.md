@@ -69,6 +69,24 @@ its links); `/users/current` lists projects (with `orgId`), not orgs; there's no
 project. Alerts in 2.1 use `status: unresolved` and underscore event names (`state_changed`).
 A reopened alert starts a new incident once the last one finished (`uptrace-alert-{id}-r{n}`).
 
+### Agent loop token savings (2026-09-26)
+
+The fix agent's loop resends the whole conversation every turn, so playbook execution is
+most of the input tokens. `services/agent_history.py` trims old turns every
+`COMPACT_EVERY_TURNS` (6), never touching the first message or the last 4 turns: reads a
+later read/write replaced, `write_file` contents, and all but the latest command output
+(kept as its last lines). `services/jev_assist.py` runs when the project's
+`playbook_similarity_judge` step resolves to Jev (the `openai_jev` mix, or a user's Jev
+config): it preloads the files the stack trace needs into the first message, labels failed
+command output (two confident `environment_problem`s in a row end the attempt), says which
+old reads can go, and judges progress (stuck once → a nudge, twice → the attempt ends).
+Every Jev question is best effort. Flags: `SRE_AGENT_COMPACT_HISTORY`, `SRE_AGENT_JEV_ASSIST`
+(both on by default). `LLMUsage` now has `cached_input_tokens` and `turn`, so per-turn input
+growth and prompt-cache hits can be read from the DB. Tests: `tests/test_agent_tokens.py`.
+Live benchmark (real sandbox, gpt-5.5, django-buggy-app `bug/unhandled-exception`, 2 trials
+each): chat input 35k/45k tokens off vs 26k/31k on, all four runs fixed the bug. The
+calculator app is too small to show a difference.
+
 ## Files
 
 - `models.py` — Project, ProjectMembership (owner/admin/viewer), LLMProviderConfig (**owned by a
