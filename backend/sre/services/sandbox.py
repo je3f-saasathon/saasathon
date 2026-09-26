@@ -8,6 +8,8 @@ from pathlib import Path
 from django.conf import settings
 
 WORKSPACE = "/workspace"
+# Read-only copies of neighbouring services' repos (service mesh), one directory each.
+NEIGHBOURS = "/neighbours"
 COMMAND_TIMEOUT_SECONDS = 300
 MAX_OUTPUT_CHARS = 8000
 
@@ -28,8 +30,11 @@ class Sandbox:
     no network unless SRE_SANDBOX_NETWORK says otherwise. Every agent tool call
     (file reads/writes and commands) happens in here, never on the worker host."""
 
-    def __init__(self, work_tree: Path, name: str, network: str | None = None):
+    def __init__(self, work_tree: Path, name: str, network: str | None = None,
+                 neighbours: dict[str, Path] | None = None):
         self.work_tree = work_tree
+        # {directory name under /neighbours: host path}, mounted read-only.
+        self.neighbours = neighbours or {}
         self.name = name
         # The network the container starts on; isolate() can take it off later.
         self.network = network or settings.SRE_SANDBOX_NETWORK
@@ -51,7 +56,11 @@ class Sandbox:
                 auto_remove=False,
                 environment={},
                 network_mode=self.network,
-                volumes={str(self.work_tree): {"bind": WORKSPACE, "mode": "rw"}},
+                volumes={
+                    str(self.work_tree): {"bind": WORKSPACE, "mode": "rw"},
+                    **{str(path): {"bind": f"{NEIGHBOURS}/{name}", "mode": "ro"}
+                       for name, path in self.neighbours.items()},
+                },
                 working_dir=WORKSPACE,
                 # Same uid as the worker so it can commit and clean up what the agent wrote.
                 user=f"{os.getuid()}:{os.getgid()}",
@@ -73,11 +82,20 @@ class Sandbox:
             except Exception:
                 pass
 
-    def _path(self, path: str) -> str:
+    def _path(self, path: str, roots: tuple[str, ...] = (WORKSPACE,)) -> str:
+        """An absolute path inside one of `roots` is taken as is (only /workspace for
+        writes); anything else is relative to /workspace and must stay inside it."""
+        if path.startswith("/"):
+            absolute = posixpath.normpath(path)
+            if any(absolute == root or absolute.startswith(root + "/") for root in roots):
+                return absolute
         joined = posixpath.normpath(posixpath.join(WORKSPACE, path.lstrip("/")))
         if joined != WORKSPACE and not joined.startswith(WORKSPACE + "/"):
             raise SandboxError(f"path escapes the repo: {path}")
         return joined
+
+    def _read_path(self, path: str) -> str:
+        return self._path(path, (WORKSPACE, NEIGHBOURS) if self.neighbours else (WORKSPACE,))
 
     def isolate(self) -> None:
         """Disconnect every network, then prove there's no way out. Raises (and the attempt
@@ -110,14 +128,14 @@ class Sandbox:
         return exit_code, _truncate((output or b"").decode(errors="replace"))
 
     def read_file(self, path: str) -> str:
-        exit_code, output = self.container.exec_run(["cat", "--", self._path(path)])
+        exit_code, output = self.container.exec_run(["cat", "--", self._read_path(path)])
         text = (output or b"").decode(errors="replace")
         if exit_code != 0:
             raise SandboxError(text.strip() or f"cannot read {path}")
         return _truncate(text)
 
     def list_files(self, path: str = ".") -> str:
-        target = self._path(path)
+        target = self._read_path(path)
         exit_code, output = self.container.exec_run(
             ["sh", "-c", 'find "$1" -maxdepth 3 -not -path "*/node_modules/*" | head -500', "_", target]
         )

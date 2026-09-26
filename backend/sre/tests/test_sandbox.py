@@ -79,3 +79,23 @@ def test_install_then_isolate_cuts_all_network(settings, tmp_path):
         box.container.reload()
         assert box.container.attrs["NetworkSettings"]["Networks"] == {}
         assert box.run("echo $UV_OFFLINE $PIP_NO_INDEX")[1].strip() == "1 1"
+
+
+def test_neighbour_repos_are_readable_but_not_writable(settings, tmp_path):
+    settings.SRE_SANDBOX_NETWORK = "none"
+    if not _sandbox_available(settings.SRE_SANDBOX_IMAGE):
+        pytest.skip("Docker or sandbox image not available (run `make sandbox-image`)")
+    work_tree, neighbour = tmp_path / "tree", tmp_path / "neighbours" / "acme-worker"
+    work_tree.mkdir()
+    neighbour.mkdir(parents=True)
+    (neighbour / "client.py").write_text("def charge(): ...\n")
+    with Sandbox(work_tree, name=f"sre-test-{os.getpid()}-{tmp_path.name}",
+                 neighbours={"acme-worker": neighbour}) as box:
+        assert "def charge" in box.read_file("/neighbours/acme-worker/client.py")
+        assert "client.py" in box.list_files("/neighbours")
+        exit_code, _ = box.run("echo x > /neighbours/acme-worker/client.py")
+        assert exit_code != 0
+        # write_file only ever writes into /workspace.
+        box.write_file("/neighbours/acme-worker/client.py", "pwned")
+    assert (neighbour / "client.py").read_text() == "def charge(): ...\n"
+    assert (work_tree / "neighbours" / "acme-worker" / "client.py").read_text() == "pwned"

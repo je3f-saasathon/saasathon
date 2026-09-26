@@ -1,4 +1,5 @@
 import base64
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -80,6 +81,17 @@ class GitHubRepo:
         (work_tree / ".git").unlink(missing_ok=True)
         exclude_install_dirs(git_dir)
         self._git(git_dir, work_tree, "checkout", "-b", branch)
+
+    def clone_snapshot(self, dest: Path) -> None:
+        """A read-only copy of the default branch for another repo's fix agent to read:
+        files only, no git metadata, so nothing in it is ever run or pushed by the worker."""
+        cmd = ["git", *SAFE_GIT_CONFIG, *self._auth_config(), "clone", "--depth", "1",
+               "--single-branch", "--no-tags", "--branch", self.project.github_default_branch,
+               self.url, str(dest)]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if result.returncode != 0:
+            raise GitError(f"git clone failed: {result.stderr.strip()[-2000:]}")
+        shutil.rmtree(dest / ".git", ignore_errors=True)
 
     def has_changes(self, git_dir: Path, work_tree: Path) -> bool:
         return bool(self._git(git_dir, work_tree, "status", "--porcelain").strip())

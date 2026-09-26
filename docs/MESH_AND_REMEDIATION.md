@@ -106,7 +106,9 @@ services:
 - **Lets the fix agent read the neighbours.** When the agent fixes a service, the repos of the
   services that call it or that it calls are cloned into the sandbox **read-only** under
   `/neighbours/<owner>-<repo>`, so it can see how the other side uses the code. Only the repo
-  being fixed is writable.
+  being fixed is writable. Only repos on the same GitHub App installation (the same GitHub
+  account) are shared. Otherwise the agent could copy code from a repo some reviewers can't
+  see into this repo's PR.
 
 ### How to use it
 
@@ -226,11 +228,12 @@ didn't, and why.
 
 1. **Mesh**
    - [x] Contracts and docs
-   - [ ] `Project.service_names`, `ServiceNode` / `ServiceEdge`, `IncidentRun.source` / `root_cause` / `parent_incident_run`
-   - [ ] Uptrace client: whole trace + service graph
-   - [ ] Graph refresh (activity, workflow, schedule, manual endpoint) and `GET …/service-graph`
-   - [ ] `localize_root_cause` + linked child incidents
-   - [ ] Read-only neighbour repos in the sandbox
+   - [x] `Project.service_names`, `ServiceNode` / `ServiceEdge`, `IncidentRun.source` / `root_cause` / `parent_incident_run`
+   - [x] Uptrace client: whole trace + service graph
+   - [x] Graph refresh (activity, workflow, schedule, manual endpoint) and `GET …/service-graph`
+   - [x] `localize_root_cause` + linked child incidents
+   - [x] Read-only neighbour repos in the sandbox
+   - [ ] Live check against the local Uptrace + Temporal with two instrumented services
 2. **Remediation agents**
    - [ ] `RemediationAgent`, `ScanRun`, `repository_scan` step
    - [ ] `ActiveRemediationWorkflow` (per-repo fan-out, max 2) → child incident workflows
