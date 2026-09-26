@@ -205,3 +205,15 @@ def test_project_credential_must_be_in_its_org(owner, project, api_for):
     assert resp.status_code == 200 and resp.json()["uptrace_credential_id"] == own.id
     cleared = api.patch(f"/projects/{project.id}", {"uptrace_credential_id": None})
     assert cleared.json()["uptrace_credential_id"] is None
+
+
+def test_heuristic_keywords_prefer_the_fetched_exception(project):
+    from sre.services.context import heuristic_keywords
+
+    run = _incident(project)
+    run.raw_webhook_payload["alert"]["name"] = "AttributeError: loyalty_tier"
+    assert not {"alert", "alerting", "https"} & set(heuristic_keywords(run))
+    run.telemetry = {"exception_type": "AttributeError", "span_name": "POST /orders",
+                     "stacktrace": "File catalog/views.py in create_order: customer.loyalty_tier"}
+    keywords = heuristic_keywords(run)
+    assert "attributeerror" in keywords and "create_order" in keywords and "loyalty_tier" in keywords

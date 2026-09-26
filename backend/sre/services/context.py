@@ -15,6 +15,9 @@ _STOPWORDS = {
     "error", "exception", "failed", "with", "from", "this", "that", "none", "null", "true",
     "false", "line", "file", "traceback", "most", "recent", "call", "last", "self", "return",
     "raise", "value", "object", "type", "have", "been", "when", "while", "into", "could",
+    # The webhook's own field names and URL parts, which say nothing about the bug.
+    "alert", "alerts", "alerting", "created", "createdat", "eventname", "exception_id",
+    "trace_id", "source_id", "payload", "state", "open", "name", "https", "http",
 }
 
 
@@ -39,12 +42,20 @@ def incident_context(run: IncidentRun) -> str:
 
 
 def heuristic_keywords(run: IncidentRun, limit: int = 10) -> list[str]:
-    """Used when the classifier can't emit keywords itself (Jev)."""
-    text = json.dumps(run.raw_webhook_payload, default=str).lower()
+    """Used when the classifier can't emit keywords itself (Jev). Prefers the exception
+    fetched from Uptrace, which names the real error, over the webhook payload."""
+    telemetry = run.telemetry or {}
+    if telemetry:
+        text = " ".join(str(telemetry.get(k) or "")
+                        for k in ("exception_type", "message", "stacktrace", "span_name")).lower()
+    else:
+        text = json.dumps(run.raw_webhook_payload, default=str).lower()
     counts: dict[str, int] = {}
     for word in re.findall(r"[a-z_][a-z0-9_.]{3,}", text):
         word = word.strip("._")
-        if len(word) < 4 or word in _STOPWORDS:
-            continue
-        counts[word] = counts.get(word, 0) + 1
+        # "customer.loyalty_tier" also counts as its parts, which other incidents share.
+        for token in {word, *word.split(".")}:
+            if len(token) < 4 or token in _STOPWORDS:
+                continue
+            counts[token] = counts.get(token, 0) + 1
     return [w for w, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]]
