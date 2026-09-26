@@ -4,6 +4,7 @@ import { AuthProvider } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { Layout } from "./components/Layout";
 import { ThemeProvider } from "./components/theme";
+import { AgentsPage } from "./pages/agents/AgentsPage";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { CliLoginPage } from "./pages/CliLoginPage";
 import { DashboardPage } from "./pages/dashboard/DashboardPage";
@@ -40,6 +41,14 @@ export function App() {
                   element={
                     <ProtectedRoute>
                       <DashboardPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/agents"
+                  element={
+                    <ProtectedRoute>
+                      <AgentsPage />
                     </ProtectedRoute>
                   }
                 />

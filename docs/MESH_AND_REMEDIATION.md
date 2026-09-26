@@ -15,7 +15,7 @@ were designed this way, and how to use them.
 
 **Status:** both features are built and tested on this branch, behind
 `SRE_SERVICE_MESH_ENABLED` and `SRE_REMEDIATION_AGENTS_ENABLED`. They haven't yet been run
-end to end against real multi-service traffic, and there's no frontend yet. See the checklist at
+end to end against real multi-service traffic. The agents have a frontend (`/agents`); the mesh doesn't yet. See the checklist at
 the end.
 
 ---
@@ -242,7 +242,9 @@ didn't, and why.
    - [x] `playbook_sweep`, `runbook_variant`, `find_quiet`
    - [x] Triggers: manual, `on_merge`, `branch_watch`, `schedule`
    - [ ] Live check: a real scan through Temporal, and a GitHub merge/push delivery
-   - [ ] Frontend: org service map, agents page, `source`/`root_cause` on the dashboard
+   - [x] Frontend: agents page (`/agents`: create, edit, pause, run, scan-run history) and scan
+     findings on the dashboard (a `scan` badge and a Finding section in place of the Uptrace telemetry)
+   - [ ] Frontend: org service map, `root_cause` and linked incidents on the dashboard
 
 ## Implementation map
 

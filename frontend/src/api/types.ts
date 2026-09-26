@@ -27,6 +27,7 @@ export type IncidentStatus =
   | "rejected"
   | "advisory_complete";
 export type Playbook = Schemas["PlaybookOut"];
+export type PlaybookList = Schemas["PlaybookListOut"];
 export type PlaybookRun = Schemas["PlaybookRunOut"];
 export type Runbook = Schemas["RunbookOut"];
 export type Organization = Schemas["OrganizationOut"];
@@ -53,3 +54,12 @@ export type GitHubConnect = Schemas["GitHubConnectOut"];
 export type GitHubInstallation = Schemas["GitHubInstallationOut"];
 export type GitHubRepo = Schemas["GitHubRepoOut"];
 export type Platform = Schemas["PlatformOut"];
+
+export type RemediationAgent = Schemas["AgentOut"];
+export type AgentRequest = Schemas["AgentIn"];
+export type AgentUpdateRequest = Schemas["AgentUpdateIn"];
+export type AgentKind = Schemas["AgentKind"];
+export type AgentTrigger = Schemas["AgentTrigger"];
+export type ScanRun = Schemas["ScanRunOut"];
+export type ScanRunList = Schemas["ScanRunListOut"];
+export type ScanTrigger = Schemas["ScanTrigger"];

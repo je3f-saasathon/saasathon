@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DashboardPage } from "./DashboardPage";
 
@@ -59,7 +60,9 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <DashboardPage />
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -222,5 +225,27 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("button", { name: /Connect GitHub/ })).not.toBeInTheDocument();
     delete responses["/api/sre/github/status"];
     delete responses["/api/sre/github/installations"];
+  });
+
+  it("marks incidents a remediation agent found and shows the finding", async () => {
+    const scan = {
+      ...run, id: 8, trace_id: "scan-playbook_sweep-api-1a2b", classification: null, playbook: null,
+      pr_url: "", playbook_run_id: null, playbook_run_status: null, source: "scan", scan_run_id: null,
+      scan_kind: "runbook_variant",
+      telemetry: { title: "Same off-by-one as runbook #2", location: "billing/tax.py:10", evidence_kind: "runbook" },
+    };
+    const original = responses["/api/sre/incident-runs"];
+    responses["/api/sre/incident-runs"] = { runs: [scan], total: 1 };
+    try {
+      renderPage();
+      fireEvent.click(await screen.findByText("Same off-by-one as runbook #2"));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getAllByText("scan").length).toBeGreaterThan(0);
+      expect(within(dialog).getByText("billing/tax.py:10")).toBeInTheDocument();
+      expect(within(dialog).getByText("Runbook variants")).toBeInTheDocument();
+      expect(within(dialog).queryByText("From Uptrace")).not.toBeInTheDocument();
+    } finally {
+      responses["/api/sre/incident-runs"] = original;
+    }
   });
 });

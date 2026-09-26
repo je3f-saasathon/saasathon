@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { ChevronDown, ChevronRight, ExternalLink, X } from "lucide-react";
 
 import { api } from "@/api/client";
-import type { IncidentRun, Playbook, PlaybookRun, Runbook } from "@/api/types";
+import type { AgentKind, IncidentRun, Playbook, PlaybookRun, Runbook, ScanRun } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +17,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { StatusBadge, formatTimestamp, incidentSummary } from "./columns";
+import { kindLabels } from "../agents/labels";
+import { SourceBadge, StatusBadge, formatTimestamp, incidentSummary } from "./columns";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -155,6 +157,89 @@ function Telemetry({ telemetry }: { telemetry: Record<string, unknown> }) {
           {showStack && (
             <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-xs">
               {stack}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const EVIDENCE_LABELS: Record<string, string> = {
+  runbook: "Matches a bug a runbook already fixed",
+  trace: "Backed by an Uptrace error or trace",
+  code: "From reading the code",
+};
+
+/** What a remediation agent found, in place of the Uptrace telemetry of an alert. */
+function Finding({ run }: { run: IncidentRun }) {
+  const [showEvidence, setShowEvidence] = useState(false);
+  const telemetry = run.telemetry ?? {};
+  const evidence = str(telemetry.evidence);
+  const scanRun = useQuery({
+    queryKey: ["scan-run", run.scan_run_id],
+    queryFn: () => api.get<ScanRun>(`/sre/scan-runs/${run.scan_run_id}`),
+    enabled: run.scan_run_id != null,
+  });
+  return (
+    <div className="space-y-2 text-sm">
+      <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[10rem_1fr]">
+        <dt className="text-muted-foreground">Found by</dt>
+        <dd>
+          {kindLabels[run.scan_kind as AgentKind] ?? (run.scan_kind || "a remediation agent")}
+          {scanRun.data && (
+            <>
+              {" · "}
+              <Link
+                to={`/agents?agent=${scanRun.data.agent_id}`}
+                className="underline-offset-4 hover:underline"
+              >
+                scan run #{scanRun.data.id}
+              </Link>
+            </>
+          )}
+          {run.scan_run_id == null && <span className="text-muted-foreground"> (agent deleted)</span>}
+        </dd>
+        {str(telemetry.location) && (
+          <>
+            <dt className="text-muted-foreground">Location</dt>
+            <dd className="font-mono text-xs">{str(telemetry.location)}</dd>
+          </>
+        )}
+        {str(telemetry.exception_type) && (
+          <>
+            <dt className="text-muted-foreground">Category</dt>
+            <dd>{str(telemetry.exception_type).replace(/_/g, " ")}</dd>
+          </>
+        )}
+        {str(telemetry.message) && (
+          <>
+            <dt className="text-muted-foreground">Message</dt>
+            <dd className="whitespace-pre-wrap">{str(telemetry.message)}</dd>
+          </>
+        )}
+        {str(telemetry.service_name) && (
+          <>
+            <dt className="text-muted-foreground">Service</dt>
+            <dd>{str(telemetry.service_name)}</dd>
+          </>
+        )}
+        {str(telemetry.evidence_kind) && (
+          <>
+            <dt className="text-muted-foreground">Evidence</dt>
+            <dd>{EVIDENCE_LABELS[str(telemetry.evidence_kind)] ?? str(telemetry.evidence_kind)}</dd>
+          </>
+        )}
+      </dl>
+      {evidence && (
+        <div>
+          <Button variant="ghost" size="sm" className="-ml-3" onClick={() => setShowEvidence((v) => !v)}>
+            {showEvidence ? <ChevronDown /> : <ChevronRight />}
+            Scanner's evidence
+          </Button>
+          {showEvidence && (
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-xs">
+              {evidence}
             </pre>
           )}
         </div>
@@ -312,8 +397,10 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
           </DialogTitle>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <StatusBadge status={run.status} />
+            <SourceBadge run={run} />
             <span>{run.project_name}</span>
-            <span className="font-mono">trace {run.trace_id}</span>
+            {/* A scan incident's trace_id is its dedup key, not a trace. */}
+            {run.source !== "scan" && <span className="font-mono">trace {run.trace_id}</span>}
             <span className="font-mono">{formatTimestamp(run.created_at)} UTC</span>
             {run.execution_mode && <span>{run.execution_mode.replace(/_/g, " ")}</span>}
             {run.generate_tests != null && (
@@ -358,7 +445,11 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
           {showDiagnosis && <Diagnosis run={run} playbookRun={playbookRun.data} />}
         </Section>
 
-        {Object.keys(run.telemetry ?? {}).length > 0 && (
+        {run.source === "scan" ? (
+          <Section title="Finding">
+            <Finding run={run} />
+          </Section>
+        ) : Object.keys(run.telemetry ?? {}).length > 0 && (
           <Section title="From Uptrace">
             <Telemetry telemetry={run.telemetry} />
           </Section>
