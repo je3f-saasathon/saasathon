@@ -73,12 +73,13 @@ export function LandingPage() {
     : { to: "/register", label: "Get started" };
 
   return (
-    <div className="min-h-screen bg-[#efe9e8] text-stone-900 dark:bg-[#120a0c] dark:text-stone-100">
+    <div className="min-h-screen bg-[rgb(var(--landing-bg))] text-stone-900 [--landing-bg:239_233_232] dark:text-stone-100 dark:[--landing-bg:18_10_12]">
       <section className="relative h-[100svh] min-h-[560px] overflow-hidden">
         <HeroScene theme={theme} />
-        {/* Vignettes keep the copy readable over the scene. */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#efe9e8]/90 via-transparent to-[#efe9e8] dark:from-[#120a0c]/90 dark:to-[#120a0c]" />
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-[#efe9e8]/85 via-[#efe9e8]/30 to-transparent dark:from-[#120a0c]/80 dark:via-[#120a0c]/20 md:w-2/3" />
+        {/* Vignettes keep the copy readable over the scene. One colour var per theme: `dark:` variants
+            on gradient stops would reset the via-stop and cover the scene. */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[rgb(var(--landing-bg)/0.9)] via-transparent to-[rgb(var(--landing-bg))]" />
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-[rgb(var(--landing-bg)/0.8)] via-[rgb(var(--landing-bg)/0.2)] to-transparent md:w-2/3" />
 
         <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
           <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
