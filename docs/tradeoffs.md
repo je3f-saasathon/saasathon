@@ -140,7 +140,8 @@ table.
 - The dashboard mixes production alerts with scan findings. `source` is there to filter on.
 - A finding is keyed by category + location. A real second bug at the same location in the same
   category, found after the first was raised, is never raised again. The same was accepted for
-  Uptrace alerts in §3.
+  Uptrace alerts in §3. A finding whose fix was **rejected** is the one exception: the closed PR
+  left the bug in the repo, so the next scan that finds it raises `{fingerprint}-r{n}`.
 - Every finding costs a full pipeline's worth of triage calls, which is why each agent has
   `max_findings_per_repo` and a token budget.
 

@@ -151,6 +151,37 @@ def test_a_finding_is_only_ever_raised_once(owner):
     assert IncidentRun.objects.count() == 1
 
 
+def test_a_finding_whose_fix_was_rejected_is_raised_again(owner):
+    """A closed PR leaves the bug in the repo, so the next scan that finds it starts fresh
+    work instead of being deduped away for good."""
+    project = _project(owner)
+    agent = _agent(owner)
+    finding = scanning.Finding("null_reference", "t", "m", "src/a.py:1", "e", "code")
+    [first] = scanning.RepositoryScanner(_scan_repo(agent, project)).record([finding])
+    IncidentRun.objects.filter(id=first.id).update(status=IncidentRun.Status.REJECTED)
+
+    [second] = scanning.RepositoryScanner(_scan_repo(agent, project)).record([finding])
+    assert second.id != first.id
+    assert second.trace_id == f"{first.trace_id}-r2"
+    assert second.temporal_workflow_id == f"sre-incident-{project.id}-{second.trace_id}"
+    # Only a rejection reopens the question: while the new one runs, the same finding is it.
+    assert scanning.RepositoryScanner(_scan_repo(agent, project)).record([finding]) == []
+
+    IncidentRun.objects.filter(id=second.id).update(status=IncidentRun.Status.REJECTED)
+    [third] = scanning.RepositoryScanner(_scan_repo(agent, project)).record([finding])
+    assert third.trace_id == f"{first.trace_id}-r3"
+    assert IncidentRun.objects.count() == 3
+
+
+@pytest.mark.parametrize("status", ["succeeded", "failed", "no_anomaly"])
+def test_a_finding_that_was_decided_some_other_way_stays_deduped(owner, status):
+    project = _project(owner)
+    agent = _agent(owner)
+    finding = scanning.Finding("null_reference", "t", "m", "src/a.py:1", "e", "code")
+    [first] = scanning.RepositoryScanner(_scan_repo(agent, project)).record([finding])
+    IncidentRun.objects.filter(id=first.id).update(status=status)
+    assert scanning.RepositoryScanner(_scan_repo(agent, project)).record([finding]) == []
+    assert IncidentRun.objects.count() == 1
 SERVICES = """import os
 
 

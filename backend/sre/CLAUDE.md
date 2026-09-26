@@ -17,7 +17,7 @@ Uptrace ─POST /api/sre/webhooks/uptrace/{project_id}─▶ Django (HMAC or sha
        confirm_anomaly ─(noise)─▶ no_anomaly
        classify_bug (emits keywords)
        find_candidate_playbooks (keyword overlap, Python, works on SQLite) ─▶ judge_playbook_match
-       ├─ no match  ─▶ create_playbook (UNCONFIRMED) ─▶ new_playbook_created   (never executes first time)
+       ├─ no match  ─▶ create_playbook (UNCONFIRMED) ─▶ runs it in this incident (draft_only: it's unconfirmed)
        └─ match     ─▶ create_playbook_run (freezes mode; UNCONFIRMED capped at draft_only)
             advisory_only ─▶ write_diagnosis_report ─▶ advisory_complete
             else up to 3 attempts of run_playbook_attempt (agent loop in sandbox; each re-plans from the last error)
@@ -67,7 +67,10 @@ Uptrace quirks this relies on: saving a channel POSTs a test message and fails u
 2xx; monitor/channel **lists** leave `channelIds`/`monitorIds` empty (read one monitor to see
 its links); `/users/current` lists projects (with `orgId`), not orgs; there's no API to delete a
 project. Alerts in 2.1 use `status: unresolved` and underscore event names (`state_changed`).
-A reopened alert starts a new incident once the last one finished (`uptrace-alert-{id}-r{n}`).
+A reopened alert starts a new incident once the last one finished (`uptrace-alert-{id}-r{n}`), and
+so does *any* further notification of an alert whose last incident was `rejected`: the closed PR
+never fixed the bug, so that alert never resolves and never reopens, and without this the bug
+could never be worked on again. Scan findings recur the same way (`scan-{kind}-{fingerprint}-r{n}`).
 
 ### One-step onboarding: projects on install + `buggly` CLI (branch `feat/buggly-cli`, 2026-09-26)
 

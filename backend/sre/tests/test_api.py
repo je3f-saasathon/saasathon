@@ -272,6 +272,28 @@ def test_recurring_alert_after_its_incident_finished_does_not_start_another(
     assert IncidentRun.objects.count() == 1
 
 
+def test_recurring_alert_after_a_rejected_fix_starts_a_new_incident(
+        client, make_user, make_project, temporal_calls):
+    """A closed PR means the bug is still live, so Uptrace's alert never resolves and never
+    sends a reopen event: the `recurring` notification is the bug coming back."""
+    project = make_project(make_user())
+    first = post_uptrace(client, project, uptrace_alert()).json()
+    _finish(first["incident_run_id"], IncidentRun.Status.REJECTED)
+
+    again = post_uptrace(client, project, uptrace_alert(event="recurring"))
+    assert again.status_code == 200
+    run = IncidentRun.objects.get(id=again.json()["incident_run_id"])
+    assert run.id != first["incident_run_id"]
+    assert run.trace_id == "uptrace-alert-123-r2"
+    assert run.temporal_workflow_id == f"sre-incident-{project.id}-uptrace-alert-123-r2"
+    assert temporal_calls["start"][-1][0] == run.temporal_workflow_id
+
+    # A redelivery lands on the new incident, which is now the running one.
+    redelivered = post_uptrace(client, project, uptrace_alert(event="recurring"))
+    assert redelivered.json()["incident_run_id"] == run.id
+    assert IncidentRun.objects.count() == 2
+
+
 def test_reopen_keys_do_not_collide_across_alerts_or_projects(
         client, make_user, make_project, temporal_calls):
     user = make_user()

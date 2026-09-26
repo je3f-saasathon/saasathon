@@ -2,6 +2,7 @@ import secrets
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 
 def _new_webhook_secret() -> str:
@@ -389,6 +390,25 @@ class IncidentRun(models.Model):
     class Meta:
         db_table = "sre_incident_run"
         ordering = ["-created_at"]
+
+
+# An incident key is a base (an Uptrace alert, or a scan finding's fingerprint) plus, for each
+# time the same bug came back, a recurrence suffix: base, base-r2, base-r3, ...
+def latest_incident_run(project, base_trace_id: str) -> tuple["IncidentRun | None", int]:
+    """The newest incident for a base key, and how many incidents that key has had."""
+    runs = IncidentRun.objects.filter(project=project).filter(
+        Q(trace_id=base_trace_id) | Q(trace_id__startswith=f"{base_trace_id}-r"))
+    return runs.order_by("-id").first(), runs.count()
+
+
+def next_incident_key(base_trace_id: str, count: int) -> str:
+    return f"{base_trace_id}-r{count + 1}"
+
+
+def rejected_fix_recurred(latest: "IncidentRun | None") -> bool:
+    """A rejected fix leaves the bug where it was, so the next time the bug shows up it's new
+    work: a closed PR must not silence it for good."""
+    return latest is not None and latest.status == IncidentRun.Status.REJECTED
 
 
 class ServiceGraph(models.Model):
