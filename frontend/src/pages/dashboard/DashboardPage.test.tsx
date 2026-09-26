@@ -174,4 +174,28 @@ describe("DashboardPage", () => {
     responses["/api/sre/incident-runs"] = { runs: [run], total: 1 };
     vi.useRealTimers();
   });
+
+  it("prompts to connect GitHub only when nothing is connected", async () => {
+    responses["/api/sre/github/status"] = { configured: true };
+    responses["/api/sre/github/installations"] = [];
+    let view = renderPage();
+    expect(await screen.findByRole("button", { name: /Connect GitHub/ })).toBeEnabled();
+    view.unmount();
+
+    // No GitHub App on the server: still shown, but it can't connect.
+    responses["/api/sre/github/status"] = { configured: false };
+    view = renderPage();
+    expect(await screen.findByRole("button", { name: /Connect GitHub/ })).toBeDisabled();
+    expect(screen.getByText(/isn't configured on this server/)).toBeInTheDocument();
+    view.unmount();
+
+    responses["/api/sre/github/installations"] = [
+      { id: 1, installation_id: "42", account_login: "acme", account_type: "Organization" },
+    ];
+    renderPage();
+    expect(await screen.findByText("ZeroDivisionError in checkout")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Connect GitHub/ })).not.toBeInTheDocument();
+    delete responses["/api/sre/github/status"];
+    delete responses["/api/sre/github/installations"];
+  });
 });

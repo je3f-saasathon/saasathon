@@ -8,6 +8,7 @@ import { DataTable } from "@/components/data-table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { columns } from "./columns";
+import { ConnectGitHubCard } from "./ConnectGitHubCard";
 import { IncidentDetail } from "./IncidentDetail";
 
 const PAGE_SIZE = 25;
@@ -57,6 +58,8 @@ export function DashboardPage() {
           Your latest SRE incidents across all projects.
         </p>
       </div>
+
+      <ConnectGitHubCard />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map(({ title, value, icon: Icon }) => (
