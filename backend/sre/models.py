@@ -197,16 +197,26 @@ class LLMStepOverride(models.Model):
         unique_together = [("project", "step")]
 
 
+# Module-level (not nested) so the API schema gets two distinctly named enums.
+class PlaybookOrigin(models.TextChoices):
+    BUILTIN = "builtin", "Built-in"
+    AGENT = "agent", "Written by the agent"
+    HUMAN = "human", "Written by a person"
+
+
+class RunbookOrigin(models.TextChoices):
+    AGENT = "agent", "Saved from the agent's fix"
+    HUMAN = "human", "Written by a person"
+    MIGRATED = "migrated", "Converted from an old, specific playbook"
+
+
 class Playbook(models.Model):
     class Status(models.TextChoices):
         UNCONFIRMED = "unconfirmed", "Unconfirmed"
         CONFIRMED = "confirmed", "Confirmed"
         FAILING = "failing", "Failing"
 
-    class Origin(models.TextChoices):
-        BUILTIN = "builtin", "Built-in"
-        AGENT = "agent", "Written by the agent"
-        HUMAN = "human", "Written by a person"
+    Origin = PlaybookOrigin
 
     # Generic playbooks belong to an org (null = a built-in we ship, visible everywhere).
     # `project` is where one came from; a legacy (not yet generic) playbook is only
@@ -260,10 +270,7 @@ class Runbook(models.Model):
     """The specific half of a playbook: the files and commands that fixed a bug in one
     project's repo. Saved from a successful fix and reused by later incidents there."""
 
-    class Origin(models.TextChoices):
-        AGENT = "agent", "Saved from the agent's fix"
-        HUMAN = "human", "Written by a person"
-        MIGRATED = "migrated", "Converted from an old, specific playbook"
+    Origin = RunbookOrigin
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="runbooks")
     # PROTECT: a run always needs a playbook (PlaybookRun.playbook is required).

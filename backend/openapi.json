@@ -4138,15 +4138,6 @@
         "title": "StepOverridesIn",
         "type": "object"
       },
-      "Origin": {
-        "enum": [
-          "agent",
-          "human",
-          "migrated"
-        ],
-        "title": "Origin",
-        "type": "string"
-      },
       "PlaybookListOut": {
         "properties": {
           "playbooks": {
@@ -4167,6 +4158,15 @@
         ],
         "title": "PlaybookListOut",
         "type": "object"
+      },
+      "PlaybookOrigin": {
+        "enum": [
+          "builtin",
+          "agent",
+          "human"
+        ],
+        "title": "PlaybookOrigin",
+        "type": "string"
       },
       "PlaybookOut": {
         "properties": {
@@ -4197,7 +4197,7 @@
             "title": "Organization Id"
           },
           "origin": {
-            "$ref": "#/components/schemas/Origin"
+            "$ref": "#/components/schemas/PlaybookOrigin"
           },
           "created_by_id": {
             "anyOf": [
@@ -4491,6 +4491,15 @@
         "title": "RunbookListOut",
         "type": "object"
       },
+      "RunbookOrigin": {
+        "enum": [
+          "agent",
+          "human",
+          "migrated"
+        ],
+        "title": "RunbookOrigin",
+        "type": "string"
+      },
       "RunbookOut": {
         "properties": {
           "id": {
@@ -4536,7 +4545,7 @@
             "$ref": "#/components/schemas/Status"
           },
           "origin": {
-            "$ref": "#/components/schemas/Origin"
+            "$ref": "#/components/schemas/RunbookOrigin"
           },
           "created_by_id": {
             "anyOf": [

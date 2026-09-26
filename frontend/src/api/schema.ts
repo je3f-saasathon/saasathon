@@ -1312,11 +1312,6 @@ export interface components {
                 [key: string]: number | null;
             };
         };
-        /**
-         * Origin
-         * @enum {string}
-         */
-        Origin: "agent" | "human" | "migrated";
         /** PlaybookListOut */
         PlaybookListOut: {
             /** Playbooks */
@@ -1324,6 +1319,11 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * PlaybookOrigin
+         * @enum {string}
+         */
+        PlaybookOrigin: "builtin" | "agent" | "human";
         /** PlaybookOut */
         PlaybookOut: {
             /** Id */
@@ -1332,7 +1332,7 @@ export interface components {
             project_id: number | null;
             /** Organization Id */
             organization_id: number | null;
-            origin: components["schemas"]["Origin"];
+            origin: components["schemas"]["PlaybookOrigin"];
             /** Created By Id */
             created_by_id: number | null;
             /** Is Generic */
@@ -1432,6 +1432,11 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * RunbookOrigin
+         * @enum {string}
+         */
+        RunbookOrigin: "agent" | "human" | "migrated";
         /** RunbookOut */
         RunbookOut: {
             /** Id */
@@ -1453,7 +1458,7 @@ export interface components {
                 [key: string]: unknown;
             }[];
             status: components["schemas"]["Status"];
-            origin: components["schemas"]["Origin"];
+            origin: components["schemas"]["RunbookOrigin"];
             /** Created By Id */
             created_by_id: number | null;
             /** Repo Owner */
