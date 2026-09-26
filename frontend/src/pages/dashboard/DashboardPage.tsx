@@ -6,6 +6,7 @@ import { api } from "@/api/client";
 import type { IncidentRunList } from "@/api/types";
 import { DataTable } from "@/components/data-table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { columns } from "./columns";
 import { ConnectGitHubCard } from "./ConnectGitHubCard";
@@ -108,7 +109,14 @@ export function DashboardPage() {
         </CardContent>
       </Card>
 
-      {selected && <IncidentDetail run={selected} onClose={() => setSelectedId(null)} />}
+      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelectedId(null)}>
+        <DialogContent
+          aria-describedby={undefined}
+          className="max-h-[90vh] max-w-5xl overflow-y-auto rounded-xl p-0 w-[calc(100%-2rem)]"
+        >
+          {selected && <IncidentDetail run={selected} onClose={() => setSelectedId(null)} />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
