@@ -16,7 +16,8 @@ export function useManagedUptrace() {
   return useQuery({
     queryKey: ["uptrace-managed"],
     queryFn: () => api.get<ManagedUptrace>("/sre/uptrace/managed"),
-    staleTime: Infinity,
+    // A server setting: it can change on a redeploy while the tab stays open.
+    staleTime: 60_000,
   });
 }
 
