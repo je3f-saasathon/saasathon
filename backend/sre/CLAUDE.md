@@ -28,6 +28,31 @@ Uptrace ─POST /api/sre/webhooks/uptrace/{project_id}─▶ Django (HMAC or sha
             3 failures ─▶ failed; playbook FAILING after 3 failed runs in a row
 ```
 
+### Generic playbooks, runbooks, organizations (branch `milestone/runbooks-orgs`)
+
+Two flags, both **off** by default (off = exactly the flow above):
+- `SRE_UPTRACE_FETCH_ENABLED`: `fetch_incident_telemetry` runs first and stores the alert's
+  exception (type, message, stack, `service.name`) on `IncidentRun.telemetry`, read through
+  Uptrace's internal API (`services/uptrace.py`, see `docs/tradeoffs.md` §5). It uses an org's
+  `UptraceCredential`: the project's own, else the single one whose `host` matches the pin.
+- `SRE_RUNBOOKS_ENABLED`: **playbooks are generic** (one class of bug, investigate / change / verify
+  steps, no file paths): the built-ins in `playbook_library.py` (seeded by migration and
+  `manage.py seed_playbooks`) and org-level ones. **Runbooks are specific** (a project's files and
+  commands, `Runbook`). `find_candidates` returns the top runbooks and playbooks, `judge_match`
+  (`services/knowledge.py`) picks the most specific that fits in one call, and no match writes a
+  generic org playbook. `autonomous` needs a **confirmed runbook**. The agent proposes a runbook in
+  `finish`, and `record_playbook_outcome` saves it (unconfirmed) after a successful run
+  (`services/runbooks.py`). Streaks count on the runbook when one was used, and never on a
+  built-in, because that row is shared by every org.
+- Every user gets a personal `Organization` (`signals.py`); projects belong to an org, and project
+  roles still decide access. A legacy (not yet generic) playbook stays visible only to its project.
+- `manage.py generalize_playbooks`: dry run, `--apply` (copies each old playbook into a runbook and
+  rewrites it as generic), `--merge`, and `--revert`.
+- Workflow: the new activities are behind `workflow.patched("uptrace-telemetry-v1")` and
+  `("runbooks-v1")`. `tests/fixtures/workflow_history_pre_runbooks.json` is a recorded
+  pre-milestone history (paused awaiting approval) that must keep replaying.
+- Rollout and rollback order: see "Verification" in `~/.claude/plans/plan-this-change-ask-elegant-kurzweil.md`.
+
 ## Files
 
 - `models.py` — Project, ProjectMembership (owner/admin/viewer), LLMProviderConfig (**owned by a
@@ -70,7 +95,7 @@ Uptrace ─POST /api/sre/webhooks/uptrace/{project_id}─▶ Django (HMAC or sha
   - Langfuse (self-hosted v4) at **3100**, login `admin@localhost.dev` / `localdev-password`, project
     "SRE agent", keys `pk-lf-local-dev` / `sk-lf-local-dev`.
   - Langfuse v4 is "events-only": use the SDK (`lf.api.observations.get_many(...)`), not the old `/traces` endpoint.
-- Tests: `cd backend && uv run pytest` (108 pass). Workflow tests use Temporal's time-skipping server;
+- Tests: `cd backend && uv run pytest` (220 pass). Workflow tests use Temporal's time-skipping server;
   `-m sandbox` tests need Docker and the image (`make sandbox-image`).
 - `.env` changes only reach a docker container when it's recreated
   (`docker compose -p saasathon up -d --no-deps sre-worker`), and the worker never auto-reloads code

@@ -72,6 +72,25 @@ error group, and `GET /internal/v1/traces/{project}/{trace}/{span}` gives that s
 - Uptrace Cloud's MCP server (`/mcp/<project>`) has `get_alert`/`list_spans` tools, but it isn't
   part of the self-hosted instance we run, and the internal routes above are what its UI uses.
 
+## 6. Runbooks are saved from successful fixes, not written up front
+
+With `SRE_RUNBOOKS_ENABLED`, playbooks are generic and runbooks are specific to a project's repo.
+A runbook is only saved when an agent's fix succeeds (from what the agent proposes in its
+`finish` action, or what it actually did), so no extra LLM call is spent on it.
+
+**What's given up**
+- `advisory_only` projects never run the agent, so they never build runbooks: every incident
+  there is matched against playbooks only.
+- A new runbook starts unconfirmed even though a person approved the fix's PR. That review
+  covered the code change, not the runbook, so the runbook earns confirmation on its first
+  approved reuse. Until then, runs that follow it stay `draft_only`.
+- Built-in playbooks are shared by every org, so runs never change their status or failure count.
+  A built-in that fits badly is caught by its runbooks going `failing`, not by the built-in itself.
+
+**Why not generate a runbook for every incident**
+- That would cost an LLM call per incident, and the agent would still explore the repo from scratch
+  every time. Reusing a proven runbook shortens the agent loop, which is where the tokens go.
+
 ## Future improvements the schema doesn't block
 
 - **Own incident grouping** (if Uptrace's proves wrong): add an `IncidentFingerprint` model (a hash of the normalized stack trace) with a foreign key from `IncidentRun`, and check for a recent open run before starting a workflow. The workflow id can switch from the raw trace id to the fingerprint without touching other models.
