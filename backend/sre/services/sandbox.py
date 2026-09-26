@@ -12,6 +12,11 @@ WORKSPACE = "/workspace"
 NEIGHBOURS = "/neighbours"
 COMMAND_TIMEOUT_SECONDS = 300
 MAX_OUTPUT_CHARS = 8000
+LIST_SOURCE_FILES = (
+    "find . -type f -size -100k -not -path './.git/*' -not -path './.venv/*' "
+    "-not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path './dist/*' "
+    "-not -path './build/*' | head -5000"
+)
 
 
 class SandboxError(Exception):
@@ -129,12 +134,51 @@ class Sandbox:
         )
         return exit_code, _truncate((output or b"").decode(errors="replace"))
 
-    def read_file(self, path: str) -> str:
-        exit_code, output = self.container.exec_run(["cat", "--", self._read_path(path)])
+    def _cat(self, target: str, path: str) -> str:
+        exit_code, output = self.container.exec_run(["cat", "--", target])
         text = (output or b"").decode(errors="replace")
         if exit_code != 0:
             raise SandboxError(text.strip() or f"cannot read {path}")
-        return _truncate(text)
+        return text
+
+    def read_file(self, path: str, start: int | None = None, end: int | None = None) -> str:
+        """The whole file, or lines start..end (1-based, inclusive) of it."""
+        text = self._cat(self._read_path(path), path)
+        if start is None and end is None:
+            return _truncate(text)
+        lines = text.splitlines(keepends=True)
+        first = max(1, int(start or 1))
+        last = min(len(lines), int(end or len(lines)))
+        return (f"[lines {first}-{last} of {len(lines)}]\n"
+                + _truncate("".join(lines[first - 1:last])))
+
+    def read_text(self, path: str) -> str:
+        """The whole file, untruncated: for the worker's own use (e.g. parsing), never
+        shown to the agent as is."""
+        return self._cat(self._read_path(path), path)
+
+    def source_files(self) -> list[str]:
+        """Every regular file in the repo, minus dependency and build directories,
+        untruncated (the agent's list_files caps its output)."""
+        exit_code, output = self.container.exec_run(["sh", "-c", LIST_SOURCE_FILES],
+                                                    workdir=WORKSPACE)
+        if exit_code != 0:
+            return []
+        return [line.removeprefix("./") for line in
+                (output or b"").decode(errors="replace").splitlines() if line.strip()]
+
+    def replace_in_file(self, path: str, old: str, new: str) -> None:
+        """Replaces the one occurrence of `old`; refuses when it's missing or ambiguous,
+        so an edit can never land somewhere the agent didn't mean."""
+        if not old:
+            raise SandboxError("old text is empty; use write_file to create a file")
+        text = self._cat(self._path(path), path)
+        count = text.count(old)
+        if count != 1:
+            raise SandboxError(
+                f"old text found {count} times in {path}; it must match exactly once "
+                "(copy it exactly, with a few surrounding lines)")
+        self.write_file(path, text.replace(old, new, 1))
 
     def list_files(self, path: str = ".") -> str:
         target = self._read_path(path)

@@ -87,6 +87,19 @@ Live benchmark (real sandbox, gpt-5.5, django-buggy-app `bug/unhandled-exception
 each): chat input 35k/45k tokens off vs 26k/31k on, all four runs fixed the bug. The
 calculator app is too small to show a difference.
 
+**Localization ("twenty questions", `SRE_AGENT_JEV_LOCALIZE`, on by default with Jev assist).**
+Before the loop Jev narrows the directory tree when there are more than 30 source files
+(files the stack trace names always stay in), picks the files, then the function (Python,
+parsed with `ast`, never run), and the test command among the repo's candidates. The test
+file next to the code is picked without asking. The first message gets a "Where to look"
+brief, the repo's source file list (so no `list_files`), and the files, with a long file cut
+to an outline plus the function. The agent also has `edit_file` (search and replace, must
+match exactly once) and ranged `read_file`, so edits no longer put whole files into the
+history. Live benchmark on the same bug: 29k/27k input tokens and 11 turns with
+localization off, 14.4k/14.7k and 6 turns with it on. The sandbox's `source_files` /
+`read_text` are untruncated reads for the worker's own use; `box.run` output is capped at
+8000 characters, which had cut the middle out of big repo listings.
+
 ## Files
 
 - `models.py` — Project, ProjectMembership (owner/admin/viewer), LLMProviderConfig (**owned by a

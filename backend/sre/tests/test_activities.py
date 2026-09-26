@@ -391,8 +391,25 @@ class FakeSandbox:
         self.commands.append((command, self.network))
         return 0, "1 passed"
 
-    def read_file(self, path):
-        return self.files.get(path, "")
+    def read_file(self, path, start=None, end=None):
+        text = self.files.get(path, "")
+        if start is None and end is None:
+            return text
+        return "".join(text.splitlines(keepends=True)[(start or 1) - 1:end])
+
+    def read_text(self, path):
+        if path not in self.files:
+            raise executor_module.SandboxError(f"cannot read {path}")
+        return self.files[path]
+
+    def replace_in_file(self, path, old, new):
+        text = self.files.get(path, "")
+        if text.count(old) != 1:
+            raise executor_module.SandboxError(f"old text found {text.count(old)} times in {path}")
+        self.files[path] = text.replace(old, new, 1)
+
+    def source_files(self):
+        return list(self.files)
 
     def list_files(self, path="."):
         return "\n".join(self.files)

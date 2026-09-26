@@ -214,6 +214,9 @@ SRE_MAX_NEIGHBOUR_REPOS = int(os.environ.get("SRE_MAX_NEIGHBOUR_REPOS", "3"))
 # files to preload, reads failed command output, and judges old results and progress.
 SRE_AGENT_COMPACT_HISTORY = env_bool("SRE_AGENT_COMPACT_HISTORY", default=True)
 SRE_AGENT_JEV_ASSIST = env_bool("SRE_AGENT_JEV_ASSIST", default=True)
+# With Jev assist: twenty questions down to the file and function, the matching tests and
+# test command, and a repo map, instead of only preloading the files Jev picks.
+SRE_AGENT_JEV_LOCALIZE = env_bool("SRE_AGENT_JEV_LOCALIZE", default=True)
 # Remediation agents: org-level agents that scan repos for bugs before they alert and feed
 # findings into the incident pipeline (docs/MESH_AND_REMEDIATION.md).
 SRE_REMEDIATION_AGENTS_ENABLED = env_bool("SRE_REMEDIATION_AGENTS_ENABLED", default=False)

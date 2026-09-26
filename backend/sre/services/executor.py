@@ -15,7 +15,9 @@ from .context import UNTRUSTED_NOTICE, incident_context, untrusted
 from . import mesh
 from .agent_history import AgentHistory
 from .github import GitError, GitHubRepo
-from .jev_assist import ENV_PROBLEM_CONFIDENCE, LIST_SOURCE_FILES, STUCK_CONFIDENCE, JevAssist
+from .jev_assist import (
+    ENV_PROBLEM_CONFIDENCE, STUCK_CONFIDENCE, JevAssist, is_test_file, test_command_candidates,
+)
 from .playbooks import clean_steps
 from .sandbox import NEIGHBOURS, Sandbox, SandboxError
 
@@ -28,6 +30,11 @@ KEEP_RECENT_TURNS = 4
 # Files Jev picks to read into the first message.
 PRELOAD_MAX_FILES = 4
 PRELOAD_MAX_CHARS = 24000
+# A located file longer than this goes in as an outline plus the located function.
+WHOLE_FILE_CHARS = 8000
+FUNCTION_CONTEXT_LINES = 5
+OUTLINE_MAX_ENTRIES = 40
+REPO_MAP_MAX_FILES = 200
 
 WRITE_TESTS = (
     "Add or update a test that covers the fix when the repo has tests. "
@@ -56,9 +63,14 @@ def agent_system(generate_tests: bool, propose_runbook: bool = False) -> str:
         "Each reply must be exactly one JSON object choosing one action:\n"
         '{"action": "list_files", "path": "."}\n'
         '{"action": "read_file", "path": "src/app.py"}\n'
-        '{"action": "write_file", "path": "src/app.py", "content": "<full new file content>"}\n'
+        '{"action": "read_file", "path": "src/app.py", "start": 40, "end": 90}  (lines 40-90 only)\n'
+        '{"action": "edit_file", "path": "src/app.py", "old": "<exact text to replace>", '
+        '"new": "<replacement>"}\n'
+        '{"action": "write_file", "path": "src/new_file.py", "content": "<full file content>"}\n'
         '{"action": "run_command", "command": "pytest -x tests/test_app.py"}\n'
         '{"action": "finish", "summary": "<what you changed and why>", "tests_passed": true|false}\n'
+        "To change an existing file use edit_file: `old` must match the file exactly once "
+        "(include a few surrounding lines). Use write_file only for new files. "
         "Paths are relative to /workspace. You cannot commit, push or open pull requests; "
         "that happens after you finish. Call finish with tests_passed=false if you could not "
         "get the tests passing."
@@ -275,7 +287,7 @@ class PlaybookExecutor:
             )
         jev = JevAssist.for_run(self.run)
         if jev is not None:
-            kickoff += self._preload_files(box, jev)
+            kickoff += self._brief(box, jev)
         history = AgentHistory(kickoff)
         propose = settings.SRE_RUNBOOKS_ENABLED and self.runbook is None
         system = agent_system(self.playbook_run.generate_tests, propose_runbook=propose)
@@ -321,23 +333,72 @@ class PlaybookExecutor:
                             "Last command output:\n" + observation[-1500:], False)
         return f"Ran out of turns after {MAX_TURNS} steps", False
 
-    def _preload_files(self, box: Sandbox, jev: JevAssist) -> str:
-        """Jev picks the files the fix likely needs; they go in the first message so the
-        agent doesn't spend turns (each resending the whole history) finding them."""
-        exit_code, listing = box.run(LIST_SOURCE_FILES)
-        if exit_code != 0:
+    def _brief(self, box: Sandbox, jev: JevAssist) -> str:
+        """Jev plays twenty questions (directory → files → function, plus the tests and
+        how to run them) and the answers go in the first message, so the agent doesn't
+        spend turns (each resending the whole history) exploring."""
+        listing = box.source_files()
+        paths = jev.source_files(listing)
+        if not paths:
             return ""
-        picked = jev.pick_files(jev.rank_candidates(listing), PRELOAD_MAX_FILES)
-        blocks, budget = [], PRELOAD_MAX_CHARS
-        for path in picked:
+        if not settings.SRE_AGENT_JEV_LOCALIZE:
+            return self._file_blocks(box, jev.pick_files(jev.rank(paths), PRELOAD_MAX_FILES))
+        code = [p for p in paths if not is_test_file(p)]
+        tests = [p for p in paths if is_test_file(p)]
+        picked = jev.pick_files(jev.narrow(code), PRELOAD_MAX_FILES)
+
+        def read(path: str) -> str:
             try:
-                content = box.read_file(path)
+                return box.read_text(path)
+            except SandboxError:
+                return ""
+        lines, location, test_file = [], None, None
+        if picked:
+            target = picked[0]
+            if target.endswith(".py"):
+                try:
+                    location = jev.pick_function(target, box.read_text(target))
+                except SandboxError:
+                    location = None
+            where = f"`{target}`"
+            if location is not None:
+                where += f", function `{location.name}` (lines {location.start}-{location.end})"
+            lines.append(f"- Likely fix location: {where}")
+            test_file = jev.pick_test_file(target, tests, read)
+        lines.append(f"- Tests for it: `{test_file}`" if test_file else
+                     "- No existing test file found for it" if tests else
+                     "- The repo has no tests yet")
+
+        evidence = "Files: " + ", ".join(listing[:300])
+        if "pyproject.toml" in listing:
+            evidence += "\n\npyproject.toml:\n" + read("pyproject.toml")
+        command = jev.pick_test_command(test_command_candidates(set(listing), read), evidence)
+        if command:
+            lines.append(f"- Test command: `{command}`")
+        self.heartbeat("localized the bug")
+        brief = ("\n\nWhere to look, from the platform's localization (a cheap model made it: "
+                 "check it, it can be wrong):\n" + "\n".join(lines)
+                 + "\n\nThe repo's source files (no need to list_files):\n"
+                 + untrusted("repo_files", "\n".join(paths[:REPO_MAP_MAX_FILES])))
+        preload = picked + ([test_file] if test_file else [])
+        return brief + self._file_blocks(box, preload, location)
+
+    def _file_blocks(self, box: Sandbox, paths: list[str], location=None) -> str:
+        blocks, budget = [], PRELOAD_MAX_CHARS
+        for index, path in enumerate(paths):
+            try:
+                content = box.read_text(path)
             except SandboxError:
                 continue
-            if len(content) > budget:
-                break
+            if index == 0 and location is not None and len(content) > WHOLE_FILE_CHARS:
+                content = function_excerpt(content, location)
+                label = f"file {path} (outline + lines around {location.name})"
+            else:
+                label = f"file {path}"
+            if len(content) > min(budget, WHOLE_FILE_CHARS * 2):
+                continue
             budget -= len(content)
-            blocks.append(untrusted(f"file {path}", content))
+            blocks.append(untrusted(label, content))
         if not blocks:
             return ""
         self.heartbeat(f"preloaded {len(blocks)} files")
@@ -364,7 +425,15 @@ class PlaybookExecutor:
             if kind == "list_files":
                 return box.list_files(str(action.get("path", ".")))
             if kind == "read_file":
+                if action.get("start") is not None or action.get("end") is not None:
+                    return box.read_file(str(action["path"]), _line(action.get("start")),
+                                         _line(action.get("end")))
                 return box.read_file(str(action["path"]))
+            if kind == "edit_file":
+                box.replace_in_file(str(action["path"]), str(action["old"]),
+                                    str(action.get("new", "")))
+                self.steps.append({"type": "edit_file", "path": str(action["path"])})
+                return "ok"
             if kind == "write_file":
                 box.write_file(str(action["path"]), str(action.get("content", "")))
                 self.steps.append({"type": "edit_file", "path": str(action["path"])})
@@ -381,6 +450,28 @@ class PlaybookExecutor:
 
     def _commit_message(self, summary: str) -> str:
         return f"fix: {self.playbook.title}\n\n{summary}\n\nIncident trace: {self.run.trace_id}"[:5000]
+
+
+def _line(value) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def function_excerpt(source: str, location) -> str:
+    """For a long file: its outline (every def/class line) and the located function with a
+    few lines around it, instead of the whole file."""
+    lines = source.splitlines()
+    outline = [(n, f"{n}: {line.strip()}") for n, line in enumerate(lines, start=1)
+               if line.lstrip().startswith(("def ", "async def ", "class "))]
+    # The definitions nearest the function, in file order.
+    nearest = sorted(outline, key=lambda item: abs(item[0] - location.start))[:OUTLINE_MAX_ENTRIES]
+    outline = [text for _, text in sorted(nearest)]
+    first = max(1, location.start - FUNCTION_CONTEXT_LINES)
+    last = min(len(lines), location.end + FUNCTION_CONTEXT_LINES)
+    return ("Outline (line: definition):\n" + "\n".join(outline)
+            + f"\n\nLines {first}-{last}:\n" + "\n".join(lines[first - 1:last]))
 
 
 def pr_title_body(playbook_run: PlaybookRun, summary: str) -> tuple[str, str]:
