@@ -3488,10 +3488,16 @@
             "title": "Source Id"
           },
           "payload": {
-            "additionalProperties": true,
-            "default": {},
-            "title": "Payload",
-            "type": "object"
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
           },
           "eventName": {
             "anyOf": [

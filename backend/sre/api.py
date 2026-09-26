@@ -272,7 +272,11 @@ def _webhook_authorized(request: HttpRequest, project: Project) -> bool:
 
 
 # Uptrace notifies on every alert state change; only a new or recurring open alert is work.
-UPTRACE_ACTIONABLE_EVENTS = {"created", "recurring", "state-changed"}
+# Uptrace 2.1 names events with underscores and calls an open alert "unresolved" (in
+# `status`, mirrored in `state`); older releases used hyphens and "open".
+UPTRACE_ACTIONABLE_EVENTS = {"created", "recurring", "state_changed", "status_changed",
+                             "state-changed", "status-changed"}
+UPTRACE_OPEN_STATES = {"open", "unresolved"}
 
 # alert.url is ".../alerting/<uptrace project id>/alerts/<alert id>" on the Uptrace instance.
 _UPTRACE_ALERT_URL = re.compile(r"^https?://([^/?#]+)/alerting/(\d+)/alerts/")
@@ -311,8 +315,9 @@ def uptrace_webhook(request: HttpRequest, project_id: int, payload: UptraceWebho
 
     if payload.alert is not None:
         alert = payload.alert
-        if alert.get("state") != "open" or payload.eventName not in UPTRACE_ACTIONABLE_EVENTS:
-            return 202, {"detail": f"Ignored: alert {alert.get('state') or 'unknown'}, "
+        state = alert.get("status") or alert.get("state")
+        if state not in UPTRACE_OPEN_STATES or payload.eventName not in UPTRACE_ACTIONABLE_EVENTS:
+            return 202, {"detail": f"Ignored: alert {state or 'unknown'}, "
                                    f"event {payload.eventName or 'unknown'}"}
         if not alert.get("id"):
             return 422, {"detail": "Uptrace alert has no id"}

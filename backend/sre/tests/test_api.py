@@ -173,6 +173,50 @@ def test_unrecognised_alert_url_does_not_pin_but_is_refused_once_pinned(
     assert post_uptrace(client, project, odd).status_code == 409
 
 
+# Captured from Uptrace 2.1 (infra/uptrace/): the message it sends when a webhook channel
+# is saved. Anything but a 2xx makes Uptrace refuse to save the channel.
+UPTRACE_21_TEST_MESSAGE = {
+    "id": "1790397819508021754", "eventName": "test", "payload": None,
+    "createdAt": 1790397819508.021,
+    "alert": {"id": "4789318915246968593",
+              "url": "https://uptrace.buggly.dev/alerting/1/alerts/4789318915246968593/0",
+              "name": "Test message", "attrs": {}, "type": "metric",
+              "state": "unresolved", "status": "unresolved", "createdAt": 1790397819508.021},
+}
+
+
+def test_uptrace_21_test_message_is_accepted_and_ignored(client, make_user, make_project,
+                                                         temporal_calls):
+    project = make_project(make_user())
+    resp = post_uptrace(client, project, UPTRACE_21_TEST_MESSAGE)
+    assert resp.status_code == 202
+    assert not IncidentRun.objects.exists() and temporal_calls["start"] == []
+    project.refresh_from_db()
+    assert project.uptrace_source_id == ""
+
+
+@pytest.mark.parametrize("event", ["created", "recurring", "status_changed", "state_changed"])
+def test_uptrace_21_unresolved_alert_starts_an_incident(client, make_user, make_project,
+                                                        temporal_calls, event):
+    project = make_project(make_user())
+    body = {**UPTRACE_21_TEST_MESSAGE, "eventName": event}
+    resp = post_uptrace(client, project, body)
+    assert resp.status_code == 200
+    assert IncidentRun.objects.get().trace_id == "uptrace-alert-4789318915246968593"
+    project.refresh_from_db()
+    assert project.uptrace_source_id == "uptrace.buggly.dev/1"
+
+
+@pytest.mark.parametrize("status", ["resolved", "archived"])
+def test_uptrace_21_resolved_alert_is_ignored(client, make_user, make_project, temporal_calls,
+                                              status):
+    project = make_project(make_user())
+    body = {**UPTRACE_21_TEST_MESSAGE, "eventName": "status_changed",
+            "alert": {**UPTRACE_21_TEST_MESSAGE["alert"], "state": status, "status": status}}
+    assert post_uptrace(client, project, body).status_code == 202
+    assert not IncidentRun.objects.exists()
+
+
 def test_webhook_needs_an_alert_or_a_trace_id(client, make_user, make_project, temporal_calls):
     project = make_project(make_user())
     assert post_uptrace(client, project, {"payload": {"x": 1}}).status_code == 422
