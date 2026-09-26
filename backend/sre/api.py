@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q
 from django.conf import settings
-from django.http import HttpRequest, HttpResponseRedirect
+from django.http import Http404, HttpRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
@@ -19,19 +19,27 @@ from . import temporal_client
 from .llm import platform
 from .llm.resolve import provider_supports_step
 from .models import (
+    ORG_ROLE_RANK,
+    ROLE_RANK,
     ExecutionMode,
     GitHubInstallation,
     IncidentRun,
     LLMProvider,
     LLMProviderConfig,
     LLMStepOverride,
+    Organization,
+    OrganizationMembership,
+    OrgRole,
     Playbook,
     PlaybookRun,
     Project,
     ProjectMembership,
     ProjectRole,
+    Runbook,
+    UptraceCredential,
 )
-from .permissions import get_membership, get_project_for, member_project_ids
+from .orgs import personal_org
+from .permissions import get_membership, get_org_membership, get_project_for, member_project_ids
 from .schemas import (
     ApprovePlaybookRunIn,
     GitHubConnectOut,
@@ -46,6 +54,11 @@ from .schemas import (
     MemberAddIn,
     MemberOut,
     MemberUpdateIn,
+    OrganizationIn,
+    OrganizationOut,
+    OrgMemberAddIn,
+    OrgMemberOut,
+    OrgMemberUpdateIn,
     PlatformOut,
     PlaybookCreateIn,
     PlaybookListOut,
@@ -56,22 +69,32 @@ from .schemas import (
     ProjectCreateIn,
     ProjectOut,
     ProjectUpdateIn,
+    RunbookCreateIn,
+    RunbookListOut,
+    RunbookOut,
+    RunbookUpdateIn,
     StepOverrideOut,
     StepOverridesIn,
+    UptraceCredentialIn,
+    UptraceCredentialOut,
+    UptraceCredentialUpdateIn,
     UptraceWebhookIn,
     UptraceWebhookOut,
     WebhookSecretOut,
 )
 from .services import github_connect
-from .services.playbooks import clean_steps
+from .services.playbooks import clean_playbook_steps, clean_steps, visible_playbooks
+from .services.triage import CATEGORIES
+from .services.uptrace import resolve_credential
 from .temporal_types import ApprovalDecision, IncidentInput
-from .validators import UnsafeURLError, validate_llm_base_url
+from .validators import UnsafeURLError, validate_llm_base_url, validate_uptrace_api_url
 
 logger = logging.getLogger(__name__)
 router = Router(tags=["sre"])
 
 GITHUB_REPO_FIELDS = {"github_installation_id", "github_repo_owner", "github_repo_name"}
-OWNER_ONLY_PROJECT_FIELDS = GITHUB_REPO_FIELDS | {"uptrace_source_id"}
+OWNER_ONLY_PROJECT_FIELDS = GITHUB_REPO_FIELDS | {"uptrace_source_id", "organization_id",
+                                                  "uptrace_credential_id"}
 
 
 # ---- helpers ---------------------------------------------------------------
@@ -87,11 +110,22 @@ def _github_verified(project: Project) -> bool:
 def _project_out(project: Project, role: str) -> dict:
     return {
         **{f: getattr(project, f) for f in ProjectOut.model_fields
-           if f not in ("role", "github_verified", "platform_tokens_this_month")},
+           if f not in ("role", "github_verified", "platform_tokens_this_month",
+                        "organization_name", "uptrace_fetch_ready")},
         "role": role,
+        "organization_name": project.organization.name if project.organization_id else "",
+        "uptrace_fetch_ready": resolve_credential(project) is not None,
         "github_verified": _github_verified(project),
         "platform_tokens_this_month": platform.tokens_this_month(project),
     }
+
+
+def _target_org(user, org_id: int | None) -> Organization:
+    """The org a project is created in or moved to: the caller's personal org by default,
+    otherwise one where the caller is at least an admin."""
+    if org_id is None:
+        return personal_org(user)
+    return get_org_membership(user, org_id, OrgRole.ADMIN).organization
 
 
 def _check_github_repo(user, installation_id: str, owner: str, name: str) -> None:
@@ -126,7 +160,7 @@ def _own_config(user, config_id: int) -> LLMProviderConfig:
 
 INCIDENT_EXTRA_FIELDS = {
     "created_playbook_id", "playbook_run_id", "project_name", "playbook", "pr_url",
-    "playbook_run_status", "execution_mode", "generate_tests", "usage",
+    "playbook_run_status", "execution_mode", "generate_tests", "usage", "runbook",
 }
 
 
@@ -171,12 +205,25 @@ def _incident_out(run: IncidentRun) -> dict:
         "execution_mode": playbook_run.execution_mode if playbook_run else None,
         "generate_tests": playbook_run.generate_tests if playbook_run else None,
         "usage": _usage_out(run.llm_usage.all()),
+        "runbook": _runbook_brief(run, playbook_run),
     }
+
+
+def _runbook_brief(run: IncidentRun, playbook_run) -> dict | None:
+    if run.matched_runbook_id:
+        runbook, source = run.matched_runbook, "matched"
+    else:
+        runbook = getattr(playbook_run, "created_runbook", None) if playbook_run else None
+        source = "created"
+    if runbook is None:
+        return None
+    return {"id": runbook.id, "title": runbook.title, "status": runbook.status, "source": source}
 
 
 def _incident_runs():
     return IncidentRun.objects.select_related(
-        "project", "matched_playbook", "created_playbook", "playbook_run"
+        "project", "matched_playbook", "created_playbook", "playbook_run",
+        "matched_runbook", "playbook_run__created_runbook",
     ).prefetch_related("llm_usage")
 
 
@@ -286,7 +333,9 @@ def uptrace_webhook(request: HttpRequest, project_id: int, payload: UptraceWebho
 
 @router.get("/projects", response=list[ProjectOut])
 def list_projects(request: HttpRequest):
-    memberships = ProjectMembership.objects.filter(user=request.auth).select_related("project")
+    memberships = ProjectMembership.objects.filter(user=request.auth).select_related(
+        "project", "project__organization"
+    )
     return [_project_out(m.project, m.role) for m in memberships.order_by("-project__created_at")]
 
 
@@ -294,8 +343,10 @@ def list_projects(request: HttpRequest):
 def create_project(request: HttpRequest, payload: ProjectCreateIn):
     _check_github_repo(request.auth, payload.github_installation_id,
                        payload.github_repo_owner, payload.github_repo_name)
+    data = payload.dict()
+    data["organization_id"] = _target_org(request.auth, data.pop("organization_id")).id
     with transaction.atomic():
-        project = Project.objects.create(**payload.dict())
+        project = Project.objects.create(**data)
         ProjectMembership.objects.create(project=project, user=request.auth, role=ProjectRole.OWNER)
     return 201, {
         **_project_out(project, ProjectRole.OWNER),
@@ -317,13 +368,20 @@ def update_project(request: HttpRequest, project_id: int, payload: ProjectUpdate
     project = membership.project
     if "default_llm_config_id" in changes and changes["default_llm_config_id"] is not None:
         _own_config(request.auth, changes["default_llm_config_id"])
+    if changes.get("organization_id") is not None:
+        _target_org(request.auth, changes["organization_id"])
+    if changes.get("uptrace_credential_id") is not None:
+        org_id = changes.get("organization_id") or project.organization_id
+        if not UptraceCredential.objects.filter(id=changes["uptrace_credential_id"],
+                                                organization_id=org_id).exists():
+            raise HttpError(400, "That Uptrace credential isn't in this project's organization")
     # Existing wiring is grandfathered: only a change to it has to be proven.
     repo = {f: changes.get(f) or getattr(project, f) for f in GITHUB_REPO_FIELDS}
     if any(repo[f] != getattr(project, f) for f in GITHUB_REPO_FIELDS):
         _check_github_repo(request.auth, repo["github_installation_id"],
                            repo["github_repo_owner"], repo["github_repo_name"])
     for field, value in changes.items():
-        if value is None and field != "default_llm_config_id":
+        if value is None and field not in ("default_llm_config_id", "uptrace_credential_id"):
             continue
         setattr(project, field, value)
     project.save()
@@ -480,6 +538,177 @@ def remove_member(request: HttpRequest, project_id: int, user_id: int):
     return 204, None
 
 
+# ---- organizations -------------------------------------------------------------
+
+def _org_out(m: OrganizationMembership) -> dict:
+    org = m.organization
+    return {"id": org.id, "name": org.name, "is_personal": org.is_personal, "role": m.role,
+            "created_at": org.created_at}
+
+
+def _org_member_out(m: OrganizationMembership) -> dict:
+    return {"user_id": m.user_id, "email": m.user.email, "name": m.user.name, "role": m.role}
+
+
+def _org_owner_count(org: Organization) -> int:
+    return org.memberships.filter(role=OrgRole.OWNER).count()
+
+
+@router.get("/organizations", response=list[OrganizationOut])
+def list_organizations(request: HttpRequest):
+    personal_org(request.auth)  # make sure it exists
+    memberships = OrganizationMembership.objects.filter(user=request.auth).select_related("organization")
+    return [_org_out(m) for m in memberships.order_by("-organization__is_personal", "organization__created_at")]
+
+
+@router.post("/organizations", response={201: OrganizationOut})
+def create_organization(request: HttpRequest, payload: OrganizationIn):
+    with transaction.atomic():
+        org = Organization.objects.create(name=payload.name.strip()[:255] or "Untitled")
+        membership = OrganizationMembership.objects.create(
+            organization=org, user=request.auth, role=OrgRole.OWNER
+        )
+    return 201, _org_out(membership)
+
+
+@router.get("/organizations/{org_id}", response=OrganizationOut)
+def get_organization(request: HttpRequest, org_id: int):
+    return _org_out(get_org_membership(request.auth, org_id, OrgRole.MEMBER))
+
+
+@router.patch("/organizations/{org_id}", response=OrganizationOut)
+def update_organization(request: HttpRequest, org_id: int, payload: OrganizationIn):
+    membership = get_org_membership(request.auth, org_id, OrgRole.OWNER)
+    org = membership.organization
+    org.name = payload.name.strip()[:255] or org.name
+    org.save(update_fields=["name", "updated_at"])
+    return _org_out(membership)
+
+
+@router.get("/organizations/{org_id}/members", response=list[OrgMemberOut])
+def list_org_members(request: HttpRequest, org_id: int):
+    org = get_org_membership(request.auth, org_id, OrgRole.MEMBER).organization
+    return [_org_member_out(m) for m in org.memberships.select_related("user").order_by("created_at")]
+
+
+@router.post("/organizations/{org_id}/members",
+             response={201: OrgMemberOut, 400: dict, 404: dict, 409: dict})
+def add_org_member(request: HttpRequest, org_id: int, payload: OrgMemberAddIn):
+    org = get_org_membership(request.auth, org_id, OrgRole.OWNER).organization
+    if org.is_personal:
+        return 400, {"detail": "A personal organization can't have other members"}
+    user = get_user_model().objects.filter(email=payload.email.lower()).first()
+    if user is None:
+        return 404, {"detail": "No user with that email"}
+    membership, created = OrganizationMembership.objects.get_or_create(
+        organization=org, user=user, defaults={"role": payload.role}
+    )
+    if not created:
+        return 409, {"detail": "Already a member"}
+    return 201, _org_member_out(membership)
+
+
+@router.patch("/organizations/{org_id}/members/{user_id}", response={200: OrgMemberOut, 409: dict})
+def update_org_member(request: HttpRequest, org_id: int, user_id: int, payload: OrgMemberUpdateIn):
+    org = get_org_membership(request.auth, org_id, OrgRole.OWNER).organization
+    with transaction.atomic():
+        membership = get_object_or_404(
+            OrganizationMembership.objects.select_for_update().select_related("user"),
+            organization=org, user_id=user_id,
+        )
+        if (membership.role == OrgRole.OWNER and payload.role != OrgRole.OWNER
+                and _org_owner_count(org) == 1):
+            return 409, {"detail": "An organization must keep at least one owner"}
+        membership.role = payload.role
+        membership.save(update_fields=["role"])
+    return 200, _org_member_out(membership)
+
+
+@router.delete("/organizations/{org_id}/members/{user_id}", response={204: None, 409: dict})
+def remove_org_member(request: HttpRequest, org_id: int, user_id: int):
+    min_role = OrgRole.MEMBER if user_id == request.auth.id else OrgRole.OWNER
+    org = get_org_membership(request.auth, org_id, min_role).organization
+    with transaction.atomic():
+        membership = get_object_or_404(
+            OrganizationMembership.objects.select_for_update(), organization=org, user_id=user_id,
+        )
+        if membership.role == OrgRole.OWNER and _org_owner_count(org) == 1:
+            return 409, {"detail": "An organization must keep at least one owner"}
+        membership.delete()
+    return 204, None
+
+
+# ---- Uptrace credentials (per organization) --------------------------------------
+
+def _normalize_host(host: str) -> str:
+    host = host.strip().lower()
+    for prefix in ("https://", "http://"):
+        host = host.removeprefix(prefix)
+    return host.split("/", 1)[0]
+
+
+def _check_api_url(url: str) -> None:
+    try:
+        validate_uptrace_api_url(url)
+    except UnsafeURLError as exc:
+        raise HttpError(400, str(exc)) from exc
+
+
+def _credential_for_admin(user, credential_id: int) -> UptraceCredential:
+    credential = get_object_or_404(UptraceCredential, id=credential_id)
+    get_org_membership(user, credential.organization_id, OrgRole.ADMIN)
+    return credential
+
+
+@router.get("/organizations/{org_id}/uptrace-credentials", response=list[UptraceCredentialOut])
+def list_uptrace_credentials(request: HttpRequest, org_id: int):
+    org = get_org_membership(request.auth, org_id, OrgRole.ADMIN).organization
+    return list(org.uptrace_credentials.all())
+
+
+@router.post("/organizations/{org_id}/uptrace-credentials",
+             response={201: UptraceCredentialOut, 409: dict})
+def create_uptrace_credential(request: HttpRequest, org_id: int, payload: UptraceCredentialIn):
+    from .crypto import encrypt
+
+    org = get_org_membership(request.auth, org_id, OrgRole.ADMIN).organization
+    _check_api_url(payload.api_base_url)
+    if org.uptrace_credentials.filter(name=payload.name).exists():
+        return 409, {"detail": "A credential with that name already exists"}
+    credential = UptraceCredential.objects.create(
+        organization=org, name=payload.name, host=_normalize_host(payload.host),
+        api_base_url=payload.api_base_url.rstrip("/"), created_by=request.auth,
+        token_encrypted=encrypt(payload.token) if payload.token else b"",
+    )
+    return 201, credential
+
+
+@router.patch("/uptrace-credentials/{credential_id}", response=UptraceCredentialOut)
+def update_uptrace_credential(request: HttpRequest, credential_id: int,
+                              payload: UptraceCredentialUpdateIn):
+    from .crypto import encrypt
+
+    credential = _credential_for_admin(request.auth, credential_id)
+    changes = payload.dict(exclude_unset=True)
+    if changes.get("api_base_url") is not None:
+        _check_api_url(changes["api_base_url"])
+        credential.api_base_url = changes["api_base_url"].rstrip("/")
+    if changes.get("host") is not None:
+        credential.host = _normalize_host(changes["host"])
+    if changes.get("name") is not None:
+        credential.name = changes["name"]
+    if changes.get("token") is not None:
+        credential.token_encrypted = encrypt(changes["token"]) if changes["token"] else b""
+    credential.save()
+    return credential
+
+
+@router.delete("/uptrace-credentials/{credential_id}", response={204: None})
+def delete_uptrace_credential(request: HttpRequest, credential_id: int):
+    _credential_for_admin(request.auth, credential_id).delete()
+    return 204, None
+
+
 # ---- company default model ---------------------------------------------------------
 
 @router.get("/platform", response=PlatformOut)
@@ -575,10 +804,32 @@ def set_step_overrides(request: HttpRequest, project_id: int, payload: StepOverr
 
 # ---- playbooks -------------------------------------------------------------------
 
+def _check_category(category: str | None) -> None:
+    if category and category not in CATEGORIES:
+        raise HttpError(400, f"Unknown category '{category}'")
+
+
+def _new_playbook(user, payload: PlaybookCreateIn, **scope) -> Playbook:
+    _check_category(payload.category)
+    return Playbook.objects.create(
+        **scope,
+        title=payload.title,
+        description=payload.description,
+        keywords=[k.lower().strip() for k in payload.keywords if k.strip()],
+        steps=clean_playbook_steps(payload.steps),
+        execution_mode_override=payload.execution_mode_override,
+        category=payload.category,
+        symptoms=payload.symptoms,
+        origin=Playbook.Origin.HUMAN,
+        created_by=user,
+        status=Playbook.Status.CONFIRMED,  # written by a human admin
+    )
+
+
 @router.get("/projects/{project_id}/playbooks", response=PlaybookListOut)
 def list_playbooks(request: HttpRequest, project_id: int, status: str | None = None):
     project = get_project_for(request.auth, project_id, ProjectRole.VIEWER)
-    qs = project.playbooks.all()
+    qs = visible_playbooks(project).order_by("-created_at")
     if status:
         qs = qs.filter(status=status)
     return {"playbooks": list(qs), "total": qs.count()}
@@ -587,22 +838,57 @@ def list_playbooks(request: HttpRequest, project_id: int, status: str | None = N
 @router.post("/projects/{project_id}/playbooks", response={201: PlaybookOut})
 def create_playbook(request: HttpRequest, project_id: int, payload: PlaybookCreateIn):
     project = get_project_for(request.auth, project_id, ProjectRole.ADMIN)
-    playbook = Playbook.objects.create(
-        project=project,
-        title=payload.title,
-        description=payload.description,
-        keywords=[k.lower().strip() for k in payload.keywords if k.strip()],
-        steps=clean_steps(payload.steps),
-        execution_mode_override=payload.execution_mode_override,
-        status=Playbook.Status.CONFIRMED,  # written by a human admin
-    )
-    return 201, playbook
+    # With runbooks on it's a generic playbook for the whole org; the project is only
+    # where it came from.
+    scope = dict(project=project, organization_id=project.organization_id,
+                 is_generic=settings.SRE_RUNBOOKS_ENABLED)
+    return 201, _new_playbook(request.auth, payload, **scope)
+
+
+@router.post("/organizations/{org_id}/playbooks", response={201: PlaybookOut})
+def create_org_playbook(request: HttpRequest, org_id: int, payload: PlaybookCreateIn):
+    org = get_org_membership(request.auth, org_id, OrgRole.ADMIN).organization
+    return 201, _new_playbook(request.auth, payload, organization=org, is_generic=True)
+
+
+def _can_use_playbook(user, playbook: Playbook, min_role: ProjectRole) -> bool:
+    """Legacy playbooks: a role on their project. Generic org ones: the org role (member to
+    read, admin to write), or that project role on any project in the org."""
+    if not playbook.is_generic or not settings.SRE_RUNBOOKS_ENABLED:
+        if playbook.project_id is None:
+            return False
+        try:
+            get_membership(user, playbook.project_id, min_role)
+            return True
+        except (Http404, HttpError):
+            return False
+    org_role = OrganizationMembership.objects.filter(
+        organization_id=playbook.organization_id, user=user
+    ).values_list("role", flat=True).first()
+    needed = OrgRole.MEMBER if min_role == ProjectRole.VIEWER else OrgRole.ADMIN
+    if org_role is not None and ORG_ROLE_RANK[org_role] >= ORG_ROLE_RANK[needed]:
+        return True
+    roles = ProjectMembership.objects.filter(
+        user=user, project__organization_id=playbook.organization_id
+    ).values_list("role", flat=True)
+    return any(ROLE_RANK[r] >= ROLE_RANK[min_role] for r in roles)
 
 
 def _playbook_for(user, playbook_id: int, min_role: ProjectRole) -> Playbook:
+    """Can't see it → 404; can see it but not edit → 403. Built-ins: anyone may read them
+    (with runbooks on), nobody may change them."""
     playbook = get_object_or_404(Playbook, id=playbook_id)
-    get_membership(user, playbook.project_id, min_role)
-    return playbook
+    if playbook.origin == Playbook.Origin.BUILTIN and playbook.organization_id is None:
+        if not settings.SRE_RUNBOOKS_ENABLED:
+            raise Http404("Playbook not found")
+        if min_role != ProjectRole.VIEWER:
+            raise HttpError(403, "Built-in playbooks are read-only")
+        return playbook
+    if _can_use_playbook(user, playbook, min_role):
+        return playbook
+    if min_role != ProjectRole.VIEWER and _can_use_playbook(user, playbook, ProjectRole.VIEWER):
+        raise HttpError(403, f"Requires {min_role.label.lower()} role")
+    raise Http404("Playbook not found")
 
 
 @router.get("/playbooks/{playbook_id}", response=PlaybookOut)
@@ -614,13 +900,14 @@ def get_playbook(request: HttpRequest, playbook_id: int):
 def update_playbook(request: HttpRequest, playbook_id: int, payload: PlaybookUpdateIn):
     playbook = _playbook_for(request.auth, playbook_id, ProjectRole.ADMIN)
     changes = payload.dict(exclude_unset=True)
-    for field in ("title", "description"):
+    _check_category(changes.get("category"))
+    for field in ("title", "description", "category", "symptoms"):
         if changes.get(field) is not None:
             setattr(playbook, field, changes[field])
     if changes.get("keywords") is not None:
         playbook.keywords = [k.lower().strip() for k in changes["keywords"] if k.strip()]
     if changes.get("steps") is not None:
-        playbook.steps = clean_steps(changes["steps"])
+        playbook.steps = clean_playbook_steps(changes["steps"])
     if changes.get("status") is not None:
         playbook.status = changes["status"]
         if playbook.status != Playbook.Status.FAILING:
@@ -631,9 +918,100 @@ def update_playbook(request: HttpRequest, playbook_id: int, payload: PlaybookUpd
     return playbook
 
 
-@router.delete("/playbooks/{playbook_id}", response={204: None})
+@router.delete("/playbooks/{playbook_id}", response={204: None, 409: dict})
 def delete_playbook(request: HttpRequest, playbook_id: int):
-    _playbook_for(request.auth, playbook_id, ProjectRole.ADMIN).delete()
+    playbook = _playbook_for(request.auth, playbook_id, ProjectRole.ADMIN)
+    if playbook.runbooks.exists():
+        return 409, {"detail": "Runbooks still use this playbook; move or delete them first"}
+    playbook.delete()
+    return 204, None
+
+
+# ---- runbooks ------------------------------------------------------------------------
+
+def _require_runbooks() -> None:
+    if not settings.SRE_RUNBOOKS_ENABLED:
+        raise Http404("Runbooks aren't enabled on this server")
+
+
+def _runbook_playbook(project: Project, playbook_id: int) -> Playbook:
+    playbook = visible_playbooks(project).filter(id=playbook_id).first()
+    if playbook is None:
+        raise HttpError(400, "This project can't use that playbook")
+    return playbook
+
+
+def _runbook_for(user, runbook_id: int, min_role: ProjectRole) -> Runbook:
+    _require_runbooks()
+    runbook = get_object_or_404(Runbook, id=runbook_id)
+    get_membership(user, runbook.project_id, min_role)
+    return runbook
+
+
+@router.get("/projects/{project_id}/runbooks", response=RunbookListOut)
+def list_runbooks(request: HttpRequest, project_id: int, status: str | None = None,
+                  playbook_id: int | None = None):
+    _require_runbooks()
+    project = get_project_for(request.auth, project_id, ProjectRole.VIEWER)
+    qs = project.runbooks.all()
+    if status:
+        qs = qs.filter(status=status)
+    if playbook_id is not None:
+        qs = qs.filter(playbook_id=playbook_id)
+    return {"runbooks": list(qs), "total": qs.count()}
+
+
+@router.post("/projects/{project_id}/runbooks", response={201: RunbookOut})
+def create_runbook(request: HttpRequest, project_id: int, payload: RunbookCreateIn):
+    _require_runbooks()
+    project = get_project_for(request.auth, project_id, ProjectRole.ADMIN)
+    runbook = Runbook.objects.create(
+        project=project,
+        playbook=_runbook_playbook(project, payload.playbook_id),
+        title=payload.title,
+        description=payload.description,
+        area=payload.area,
+        keywords=[k.lower().strip() for k in payload.keywords if k.strip()],
+        steps=clean_steps(payload.steps),
+        service_name=payload.service_name,
+        repo_owner=project.github_repo_owner,
+        repo_name=project.github_repo_name,
+        origin=Runbook.Origin.HUMAN,
+        created_by=request.auth,
+        status=Playbook.Status.CONFIRMED,  # written by a human admin
+    )
+    return 201, runbook
+
+
+@router.get("/runbooks/{runbook_id}", response=RunbookOut)
+def get_runbook(request: HttpRequest, runbook_id: int):
+    return _runbook_for(request.auth, runbook_id, ProjectRole.VIEWER)
+
+
+@router.patch("/runbooks/{runbook_id}", response=RunbookOut)
+def update_runbook(request: HttpRequest, runbook_id: int, payload: RunbookUpdateIn):
+    runbook = _runbook_for(request.auth, runbook_id, ProjectRole.ADMIN)
+    changes = payload.dict(exclude_unset=True)
+    if changes.get("playbook_id") is not None:
+        runbook.playbook = _runbook_playbook(runbook.project, changes["playbook_id"])
+    for field in ("title", "description", "area", "service_name"):
+        if changes.get(field) is not None:
+            setattr(runbook, field, changes[field])
+    if changes.get("keywords") is not None:
+        runbook.keywords = [k.lower().strip() for k in changes["keywords"] if k.strip()]
+    if changes.get("steps") is not None:
+        runbook.steps = clean_steps(changes["steps"])
+    if changes.get("status") is not None:
+        runbook.status = changes["status"]
+        if runbook.status != Playbook.Status.FAILING:
+            runbook.consecutive_failure_count = 0
+    runbook.save()
+    return runbook
+
+
+@router.delete("/runbooks/{runbook_id}", response={204: None})
+def delete_runbook(request: HttpRequest, runbook_id: int):
+    _runbook_for(request.auth, runbook_id, ProjectRole.ADMIN).delete()
     return 204, None
 
 

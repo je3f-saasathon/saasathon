@@ -17,6 +17,7 @@ from sre.models import (
     ProjectMembership,
     ProjectRole,
 )
+from sre.orgs import personal_org
 
 # Seeded projects are found (and replaced) by this name prefix.
 PREFIX = "[demo] "
@@ -92,6 +93,7 @@ class Command(BaseCommand):
             project = Project.objects.create(
                 name=PREFIX + name, github_installation_id="0",
                 github_repo_owner=owner, github_repo_name=repo,
+                organization=personal_org(users[0]),
             )
             for user in users:
                 ProjectMembership.objects.create(project=project, user=user, role=ProjectRole.OWNER)

@@ -31,12 +31,23 @@ class Classification:
 class SearchInput:
     project_id: int
     keywords: list[str]
+    # New fields default, so payloads from older workflow histories still decode.
+    incident_run_id: int = 0
+    category: str = ""
+
+
+@dataclass
+class Candidates:
+    """find_candidates: the runbooks and playbooks worth showing the judge."""
+    playbook_ids: list[int] = field(default_factory=list)
+    runbook_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
 class RunInput:
     incident_run_id: int
     playbook_id: int
+    runbook_id: int | None = None
 
 
 @dataclass
@@ -48,14 +59,16 @@ class PlaybookRunStatus:
 @dataclass
 class JudgeInput:
     incident_run_id: int
-    candidate_ids: list[int]
+    candidate_ids: list[int]  # playbooks
+    runbook_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
 class JudgeResult:
-    matched_playbook_id: int | None
+    matched_playbook_id: int | None  # for a runbook match, the runbook's playbook
     confidence: float
     reasoning: str
+    matched_runbook_id: int | None = None
 
 
 @dataclass

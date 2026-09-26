@@ -4,6 +4,7 @@ import pytest
 
 from accounts.models import AuthToken
 from sre.models import Project, ProjectMembership, ProjectRole
+from sre.orgs import personal_org
 
 
 class Api:
@@ -42,6 +43,7 @@ def api_for(client):
 @pytest.fixture
 def make_project(db):
     def _make(owner, name="shop", **kwargs):
+        kwargs.setdefault("organization", personal_org(owner))
         project = Project.objects.create(
             name=name, github_installation_id="1", github_repo_owner="acme",
             github_repo_name="shop", **kwargs,

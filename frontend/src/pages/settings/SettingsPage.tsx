@@ -4,10 +4,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GitHubTab } from "./GitHubTab";
 import { ModelsTab } from "./ModelsTab";
 import { ProjectsTab } from "./ProjectsTab";
+import { UptraceTab } from "./UptraceTab";
 
-const tabs = ["projects", "models", "github"] as const;
+const tabs = ["projects", "models", "github", "uptrace"] as const;
 type Tab = (typeof tabs)[number];
-const tabLabels: Record<Tab, string> = { projects: "Projects", models: "Models", github: "GitHub" };
+const tabLabels: Record<Tab, string> = {
+  projects: "Projects",
+  models: "Models",
+  github: "GitHub",
+  uptrace: "Uptrace",
+};
 
 export function SettingsPage() {
   // The active tab lives in the URL so GitHub's connect callback can land on its tab.
@@ -20,7 +26,7 @@ export function SettingsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">
-          SRE projects, the models they use, and your GitHub connection.
+          SRE projects, the models they use, your GitHub connection and Uptrace access.
         </p>
       </div>
       <Tabs value={tab} onValueChange={(value) => setParams({ tab: value })}>
@@ -39,6 +45,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="github">
           <GitHubTab />
+        </TabsContent>
+        <TabsContent value="uptrace">
+          <UptraceTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -27,6 +27,11 @@ export type IncidentStatus =
   | "advisory_complete";
 export type Playbook = Schemas["PlaybookOut"];
 export type PlaybookRun = Schemas["PlaybookRunOut"];
+export type Runbook = Schemas["RunbookOut"];
+export type Organization = Schemas["OrganizationOut"];
+export type UptraceCredential = Schemas["UptraceCredentialOut"];
+export type UptraceCredentialRequest = Schemas["UptraceCredentialIn"];
+export type UptraceCredentialUpdateRequest = Schemas["UptraceCredentialUpdateIn"];
 
 export type Project = Schemas["ProjectOut"];
 export type ProjectCreated = Schemas["ProjectCreatedOut"];

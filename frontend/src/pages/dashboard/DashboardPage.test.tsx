@@ -118,6 +118,40 @@ describe("DashboardPage", () => {
     responses["/api/sre/incident-runs"] = { runs: [run], total: 1 };
   });
 
+  it("shows the Uptrace exception, the runbook and a generic playbook's steps", async () => {
+    responses["/api/sre/incident-runs"] = {
+      runs: [{
+        ...run,
+        matched_runbook_id: 9,
+        runbook: { id: 9, title: "Guard qty in checkout", status: "unconfirmed", source: "created" },
+        telemetry: { exception_type: "ZeroDivisionError", message: "division by zero",
+                     service_name: "django-buggy-app", span_name: "POST /checkout",
+                     stacktrace: "Traceback ... shop/views.py" },
+      }],
+      total: 1,
+    };
+    responses["/api/sre/runbooks/9"] = {
+      id: 9, project_id: 2, playbook_id: 3, title: "Guard qty in checkout", description: "",
+      area: "checkout", keywords: [], status: "unconfirmed", origin: "agent",
+      steps: [{ type: "edit_file", path: "shop/checkout.py", instructions: "return 400 on qty 0" }],
+    };
+    const playbook = responses["/api/sre/playbooks/3"] as Record<string, unknown>;
+    responses["/api/sre/playbooks/3"] = {
+      ...playbook, is_generic: true, origin: "builtin",
+      steps: [{ type: "investigate", instructions: "Find the divisor" }],
+    };
+    renderPage();
+    fireEvent.click(await screen.findByText("ZeroDivisionError in checkout"));
+    expect(await screen.findByText("ZeroDivisionError")).toBeInTheDocument();
+    expect(screen.getByText("POST /checkout")).toBeInTheDocument();
+    expect(await screen.findByText("shop/checkout.py")).toBeInTheDocument();
+    expect(screen.getByText("saved from this fix")).toBeInTheDocument();
+    expect(await screen.findByText("Find the divisor")).toBeInTheDocument();
+    expect(screen.getByText("built-in")).toBeInTheDocument();
+    responses["/api/sre/incident-runs"] = { runs: [run], total: 1 };
+    responses["/api/sre/playbooks/3"] = playbook;
+  });
+
   it.each([
     ["2026-10-01T00:00:00Z", /Reopen the PR on GitHub by/],
     ["2026-11-30T00:00:00Z", /can no longer be reopened/],

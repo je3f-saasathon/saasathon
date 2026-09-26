@@ -1092,6 +1092,566 @@
         ]
       }
     },
+    "/api/sre/organizations": {
+      "get": {
+        "operationId": "sre_api_list_organizations",
+        "summary": "List Organizations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "sre_api_create_organization",
+        "summary": "Create Organization",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/organizations/{org_id}": {
+      "get": {
+        "operationId": "sre_api_get_organization",
+        "summary": "Get Organization",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "sre_api_update_organization",
+        "summary": "Update Organization",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/organizations/{org_id}/members": {
+      "get": {
+        "operationId": "sre_api_list_org_members",
+        "summary": "List Org Members",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrgMemberOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "sre_api_add_org_member",
+        "summary": "Add Org Member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgMemberOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgMemberAddIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/organizations/{org_id}/members/{user_id}": {
+      "patch": {
+        "operationId": "sre_api_update_org_member",
+        "summary": "Update Org Member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgMemberOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgMemberUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "sre_api_remove_org_member",
+        "summary": "Remove Org Member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/organizations/{org_id}/uptrace-credentials": {
+      "get": {
+        "operationId": "sre_api_list_uptrace_credentials",
+        "summary": "List Uptrace Credentials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UptraceCredentialOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "sre_api_create_uptrace_credential",
+        "summary": "Create Uptrace Credential",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UptraceCredentialOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UptraceCredentialIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/uptrace-credentials/{credential_id}": {
+      "patch": {
+        "operationId": "sre_api_update_uptrace_credential",
+        "summary": "Update Uptrace Credential",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "schema": {
+              "title": "Credential Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UptraceCredentialOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UptraceCredentialUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "sre_api_delete_uptrace_credential",
+        "summary": "Delete Uptrace Credential",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "credential_id",
+            "schema": {
+              "title": "Credential Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/sre/platform": {
       "get": {
         "operationId": "sre_api_platform_default",
@@ -1448,6 +2008,53 @@
         ]
       }
     },
+    "/api/sre/organizations/{org_id}/playbooks": {
+      "post": {
+        "operationId": "sre_api_create_org_playbook",
+        "summary": "Create Org Playbook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybookCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/sre/playbooks/{playbook_id}": {
       "get": {
         "operationId": "sre_api_get_playbook",
@@ -1538,6 +2145,242 @@
             "name": "playbook_id",
             "schema": {
               "title": "Playbook Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/projects/{project_id}/runbooks": {
+      "get": {
+        "operationId": "sre_api_list_runbooks",
+        "summary": "List Runbooks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "playbook_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Playbook Id"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookListOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "sre_api_create_runbook",
+        "summary": "Create Runbook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunbookCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/runbooks/{runbook_id}": {
+      "get": {
+        "operationId": "sre_api_get_runbook",
+        "summary": "Get Runbook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runbook_id",
+            "schema": {
+              "title": "Runbook Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "sre_api_update_runbook",
+        "summary": "Update Runbook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runbook_id",
+            "schema": {
+              "title": "Runbook Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunbookUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "sre_api_delete_runbook",
+        "summary": "Delete Runbook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runbook_id",
+            "schema": {
+              "title": "Runbook Id",
               "type": "integer"
             },
             "required": true
@@ -2242,6 +3085,36 @@
           "github_verified": {
             "title": "Github Verified",
             "type": "boolean"
+          },
+          "organization_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Id"
+          },
+          "organization_name": {
+            "title": "Organization Name",
+            "type": "string"
+          },
+          "uptrace_credential_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptrace Credential Id"
+          },
+          "uptrace_fetch_ready": {
+            "title": "Uptrace Fetch Ready",
+            "type": "boolean"
           }
         },
         "required": [
@@ -2258,7 +3131,11 @@
           "generate_tests",
           "platform_tokens_this_month",
           "created_at",
-          "github_verified"
+          "github_verified",
+          "organization_id",
+          "organization_name",
+          "uptrace_credential_id",
+          "uptrace_fetch_ready"
         ],
         "title": "ProjectOut",
         "type": "object"
@@ -2336,6 +3213,36 @@
             "title": "Github Verified",
             "type": "boolean"
           },
+          "organization_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Id"
+          },
+          "organization_name": {
+            "title": "Organization Name",
+            "type": "string"
+          },
+          "uptrace_credential_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptrace Credential Id"
+          },
+          "uptrace_fetch_ready": {
+            "title": "Uptrace Fetch Ready",
+            "type": "boolean"
+          },
           "webhook_secret": {
             "title": "Webhook Secret",
             "type": "string"
@@ -2364,6 +3271,10 @@
           "platform_tokens_this_month",
           "created_at",
           "github_verified",
+          "organization_id",
+          "organization_name",
+          "uptrace_credential_id",
+          "uptrace_fetch_ready",
           "webhook_secret",
           "webhook_url",
           "uptrace_webhook_url"
@@ -2411,6 +3322,17 @@
             "default": true,
             "title": "Generate Tests",
             "type": "boolean"
+          },
+          "organization_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Id"
           }
         },
         "required": [
@@ -2521,6 +3443,28 @@
               }
             ],
             "title": "Generate Tests"
+          },
+          "organization_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Id"
+          },
+          "uptrace_credential_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptrace Credential Id"
           }
         },
         "title": "ProjectUpdateIn",
@@ -2695,6 +3639,257 @@
           "role"
         ],
         "title": "MemberUpdateIn",
+        "type": "object"
+      },
+      "OrgRole": {
+        "enum": [
+          "owner",
+          "admin",
+          "member"
+        ],
+        "title": "OrgRole",
+        "type": "string"
+      },
+      "OrganizationOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "is_personal": {
+            "title": "Is Personal",
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrgRole"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_personal",
+          "role",
+          "created_at"
+        ],
+        "title": "OrganizationOut",
+        "type": "object"
+      },
+      "OrganizationIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "OrganizationIn",
+        "type": "object"
+      },
+      "OrgMemberOut": {
+        "properties": {
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrgRole"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "name",
+          "role"
+        ],
+        "title": "OrgMemberOut",
+        "type": "object"
+      },
+      "OrgMemberAddIn": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrgRole"
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "OrgMemberAddIn",
+        "type": "object"
+      },
+      "OrgMemberUpdateIn": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/OrgRole"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "OrgMemberUpdateIn",
+        "type": "object"
+      },
+      "UptraceCredentialOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "api_base_url": {
+            "title": "Api Base Url",
+            "type": "string"
+          },
+          "has_token": {
+            "title": "Has Token",
+            "type": "boolean"
+          },
+          "created_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "organization_id",
+          "name",
+          "host",
+          "api_base_url",
+          "has_token",
+          "created_by_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "UptraceCredentialOut",
+        "type": "object"
+      },
+      "UptraceCredentialIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "api_base_url": {
+            "title": "Api Base Url",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "host",
+          "api_base_url",
+          "token"
+        ],
+        "title": "UptraceCredentialIn",
+        "type": "object"
+      },
+      "UptraceCredentialUpdateIn": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "api_base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Base Url"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          }
+        },
+        "title": "UptraceCredentialUpdateIn",
         "type": "object"
       },
       "PlatformOut": {
@@ -2964,6 +4159,15 @@
         "title": "PlaybookListOut",
         "type": "object"
       },
+      "PlaybookOrigin": {
+        "enum": [
+          "builtin",
+          "agent",
+          "human"
+        ],
+        "title": "PlaybookOrigin",
+        "type": "string"
+      },
       "PlaybookOut": {
         "properties": {
           "id": {
@@ -2971,8 +4175,52 @@
             "type": "integer"
           },
           "project_id": {
-            "title": "Project Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "organization_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Id"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/PlaybookOrigin"
+          },
+          "created_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Id"
+          },
+          "is_generic": {
+            "title": "Is Generic",
+            "type": "boolean"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "symptoms": {
+            "title": "Symptoms",
+            "type": "string"
           },
           "title": {
             "title": "Title",
@@ -3039,6 +4287,12 @@
         "required": [
           "id",
           "project_id",
+          "organization_id",
+          "origin",
+          "created_by_id",
+          "is_generic",
+          "category",
+          "symptoms",
           "title",
           "description",
           "keywords",
@@ -3099,6 +4353,16 @@
                 "type": "null"
               }
             ]
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "symptoms": {
+            "default": "",
+            "title": "Symptoms",
+            "type": "string"
           }
         },
         "required": [
@@ -3179,9 +4443,330 @@
                 "type": "null"
               }
             ]
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "symptoms": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symptoms"
           }
         },
         "title": "PlaybookUpdateIn",
+        "type": "object"
+      },
+      "RunbookListOut": {
+        "properties": {
+          "runbooks": {
+            "items": {
+              "$ref": "#/components/schemas/RunbookOut"
+            },
+            "title": "Runbooks",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runbooks",
+          "total"
+        ],
+        "title": "RunbookListOut",
+        "type": "object"
+      },
+      "RunbookOrigin": {
+        "enum": [
+          "agent",
+          "human",
+          "migrated"
+        ],
+        "title": "RunbookOrigin",
+        "type": "string"
+      },
+      "RunbookOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "playbook_id": {
+            "title": "Playbook Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "area": {
+            "title": "Area",
+            "type": "string"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/RunbookOrigin"
+          },
+          "created_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Id"
+          },
+          "repo_owner": {
+            "title": "Repo Owner",
+            "type": "string"
+          },
+          "repo_name": {
+            "title": "Repo Name",
+            "type": "string"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "consecutive_failure_count": {
+            "title": "Consecutive Failure Count",
+            "type": "integer"
+          },
+          "source_playbook_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Playbook Run Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "playbook_id",
+          "title",
+          "description",
+          "area",
+          "keywords",
+          "steps",
+          "status",
+          "origin",
+          "created_by_id",
+          "repo_owner",
+          "repo_name",
+          "service_name",
+          "consecutive_failure_count",
+          "source_playbook_run_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RunbookOut",
+        "type": "object"
+      },
+      "RunbookCreateIn": {
+        "properties": {
+          "playbook_id": {
+            "title": "Playbook Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "area": {
+            "default": "",
+            "title": "Area",
+            "type": "string"
+          },
+          "keywords": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "steps": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "service_name": {
+            "default": "",
+            "title": "Service Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playbook_id",
+          "title"
+        ],
+        "title": "RunbookCreateIn",
+        "type": "object"
+      },
+      "RunbookUpdateIn": {
+        "properties": {
+          "playbook_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playbook Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          },
+          "service_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Status"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "RunbookUpdateIn",
         "type": "object"
       },
       "IncidentRunListOut": {
@@ -3346,6 +4931,32 @@
           },
           "usage": {
             "$ref": "#/components/schemas/UsageOut"
+          },
+          "matched_runbook_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Runbook Id"
+          },
+          "runbook": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaybookBriefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "telemetry": {
+            "additionalProperties": true,
+            "title": "Telemetry",
+            "type": "object"
           }
         },
         "required": [
@@ -3369,7 +4980,10 @@
           "playbook_run_status",
           "execution_mode",
           "generate_tests",
-          "usage"
+          "usage",
+          "matched_runbook_id",
+          "runbook",
+          "telemetry"
         ],
         "title": "IncidentRunOut",
         "type": "object"
@@ -3560,6 +5174,17 @@
             "title": "Playbook Id",
             "type": "integer"
           },
+          "runbook_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runbook Id"
+          },
           "execution_mode": {
             "$ref": "#/components/schemas/ExecutionMode"
           },
@@ -3614,6 +5239,7 @@
           "id",
           "incident_run_id",
           "playbook_id",
+          "runbook_id",
           "execution_mode",
           "generate_tests",
           "status",

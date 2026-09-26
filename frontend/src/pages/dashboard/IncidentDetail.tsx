@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, ExternalLink, X } from "lucide-react";
 
 import { api } from "@/api/client";
-import type { IncidentRun, Playbook, PlaybookRun } from "@/api/types";
+import type { IncidentRun, Playbook, PlaybookRun, Runbook } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,24 +81,83 @@ function Diagnosis({ run, playbookRun }: { run: IncidentRun; playbookRun?: Playb
   );
 }
 
-function PlaybookSteps({ playbook }: { playbook: Playbook }) {
+const GENERIC_STEP_LABELS: Record<string, string> = {
+  investigate: "Investigate",
+  change: "Change",
+  verify: "Verify",
+};
+
+function Steps({ description, steps }: { description: string; steps: Record<string, unknown>[] }) {
   return (
     <div className="space-y-2 text-sm">
-      {playbook.description && <p className="text-muted-foreground">{playbook.description}</p>}
+      {description && <p className="text-muted-foreground">{description}</p>}
       <ol className="list-decimal space-y-1 pl-5">
-        {playbook.steps.map((step, i) => (
+        {steps.map((step, i) => (
           <li key={i}>
             {step.type === "run_command" ? (
               <code className="rounded bg-muted px-1 font-mono text-xs">{str(step.command)}</code>
-            ) : (
+            ) : step.type === "edit_file" ? (
               <>
                 <span className="font-mono text-xs">{str(step.path)}</span>
                 {str(step.instructions) && <span> — {str(step.instructions)}</span>}
+              </>
+            ) : (
+              <>
+                <span className="font-medium">{GENERIC_STEP_LABELS[str(step.type)] ?? str(step.type)}:</span>{" "}
+                {str(step.instructions)}
               </>
             )}
           </li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+function Telemetry({ telemetry }: { telemetry: Record<string, unknown> }) {
+  const [showStack, setShowStack] = useState(false);
+  const stack = str(telemetry.stacktrace);
+  return (
+    <div className="space-y-2 text-sm">
+      <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[10rem_1fr]">
+        {str(telemetry.exception_type) && (
+          <>
+            <dt className="text-muted-foreground">Exception</dt>
+            <dd className="font-mono text-xs">{str(telemetry.exception_type)}</dd>
+          </>
+        )}
+        {str(telemetry.message) && (
+          <>
+            <dt className="text-muted-foreground">Message</dt>
+            <dd className="whitespace-pre-wrap">{str(telemetry.message)}</dd>
+          </>
+        )}
+        {str(telemetry.service_name) && (
+          <>
+            <dt className="text-muted-foreground">Service</dt>
+            <dd>{str(telemetry.service_name)}</dd>
+          </>
+        )}
+        {str(telemetry.span_name) && (
+          <>
+            <dt className="text-muted-foreground">Operation</dt>
+            <dd className="font-mono text-xs">{str(telemetry.span_name)}</dd>
+          </>
+        )}
+      </dl>
+      {stack && (
+        <div>
+          <Button variant="ghost" size="sm" className="-ml-3" onClick={() => setShowStack((v) => !v)}>
+            {showStack ? <ChevronDown /> : <ChevronRight />}
+            Stack trace
+          </Button>
+          {showStack && (
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-xs">
+              {stack}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -227,6 +286,12 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
     queryFn: () => api.get<Playbook>(`/sre/playbooks/${playbookId}`),
     enabled: playbookId != null,
   });
+  const runbookId = run.runbook?.id;
+  const runbook = useQuery({
+    queryKey: ["runbook", runbookId],
+    queryFn: () => api.get<Runbook>(`/sre/runbooks/${runbookId}`),
+    enabled: runbookId != null,
+  });
   const playbookRun = useQuery({
     queryKey: ["playbook-run", playbookRunId],
     queryFn: () => api.get<PlaybookRun>(`/sre/playbook-runs/${playbookRunId}`),
@@ -288,18 +353,43 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
           {showDiagnosis && <Diagnosis run={run} playbookRun={playbookRun.data} />}
         </Section>
 
+        {Object.keys(run.telemetry ?? {}).length > 0 && (
+          <Section title="From Uptrace">
+            <Telemetry telemetry={run.telemetry} />
+          </Section>
+        )}
+
+        {run.runbook && (
+          <Section title="Runbook (this repo)">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">{run.runbook.title}</span>
+              <Badge variant="outline">{run.runbook.status}</Badge>
+              <Badge variant="secondary">
+                {run.runbook.source === "created" ? "saved from this fix" : "reused"}
+              </Badge>
+              {runbook.data?.area && <span className="text-muted-foreground">{runbook.data.area}</span>}
+            </div>
+            {runbook.isLoading && <p className="text-sm text-muted-foreground">Loading steps...</p>}
+            {runbook.isError && <p className="text-sm text-destructive">Could not load runbook.</p>}
+            {runbook.data && <Steps description={runbook.data.description} steps={runbook.data.steps} />}
+          </Section>
+        )}
+
         {run.playbook && (
-          <Section title="Playbook used">
+          <Section title={playbook.data?.is_generic ? "Playbook (generic)" : "Playbook used"}>
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-medium">{run.playbook.title}</span>
               <Badge variant="outline">{run.playbook.status}</Badge>
               <Badge variant="secondary">
                 {run.playbook.source === "created" ? "written for this incident" : "reused"}
               </Badge>
+              {playbook.data?.origin === "builtin" && <Badge variant="outline">built-in</Badge>}
             </div>
             {playbook.isLoading && <p className="text-sm text-muted-foreground">Loading steps...</p>}
             {playbook.isError && <p className="text-sm text-destructive">Could not load playbook.</p>}
-            {playbook.data && <PlaybookSteps playbook={playbook.data} />}
+            {playbook.data && (
+              <Steps description={playbook.data.description} steps={playbook.data.steps} />
+            )}
           </Section>
         )}
 

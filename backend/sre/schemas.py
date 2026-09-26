@@ -2,7 +2,7 @@ from datetime import datetime
 
 from ninja import Schema
 
-from .models import ExecutionMode, LLMProvider, PipelineStep, Playbook, ProjectRole
+from .models import ExecutionMode, LLMProvider, OrgRole, PipelineStep, Playbook, ProjectRole, Runbook
 
 
 class UptraceWebhookIn(Schema):
@@ -40,6 +40,11 @@ class ProjectOut(Schema):
     created_at: datetime
     # True when an owner has proved (via Connect GitHub) access to the installation.
     github_verified: bool
+    organization_id: int | None
+    organization_name: str
+    uptrace_credential_id: int | None
+    # True when an Uptrace credential resolves (own, else the org's for the pinned host).
+    uptrace_fetch_ready: bool
 
 
 class ProjectCreatedOut(ProjectOut):
@@ -67,6 +72,8 @@ class ProjectCreateIn(Schema):
     uptrace_source_id: str = ""
     default_execution_mode: ExecutionMode = ExecutionMode.DRAFT_ONLY
     generate_tests: bool = True
+    # Defaults to the caller's personal org.
+    organization_id: int | None = None
 
 
 class ProjectUpdateIn(Schema):
@@ -79,6 +86,62 @@ class ProjectUpdateIn(Schema):
     default_execution_mode: ExecutionMode | None = None
     default_llm_config_id: int | None = None
     generate_tests: bool | None = None
+    organization_id: int | None = None
+    uptrace_credential_id: int | None = None
+
+
+class OrganizationOut(Schema):
+    id: int
+    name: str
+    is_personal: bool
+    role: OrgRole  # the caller's
+    created_at: datetime
+
+
+class OrganizationIn(Schema):
+    name: str
+
+
+class OrgMemberOut(Schema):
+    user_id: int
+    email: str
+    name: str
+    role: OrgRole
+
+
+class OrgMemberAddIn(Schema):
+    email: str
+    role: OrgRole
+
+
+class OrgMemberUpdateIn(Schema):
+    role: OrgRole
+
+
+class UptraceCredentialOut(Schema):
+    id: int
+    organization_id: int
+    name: str
+    host: str
+    api_base_url: str
+    has_token: bool
+    created_by_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class UptraceCredentialIn(Schema):
+    name: str
+    host: str
+    api_base_url: str
+    token: str
+
+
+class UptraceCredentialUpdateIn(Schema):
+    name: str | None = None
+    host: str | None = None
+    api_base_url: str | None = None
+    token: str | None = None  # a new value rotates it
 
 
 class MemberOut(Schema):
@@ -138,7 +201,13 @@ class StepOverridesIn(Schema):
 
 class PlaybookOut(Schema):
     id: int
-    project_id: int
+    project_id: int | None
+    organization_id: int | None
+    origin: Playbook.Origin
+    created_by_id: int | None
+    is_generic: bool
+    category: str
+    symptoms: str
     title: str
     description: str
     keywords: list[str]
@@ -162,6 +231,8 @@ class PlaybookCreateIn(Schema):
     keywords: list[str] = []
     steps: list[dict] = []
     execution_mode_override: ExecutionMode | None = None
+    category: str = ""
+    symptoms: str = ""
 
 
 class PlaybookUpdateIn(Schema):
@@ -171,6 +242,55 @@ class PlaybookUpdateIn(Schema):
     steps: list[dict] | None = None
     status: Playbook.Status | None = None
     execution_mode_override: ExecutionMode | None = None
+    category: str | None = None
+    symptoms: str | None = None
+
+
+class RunbookOut(Schema):
+    id: int
+    project_id: int
+    playbook_id: int
+    title: str
+    description: str
+    area: str
+    keywords: list[str]
+    steps: list[dict]
+    status: Playbook.Status
+    origin: Runbook.Origin
+    created_by_id: int | None
+    repo_owner: str
+    repo_name: str
+    service_name: str
+    consecutive_failure_count: int
+    source_playbook_run_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RunbookListOut(Schema):
+    runbooks: list[RunbookOut]
+    total: int
+
+
+class RunbookCreateIn(Schema):
+    playbook_id: int
+    title: str
+    description: str = ""
+    area: str = ""
+    keywords: list[str] = []
+    steps: list[dict] = []
+    service_name: str = ""
+
+
+class RunbookUpdateIn(Schema):
+    playbook_id: int | None = None
+    title: str | None = None
+    description: str | None = None
+    area: str | None = None
+    keywords: list[str] | None = None
+    steps: list[dict] | None = None
+    service_name: str | None = None
+    status: Playbook.Status | None = None
 
 
 class AttemptOut(Schema):
@@ -188,6 +308,7 @@ class PlaybookRunOut(Schema):
     id: int
     incident_run_id: int
     playbook_id: int
+    runbook_id: int | None
     execution_mode: ExecutionMode
     generate_tests: bool
     status: str
@@ -247,6 +368,9 @@ class IncidentRunOut(Schema):
     execution_mode: ExecutionMode | None
     generate_tests: bool | None  # frozen on the playbook run; None without one
     usage: UsageOut
+    matched_runbook_id: int | None
+    runbook: PlaybookBriefOut | None  # matched, else saved from this incident's fix
+    telemetry: dict
 
 
 class IncidentRunListOut(Schema):

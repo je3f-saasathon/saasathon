@@ -12,6 +12,7 @@ with workflow.unsafe.imports_passed_through():
         AnomalyResult,
         AttemptInput,
         AttemptResult,
+        Candidates,
         Classification,
         IncidentInput,
         JudgeInput,
@@ -69,6 +70,9 @@ class IncidentDiagnosisWorkflow:
         return status
 
     async def _run(self, inp: IncidentInput) -> str:
+        # Guarded so workflows started before this activity existed still replay.
+        if workflow.patched("uptrace-telemetry-v1"):
+            await workflow.execute_activity("fetch_incident_telemetry", inp, **READ_ONLY)
         anomaly: AnomalyResult = await workflow.execute_activity(
             "confirm_anomaly", inp, result_type=AnomalyResult, **READ_ONLY
         )
@@ -78,20 +82,38 @@ class IncidentDiagnosisWorkflow:
         classification: Classification = await workflow.execute_activity(
             "classify_bug", inp, result_type=Classification, **READ_ONLY
         )
-        candidate_ids: list[int] = await workflow.execute_activity(
-            "find_candidate_playbooks",
-            SearchInput(inp.project_id, classification.keywords),
-            result_type=list[int],
-            **READ_ONLY,
-        )
         match = JudgeResult(None, 0.0, "no candidates")
-        if candidate_ids:
-            match = await workflow.execute_activity(
-                "judge_playbook_match",
-                JudgeInput(inp.incident_run_id, candidate_ids),
-                result_type=JudgeResult,
+        # Runbooks + playbooks in one search and one judge call. Guarded so workflows that
+        # already ran the old two activities still replay (e.g. ones awaiting approval).
+        if workflow.patched("runbooks-v1"):
+            candidates: Candidates = await workflow.execute_activity(
+                "find_candidates",
+                SearchInput(inp.project_id, classification.keywords, inp.incident_run_id,
+                            classification.category),
+                result_type=Candidates,
                 **READ_ONLY,
             )
+            if candidates.playbook_ids or candidates.runbook_ids:
+                match = await workflow.execute_activity(
+                    "judge_match",
+                    JudgeInput(inp.incident_run_id, candidates.playbook_ids, candidates.runbook_ids),
+                    result_type=JudgeResult,
+                    **READ_ONLY,
+                )
+        else:
+            candidate_ids: list[int] = await workflow.execute_activity(
+                "find_candidate_playbooks",
+                SearchInput(inp.project_id, classification.keywords),
+                result_type=list[int],
+                **READ_ONLY,
+            )
+            if candidate_ids:
+                match = await workflow.execute_activity(
+                    "judge_playbook_match",
+                    JudgeInput(inp.incident_run_id, candidate_ids),
+                    result_type=JudgeResult,
+                    **READ_ONLY,
+                )
 
         if match.matched_playbook_id is None:
             # New playbooks are only run on a later incident that matches them.
@@ -100,7 +122,7 @@ class IncidentDiagnosisWorkflow:
 
         info: PlaybookRunInfo = await workflow.execute_activity(
             "create_playbook_run",
-            RunInput(inp.incident_run_id, match.matched_playbook_id),
+            RunInput(inp.incident_run_id, match.matched_playbook_id, match.matched_runbook_id),
             result_type=PlaybookRunInfo,
             **IDEMPOTENT_WRITE,
         )

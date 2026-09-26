@@ -404,6 +404,114 @@ export interface paths {
         patch: operations["sre_api_update_member"];
         trace?: never;
     };
+    "/api/sre/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Organizations */
+        get: operations["sre_api_list_organizations"];
+        put?: never;
+        /** Create Organization */
+        post: operations["sre_api_create_organization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/organizations/{org_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Organization */
+        get: operations["sre_api_get_organization"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Organization */
+        patch: operations["sre_api_update_organization"];
+        trace?: never;
+    };
+    "/api/sre/organizations/{org_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Org Members */
+        get: operations["sre_api_list_org_members"];
+        put?: never;
+        /** Add Org Member */
+        post: operations["sre_api_add_org_member"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/organizations/{org_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Org Member */
+        delete: operations["sre_api_remove_org_member"];
+        options?: never;
+        head?: never;
+        /** Update Org Member */
+        patch: operations["sre_api_update_org_member"];
+        trace?: never;
+    };
+    "/api/sre/organizations/{org_id}/uptrace-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Uptrace Credentials */
+        get: operations["sre_api_list_uptrace_credentials"];
+        put?: never;
+        /** Create Uptrace Credential */
+        post: operations["sre_api_create_uptrace_credential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/uptrace-credentials/{credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Uptrace Credential */
+        delete: operations["sre_api_delete_uptrace_credential"];
+        options?: never;
+        head?: never;
+        /** Update Uptrace Credential */
+        patch: operations["sre_api_update_uptrace_credential"];
+        trace?: never;
+    };
     "/api/sre/platform": {
         parameters: {
             query?: never;
@@ -493,6 +601,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sre/organizations/{org_id}/playbooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Org Playbook */
+        post: operations["sre_api_create_org_playbook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sre/playbooks/{playbook_id}": {
         parameters: {
             query?: never;
@@ -510,6 +635,43 @@ export interface paths {
         head?: never;
         /** Update Playbook */
         patch: operations["sre_api_update_playbook"];
+        trace?: never;
+    };
+    "/api/sre/projects/{project_id}/runbooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runbooks */
+        get: operations["sre_api_list_runbooks"];
+        put?: never;
+        /** Create Runbook */
+        post: operations["sre_api_create_runbook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/runbooks/{runbook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Runbook */
+        get: operations["sre_api_get_runbook"];
+        put?: never;
+        post?: never;
+        /** Delete Runbook */
+        delete: operations["sre_api_delete_runbook"];
+        options?: never;
+        head?: never;
+        /** Update Runbook */
+        patch: operations["sre_api_update_runbook"];
         trace?: never;
     };
     "/api/sre/incident-runs": {
@@ -776,6 +938,14 @@ export interface components {
             created_at: string;
             /** Github Verified */
             github_verified: boolean;
+            /** Organization Id */
+            organization_id: number | null;
+            /** Organization Name */
+            organization_name: string;
+            /** Uptrace Credential Id */
+            uptrace_credential_id: number | null;
+            /** Uptrace Fetch Ready */
+            uptrace_fetch_ready: boolean;
         };
         /**
          * ProjectRole
@@ -813,6 +983,14 @@ export interface components {
             created_at: string;
             /** Github Verified */
             github_verified: boolean;
+            /** Organization Id */
+            organization_id: number | null;
+            /** Organization Name */
+            organization_name: string;
+            /** Uptrace Credential Id */
+            uptrace_credential_id: number | null;
+            /** Uptrace Fetch Ready */
+            uptrace_fetch_ready: boolean;
             /** Webhook Secret */
             webhook_secret: string;
             /** Webhook Url */
@@ -847,6 +1025,8 @@ export interface components {
              * @default true
              */
             generate_tests: boolean;
+            /** Organization Id */
+            organization_id?: number | null;
         };
         /** ProjectUpdateIn */
         ProjectUpdateIn: {
@@ -867,6 +1047,10 @@ export interface components {
             default_llm_config_id?: number | null;
             /** Generate Tests */
             generate_tests?: boolean | null;
+            /** Organization Id */
+            organization_id?: number | null;
+            /** Uptrace Credential Id */
+            uptrace_credential_id?: number | null;
         };
         /** WebhookSecretOut */
         WebhookSecretOut: {
@@ -932,6 +1116,100 @@ export interface components {
         /** MemberUpdateIn */
         MemberUpdateIn: {
             role: components["schemas"]["ProjectRole"];
+        };
+        /**
+         * OrgRole
+         * @enum {string}
+         */
+        OrgRole: "owner" | "admin" | "member";
+        /** OrganizationOut */
+        OrganizationOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Is Personal */
+            is_personal: boolean;
+            role: components["schemas"]["OrgRole"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** OrganizationIn */
+        OrganizationIn: {
+            /** Name */
+            name: string;
+        };
+        /** OrgMemberOut */
+        OrgMemberOut: {
+            /** User Id */
+            user_id: number;
+            /** Email */
+            email: string;
+            /** Name */
+            name: string;
+            role: components["schemas"]["OrgRole"];
+        };
+        /** OrgMemberAddIn */
+        OrgMemberAddIn: {
+            /** Email */
+            email: string;
+            role: components["schemas"]["OrgRole"];
+        };
+        /** OrgMemberUpdateIn */
+        OrgMemberUpdateIn: {
+            role: components["schemas"]["OrgRole"];
+        };
+        /** UptraceCredentialOut */
+        UptraceCredentialOut: {
+            /** Id */
+            id: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Name */
+            name: string;
+            /** Host */
+            host: string;
+            /** Api Base Url */
+            api_base_url: string;
+            /** Has Token */
+            has_token: boolean;
+            /** Created By Id */
+            created_by_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** UptraceCredentialIn */
+        UptraceCredentialIn: {
+            /** Name */
+            name: string;
+            /** Host */
+            host: string;
+            /** Api Base Url */
+            api_base_url: string;
+            /** Token */
+            token: string;
+        };
+        /** UptraceCredentialUpdateIn */
+        UptraceCredentialUpdateIn: {
+            /** Name */
+            name?: string | null;
+            /** Host */
+            host?: string | null;
+            /** Api Base Url */
+            api_base_url?: string | null;
+            /** Token */
+            token?: string | null;
         };
         /** PlatformOut */
         PlatformOut: {
@@ -1042,12 +1320,28 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * PlaybookOrigin
+         * @enum {string}
+         */
+        PlaybookOrigin: "builtin" | "agent" | "human";
         /** PlaybookOut */
         PlaybookOut: {
             /** Id */
             id: number;
             /** Project Id */
-            project_id: number;
+            project_id: number | null;
+            /** Organization Id */
+            organization_id: number | null;
+            origin: components["schemas"]["PlaybookOrigin"];
+            /** Created By Id */
+            created_by_id: number | null;
+            /** Is Generic */
+            is_generic: boolean;
+            /** Category */
+            category: string;
+            /** Symptoms */
+            symptoms: string;
             /** Title */
             title: string;
             /** Description */
@@ -1102,6 +1396,16 @@ export interface components {
                 [key: string]: unknown;
             }[];
             execution_mode_override?: components["schemas"]["ExecutionMode"] | null;
+            /**
+             * Category
+             * @default
+             */
+            category: string;
+            /**
+             * Symptoms
+             * @default
+             */
+            symptoms: string;
         };
         /** PlaybookUpdateIn */
         PlaybookUpdateIn: {
@@ -1117,6 +1421,121 @@ export interface components {
             }[] | null;
             status?: components["schemas"]["Status"] | null;
             execution_mode_override?: components["schemas"]["ExecutionMode"] | null;
+            /** Category */
+            category?: string | null;
+            /** Symptoms */
+            symptoms?: string | null;
+        };
+        /** RunbookListOut */
+        RunbookListOut: {
+            /** Runbooks */
+            runbooks: components["schemas"]["RunbookOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * RunbookOrigin
+         * @enum {string}
+         */
+        RunbookOrigin: "agent" | "human" | "migrated";
+        /** RunbookOut */
+        RunbookOut: {
+            /** Id */
+            id: number;
+            /** Project Id */
+            project_id: number;
+            /** Playbook Id */
+            playbook_id: number;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Area */
+            area: string;
+            /** Keywords */
+            keywords: string[];
+            /** Steps */
+            steps: {
+                [key: string]: unknown;
+            }[];
+            status: components["schemas"]["Status"];
+            origin: components["schemas"]["RunbookOrigin"];
+            /** Created By Id */
+            created_by_id: number | null;
+            /** Repo Owner */
+            repo_owner: string;
+            /** Repo Name */
+            repo_name: string;
+            /** Service Name */
+            service_name: string;
+            /** Consecutive Failure Count */
+            consecutive_failure_count: number;
+            /** Source Playbook Run Id */
+            source_playbook_run_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RunbookCreateIn */
+        RunbookCreateIn: {
+            /** Playbook Id */
+            playbook_id: number;
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Area
+             * @default
+             */
+            area: string;
+            /**
+             * Keywords
+             * @default []
+             */
+            keywords: string[];
+            /**
+             * Steps
+             * @default []
+             */
+            steps: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Service Name
+             * @default
+             */
+            service_name: string;
+        };
+        /** RunbookUpdateIn */
+        RunbookUpdateIn: {
+            /** Playbook Id */
+            playbook_id?: number | null;
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Area */
+            area?: string | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /** Steps */
+            steps?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Service Name */
+            service_name?: string | null;
+            status?: components["schemas"]["Status"] | null;
         };
         /** IncidentRunListOut */
         IncidentRunListOut: {
@@ -1174,6 +1593,13 @@ export interface components {
             /** Generate Tests */
             generate_tests: boolean | null;
             usage: components["schemas"]["UsageOut"];
+            /** Matched Runbook Id */
+            matched_runbook_id: number | null;
+            runbook: components["schemas"]["PlaybookBriefOut"] | null;
+            /** Telemetry */
+            telemetry: {
+                [key: string]: unknown;
+            };
         };
         /** PlaybookBriefOut */
         PlaybookBriefOut: {
@@ -1251,6 +1677,8 @@ export interface components {
             incident_run_id: number;
             /** Playbook Id */
             playbook_id: number;
+            /** Runbook Id */
+            runbook_id: number | null;
             execution_mode: components["schemas"]["ExecutionMode"];
             /** Generate Tests */
             generate_tests: boolean;
@@ -2042,6 +2470,354 @@ export interface operations {
             };
         };
     };
+    sre_api_list_organizations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationOut"][];
+                };
+            };
+        };
+    };
+    sre_api_create_organization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationOut"];
+                };
+            };
+        };
+    };
+    sre_api_get_organization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationOut"];
+                };
+            };
+        };
+    };
+    sre_api_update_organization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationOut"];
+                };
+            };
+        };
+    };
+    sre_api_list_org_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMemberOut"][];
+                };
+            };
+        };
+    };
+    sre_api_add_org_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgMemberAddIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMemberOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_remove_org_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_update_org_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgMemberUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMemberOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_list_uptrace_credentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptraceCredentialOut"][];
+                };
+            };
+        };
+    };
+    sre_api_create_uptrace_credential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptraceCredentialIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptraceCredentialOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_delete_uptrace_credential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_api_update_uptrace_credential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptraceCredentialUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptraceCredentialOut"];
+                };
+            };
+        };
+    };
     sre_api_platform_default: {
         parameters: {
             query?: never;
@@ -2250,6 +3026,32 @@ export interface operations {
             };
         };
     };
+    sre_api_create_org_playbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybookCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookOut"];
+                };
+            };
+        };
+    };
     sre_api_get_playbook: {
         parameters: {
             query?: never;
@@ -2290,6 +3092,17 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
         };
     };
     sre_api_update_playbook: {
@@ -2314,6 +3127,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaybookOut"];
+                };
+            };
+        };
+    };
+    sre_api_list_runbooks: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                playbook_id?: number | null;
+            };
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunbookListOut"];
+                };
+            };
+        };
+    };
+    sre_api_create_runbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunbookCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunbookOut"];
+                };
+            };
+        };
+    };
+    sre_api_get_runbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runbook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunbookOut"];
+                };
+            };
+        };
+    };
+    sre_api_delete_runbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runbook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_api_update_runbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runbook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunbookUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunbookOut"];
                 };
             };
         };

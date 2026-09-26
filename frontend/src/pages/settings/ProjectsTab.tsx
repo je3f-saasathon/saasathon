@@ -9,6 +9,7 @@ import type {
   GitHubInstallation,
   GitHubRepo,
   LLMConfig,
+  Organization,
   PipelineStep,
   Platform,
   Project,
@@ -16,6 +17,7 @@ import type {
   ProjectCreateRequest,
   ProjectUpdateRequest,
   StepOverride,
+  UptraceCredential,
   WebhookSecret,
 } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +38,7 @@ import { ErrorText, Field } from "./form";
 const executionModes: Record<ExecutionMode, string> = {
   advisory_only: "Advisory only: write a diagnosis, never touch code",
   draft_only: "Draft only: open a draft PR, wait for approval",
-  autonomous: "Autonomous: open a ready PR (confirmed playbooks only)",
+  autonomous: "Autonomous: open a ready PR (confirmed playbooks or runbooks only)",
 };
 
 const steps: Record<PipelineStep, string> = {
@@ -55,6 +57,22 @@ const JEV_STEPS: PipelineStep[] = [
 ];
 
 const canAdmin = (project: Project) => project.role === "owner" || project.role === "admin";
+const isOrgAdmin = (org?: Organization) => org?.role === "owner" || org?.role === "admin";
+
+export function useOrganizations() {
+  return useQuery({
+    queryKey: ["organizations"],
+    queryFn: () => api.get<Organization[]>("/sre/organizations"),
+  });
+}
+
+export function useUptraceCredentials(org?: Organization) {
+  return useQuery({
+    queryKey: ["uptrace-credentials", org?.id],
+    queryFn: () => api.get<UptraceCredential[]>(`/sre/organizations/${org!.id}/uptrace-credentials`),
+    enabled: isOrgAdmin(org),
+  });
+}
 
 function useInstallations() {
   return useQuery({
@@ -220,6 +238,8 @@ type FormState = {
   default_execution_mode: ExecutionMode;
   uptrace_source_id: string;
   generate_tests: boolean;
+  organization_id: number | null;
+  uptrace_credential_id: number | null;
 };
 
 function formFor(project?: Project): FormState {
@@ -234,6 +254,8 @@ function formFor(project?: Project): FormState {
     default_execution_mode: project?.default_execution_mode ?? "draft_only",
     uptrace_source_id: project?.uptrace_source_id ?? "",
     generate_tests: project?.generate_tests ?? true,
+    organization_id: project?.organization_id ?? null,
+    uptrace_credential_id: project?.uptrace_credential_id ?? null,
   };
 }
 
@@ -250,6 +272,10 @@ function ProjectForm({
   const [form, setForm] = useState<FormState>(() => formFor(project));
   const isOwner = !project || project.role === "owner";
   const readOnly = project != null && !canAdmin(project);
+  const orgs = useOrganizations();
+  const adminOrgs = (orgs.data ?? []).filter(isOrgAdmin);
+  const org = (orgs.data ?? []).find((o) => o.id === form.organization_id);
+  const credentials = useUptraceCredentials(project ? org : undefined);
 
   const save = useMutation({
     mutationFn: () => {
@@ -262,14 +288,17 @@ function ProjectForm({
         default_execution_mode: form.default_execution_mode,
         uptrace_source_id: form.uptrace_source_id,
         generate_tests: form.generate_tests,
+        organization_id: form.organization_id,
       };
       if (!project) {
         return api.post<ProjectCreated>("/sre/projects", fields as ProjectCreateRequest);
       }
+      const editFields = { ...fields, uptrace_credential_id: form.uptrace_credential_id };
       // Send only what changed: admins may not touch the owner-only GitHub/Uptrace fields.
       const changes: ProjectUpdateRequest = {};
-      for (const [key, value] of Object.entries(fields) as [keyof typeof fields, unknown][]) {
-        if (project[key] !== value) (changes as Record<string, unknown>)[key] = value;
+      for (const [key, value] of Object.entries(editFields) as [keyof typeof editFields, unknown][]) {
+        // A field the server didn't send counts as null, not as a change.
+        if ((project[key] ?? null) !== (value ?? null)) (changes as Record<string, unknown>)[key] = value;
       }
       return api.patch<Project>(`/sre/projects/${project.id}`, changes);
     },
@@ -339,6 +368,58 @@ function ProjectForm({
             onChange={(e) => setForm({ ...form, uptrace_source_id: e.target.value })}
           />
         </Field>
+        {adminOrgs.length > 1 || (project && org) ? (
+          <Field
+            label="Organization"
+            hint="Its generic playbooks are shared by every project in the organization."
+          >
+            <Select
+              value={form.organization_id ?? ""}
+              disabled={!isOwner || adminOrgs.length < 2}
+              onChange={(e) =>
+                setForm({ ...form, organization_id: e.target.value ? Number(e.target.value) : null,
+                          uptrace_credential_id: null })
+              }
+            >
+              {!project && <option value="">Your personal organization</option>}
+              {(adminOrgs.some((o) => o.id === org?.id) || !org ? adminOrgs : [org, ...adminOrgs]).map(
+                (o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ),
+              )}
+            </Select>
+          </Field>
+        ) : null}
+        {project && (
+          <Field
+            label="Uptrace credential"
+            hint={
+              project.uptrace_fetch_ready
+                ? "The agent reads each alert's exception and stack trace from Uptrace."
+                : "No credential found: the agent only sees the alert's name. Add one in Settings → Uptrace."
+            }
+          >
+            <Select
+              value={form.uptrace_credential_id ?? ""}
+              disabled={!isOwner || !credentials.data}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  uptrace_credential_id: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+            >
+              <option value="">Automatic (the organization's credential for this host)</option>
+              {(credentials.data ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.host})
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
       </div>
       <label className="flex items-start gap-2 text-sm">
         <input
@@ -649,6 +730,7 @@ export function ProjectsTab() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Repository</TableHead>
+                    <TableHead>Organization</TableHead>
                     <TableHead>Mode</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>GitHub</TableHead>
@@ -666,6 +748,7 @@ export function ProjectsTab() {
                       <TableCell className="font-mono text-xs">
                         {p.github_repo_owner}/{p.github_repo_name}
                       </TableCell>
+                      <TableCell className="text-sm">{p.organization_name}</TableCell>
                       <TableCell>{p.default_execution_mode.replace(/_/g, " ")}</TableCell>
                       <TableCell>
                         <Badge variant="outline">{p.role}</Badge>

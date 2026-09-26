@@ -11,6 +11,7 @@ from ..models import ExecutionMode, PipelineStep, PlaybookExecutionAttempt, Play
 from ..temporal_types import AttemptResult
 from .context import UNTRUSTED_NOTICE, incident_context, untrusted
 from .github import GitError, GitHubRepo
+from .playbooks import clean_steps
 from .sandbox import Sandbox, SandboxError
 
 MAX_TURNS = 40
@@ -24,7 +25,16 @@ NO_NEW_TESTS = (
 )
 
 
-def agent_system(generate_tests: bool) -> str:
+PROPOSE_RUNBOOK = (
+    "When the fix works, include in finish a runbook for this repo, so the next incident like "
+    "this can be fixed faster: \"runbook\": {\"title\": \"...\", \"area\": \"<the part of "
+    "the app, e.g. orders API>\", \"steps\": [{\"type\": \"edit_file\", \"path\": \"...\", "
+    "\"instructions\": \"...\"}, {\"type\": \"run_command\", \"command\": \"<the test "
+    "command>\"}]}. "
+)
+
+
+def agent_system(generate_tests: bool, propose_runbook: bool = False) -> str:
     return (
         "You are an SRE agent fixing a production bug in a git repository checked out at "
         "/workspace. Follow the playbook, adapting it to this incident. Work in small steps: "
@@ -39,6 +49,7 @@ def agent_system(generate_tests: bool) -> str:
         "Paths are relative to /workspace. You cannot commit, push or open pull requests; "
         "that happens after you finish. Call finish with tests_passed=false if you could not "
         "get the tests passing."
+        + (" " + PROPOSE_RUNBOOK if propose_runbook else "")
     )
 
 
@@ -61,6 +72,12 @@ def install_commands(work_tree: Path) -> list[str]:
     return commands
 
 
+def clean_runbook_draft(raw: dict) -> dict:
+    """What the agent proposed, trimmed to known fields and safe step types."""
+    return {"title": str(raw.get("title") or "")[:255], "area": str(raw.get("area") or "")[:255],
+            "steps": clean_steps(raw.get("steps"))}
+
+
 def branch_name_for(playbook_run: PlaybookRun, attempt_number: int) -> str:
     return f"sre/incident-{playbook_run.incident_run_id}-a{attempt_number}"
 
@@ -76,6 +93,8 @@ class PlaybookExecutor:
         self.run = playbook_run.incident_run
         self.project = self.run.project
         self.playbook = playbook_run.playbook
+        self.runbook = playbook_run.runbook
+        self.runbook_draft: dict = {}
         self.attempt_number = attempt_number
         self.previous_feedback = previous_feedback
         self.heartbeat = heartbeat
@@ -97,6 +116,7 @@ class PlaybookExecutor:
             shutil.rmtree(workdir, ignore_errors=True)
 
         attempt.generated_steps = self.steps
+        attempt.runbook_draft = self.runbook_draft
         attempt.outcome = result.outcome
         attempt.summary = result.summary
         attempt.error_output = result.error_output
@@ -170,6 +190,13 @@ class PlaybookExecutor:
                                      "description": self.playbook.description,
                                      "steps": self.playbook.steps})
         )
+        if self.runbook is not None:
+            kickoff += (
+                "\n\nRunbook: this fixed the same bug in this repo before. Follow it, adapting "
+                "where the code has changed:\n"
+                + untrusted("runbook", {"title": self.runbook.title, "area": self.runbook.area,
+                                        "steps": self.runbook.steps})
+            )
         if install_report:
             kickoff += (
                 "\n\nThe repo's dependencies were installed before you started"
@@ -185,7 +212,8 @@ class PlaybookExecutor:
                 "needed. Its error output:\n" + untrusted("previous_attempt", self.previous_feedback)
             )
         messages = [{"role": "user", "content": kickoff}]
-        system = agent_system(self.playbook_run.generate_tests)
+        propose = settings.SRE_RUNBOOKS_ENABLED and self.runbook is None
+        system = agent_system(self.playbook_run.generate_tests, propose_runbook=propose)
 
         for turn in range(MAX_TURNS):
             self.heartbeat(f"turn {turn}")
@@ -197,6 +225,8 @@ class PlaybookExecutor:
                 messages.append({"role": "user", "content": f"Invalid reply: {exc}. Reply with one JSON action."})
                 continue
             if action.get("action") == "finish":
+                if propose and isinstance(action.get("runbook"), dict):
+                    self.runbook_draft = clean_runbook_draft(action["runbook"])
                 return str(action.get("summary", "")), bool(action.get("tests_passed"))
             observation = self._do(box, action)
             messages.append({"role": "user", "content": untrusted("tool_result", observation)})
