@@ -30,7 +30,7 @@ def cmd_login(args) -> int:
     except ApiError as exc:
         return _fail(exc.detail)
     print(f"Your code: {start['user_code']}")
-    print(f"Approve it at {start['verification_url']}")
+    print(f"Approve it at {start['verification_url']}", flush=True)
     if not args.no_browser:
         webbrowser.open(start["verification_url"])
     deadline = time.monotonic() + start["expires_in"]
