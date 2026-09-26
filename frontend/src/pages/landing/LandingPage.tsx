@@ -84,7 +84,7 @@ export function LandingPage() {
         <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
           <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
             <Bug className="h-5 w-5 text-orange-300" />
-            SRE Agent
+            buggly
           </Link>
           <nav className="flex items-center gap-2 text-sm">
             {user ? (
@@ -144,7 +144,7 @@ export function LandingPage() {
 
         <div className="pointer-events-none absolute bottom-5 right-6 z-10 rounded-full border border-white/10 bg-black/40 px-4 py-1.5 font-mono text-xs text-stone-300 backdrop-blur">
           bugs removed while you watched:{" "}
-          <span className="font-semibold text-emerald-300" data-testid="squash-count">
+          <span className="font-semibold text-[#ec7459]" data-testid="squash-count">
             {squashed}
           </span>
         </div>
