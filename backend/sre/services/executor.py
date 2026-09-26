@@ -153,19 +153,25 @@ class PlaybookExecutor:
         with Sandbox(work_tree, name=name, network=start_network,
                      neighbours={d: path for d, (_, path) in self.neighbours.items()}) as box:
             install_report = self._install_dependencies(box, commands)
+            # What the install wrote (a lockfile the repo doesn't track, say) is the
+            # worker's doing, not the fix: it stays out of the PR unless the agent edits it.
+            installed = repo.changed_files(git_dir, work_tree)
             if agent_offline and start_network != "none":
                 box.isolate()
             self.heartbeat("sandbox ready")
             summary, tests_passed = self._agent_loop(box, install_report)
 
-        if not repo.has_changes(git_dir, work_tree):
+        now = repo.changed_files(git_dir, work_tree)
+        leave_out = sorted(path for path, digest in installed.items() if now.get(path) == digest)
+        if not set(now) - set(leave_out):
             return AttemptResult("failed", f"Agent made no changes. Its summary: {summary}",
                                  self.branch, summary=summary)
         if not tests_passed:
             return AttemptResult("failed", f"Agent reports tests are not passing: {summary}",
                                  self.branch, summary=summary)
 
-        repo.commit_and_push(git_dir, work_tree, self.branch, self._commit_message(summary))
+        repo.commit_and_push(git_dir, work_tree, self.branch, self._commit_message(summary),
+                             leave_out=leave_out)
         self.heartbeat("pushed")
 
         # Draft-only opens the PR as a draft so it's reviewed on GitHub: merging it approves

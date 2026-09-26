@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import shutil
 import subprocess
 from pathlib import Path
@@ -102,12 +103,30 @@ class GitHubRepo:
     def has_changes(self, git_dir: Path, work_tree: Path) -> bool:
         return bool(self._git(git_dir, work_tree, "status", "--porcelain").strip())
 
+    def changed_files(self, git_dir: Path, work_tree: Path) -> dict[str, str]:
+        """Every path that differs from HEAD (new, modified or deleted), with a hash of its
+        content ("" once deleted), so a later snapshot shows what changed in between."""
+        out = self._git(git_dir, work_tree, "status", "--porcelain=v1", "-z",
+                        "--untracked-files=all", "--no-renames")
+        changed = {}
+        for entry in filter(None, out.split("\0")):
+            path = entry[3:]
+            target = work_tree / path
+            changed[path] = (hashlib.sha256(target.read_bytes()).hexdigest()
+                             if target.is_file() and not target.is_symlink() else "")
+        return changed
+
     def diff(self, git_dir: Path, work_tree: Path) -> str:
         self._git(git_dir, work_tree, "add", "-A")
         return self._git(git_dir, work_tree, "diff", "--cached", "--stat")
 
-    def commit_and_push(self, git_dir: Path, work_tree: Path, branch: str, message: str) -> None:
+    def commit_and_push(self, git_dir: Path, work_tree: Path, branch: str, message: str,
+                        leave_out: list[str] = ()) -> None:
+        """Commits everything except `leave_out` (what the dependency install wrote and the
+        agent never touched, e.g. a uv.lock the repo doesn't have), then pushes."""
         self._git(git_dir, work_tree, "add", "-A")
+        for start in range(0, len(leave_out), 200):
+            self._git(git_dir, work_tree, "reset", "-q", "--", *leave_out[start:start + 200])
         self._git(git_dir, work_tree, "-c", "user.name=SRE Agent",
                   "-c", "user.email=sre-agent@users.noreply.github.com",
                   "commit", "-m", message)
