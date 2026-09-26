@@ -113,7 +113,7 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 - Then the project is deleted with its members, step overrides, incidents (and their playbook runs, attempts and LLM usage rows), runbooks and scan repo entries. Its legacy (project-only, non-generic) playbooks are deleted too, since nothing else could see them; its org's generic playbooks stay (their origin project is cleared).
 - Linked incidents: a child incident this project delegated to another project keeps running there (its `parent_incident_run_id` becomes `null`); this project's own linked children of another project's incident are cancelled and deleted with it.
 - Pull requests on GitHub (draft or ready) are **left open**: they live in the user's repo and may still be worth merging. Merging or closing one afterwards is ignored by the GitHub webhook.
-- For a managed-Uptrace project, its monitor and channel are removed afterwards (see below).
+- For a managed-Uptrace project, its monitor and channel are removed afterwards (see "Managed Uptrace" above).
 
 ### Organizations
 
