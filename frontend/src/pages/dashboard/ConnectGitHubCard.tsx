@@ -9,6 +9,7 @@ import { ErrorText } from "../settings/form";
 
 // Nudges users with no GitHub installation to connect one; hidden once they have.
 // The connect callback lands on Settings → GitHub, which shows the result.
+// Still shown (button disabled) when the server has no GitHub App, so the gap is visible.
 export function ConnectGitHubCard() {
   const status = useQuery({
     queryKey: ["github-status"],
@@ -22,9 +23,10 @@ export function ConnectGitHubCard() {
     mutationFn: () => api.post<GitHubConnect>("/sre/github/connect"),
   });
 
-  if (!status.data?.configured || !installations.data || installations.data.length > 0) {
+  if (!status.data || !installations.data || installations.data.length > 0) {
     return null;
   }
+  const configured = status.data.configured;
 
   async function go() {
     const urls = await connect.mutateAsync();
@@ -41,8 +43,15 @@ export function ConnectGitHubCard() {
             The agent opens pull requests through our GitHub App. Connect GitHub so your projects
             can point at your repositories.
           </CardDescription>
+          {!configured && (
+            <p className="text-sm text-muted-foreground">
+              The GitHub App isn't configured on this server yet. Set{" "}
+              <code>GITHUB_APP_SLUG</code>, <code>GITHUB_APP_CLIENT_ID</code> and{" "}
+              <code>GITHUB_APP_CLIENT_SECRET</code> (see <code>docs/AUTH.md</code>).
+            </p>
+          )}
         </div>
-        <Button onClick={go} disabled={connect.isPending}>
+        <Button onClick={go} disabled={!configured || connect.isPending}>
           <Plug /> Connect GitHub
         </Button>
       </CardHeader>
