@@ -335,7 +335,11 @@ class FakeRepo:
 
     def __init__(self, project):
         self.changed = True
+        self.installed = {}  # what the dependency install writes: path -> content hash
+        self.agent_edits = {"db.py": "fix"}
+        self.snapshots = 0
         self.pushed = []
+        self.left_out = None
         self.prs = []
         FakeRepo.instances.append(self)
 
@@ -345,8 +349,15 @@ class FakeRepo:
     def has_changes(self, git_dir, work_tree):
         return self.changed
 
-    def commit_and_push(self, git_dir, work_tree, branch, message):
+    def changed_files(self, git_dir, work_tree):
+        self.snapshots += 1
+        if self.snapshots == 1:  # right after the install
+            return dict(self.installed)
+        return {**self.installed, **(self.agent_edits if self.changed else {})}
+
+    def commit_and_push(self, git_dir, work_tree, branch, message, leave_out=()):
         self.pushed.append(branch)
+        self.left_out = list(leave_out)
 
     def open_pull_request(self, branch, title, body, draft=False):
         self.prs.append((branch, draft))
@@ -440,6 +451,43 @@ def test_generate_tests_is_frozen_on_the_run_and_steers_the_agent(
     system = llm.prompts[0][0]
     assert ("Add or update a test" in system) is project_setting
     assert ("Do not write new tests" in system) is not project_setting
+
+
+def test_files_the_install_wrote_stay_out_of_the_pr(monkeypatch, fake_infra, project, incident):
+    class InstallWritesLockfile(FakeRepo):
+        def __init__(self, project):
+            super().__init__(project)
+            self.installed = {"uv.lock": "generated"}
+    monkeypatch.setattr(executor_module, "GitHubRepo", InstallWritesLockfile)
+    FakeLLM(monkeypatch, *AGENT_TURNS)
+    result = PlaybookExecutor(_playbook_run(project, incident, "autonomous"), 1, "").execute()
+    assert result.outcome == "succeeded"
+    assert InstallWritesLockfile.instances[0].left_out == ["uv.lock"]
+
+
+def test_a_lockfile_the_agent_changed_goes_into_the_pr(monkeypatch, fake_infra, project, incident):
+    class AgentAddsDependency(FakeRepo):
+        def __init__(self, project):
+            super().__init__(project)
+            self.installed = {"uv.lock": "generated"}
+            self.agent_edits = {"db.py": "fix", "uv.lock": "with-new-dependency"}
+    monkeypatch.setattr(executor_module, "GitHubRepo", AgentAddsDependency)
+    FakeLLM(monkeypatch, *AGENT_TURNS)
+    PlaybookExecutor(_playbook_run(project, incident, "autonomous"), 1, "").execute()
+    assert AgentAddsDependency.instances[0].left_out == []
+
+
+def test_only_install_output_counts_as_no_change(monkeypatch, fake_infra, project, incident):
+    class OnlyInstallOutput(FakeRepo):
+        def __init__(self, project):
+            super().__init__(project)
+            self.installed = {"uv.lock": "generated"}
+            self.changed = False
+    monkeypatch.setattr(executor_module, "GitHubRepo", OnlyInstallOutput)
+    FakeLLM(monkeypatch, *AGENT_TURNS)
+    result = PlaybookExecutor(_playbook_run(project, incident, "autonomous"), 1, "").execute()
+    assert result.outcome == "failed" and "made no changes" in result.error_output
+    assert OnlyInstallOutput.instances[0].pushed == []
 
 
 class LockfileRepo(FakeRepo):
