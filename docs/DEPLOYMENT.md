@@ -60,6 +60,8 @@ on `main`. Backend and frontend deploy independently via `deploy-backend.yml` /
    # disconnects the sandbox and checks it's offline before the agent runs. none = no installs.
    SRE_SANDBOX_INSTALL_NETWORK=bridge
    # Optional tracing. Blank = off. Token counts on the dashboard come from the DB either way.
+   # The self-hosted one: `make langfuse-up` on the prod host, a tunnel hostname
+   # langfuse.buggly.dev -> http://localhost:14420, then `scripts/langfuse.sh backend-env`.
    LANGFUSE_HOST=
    LANGFUSE_PUBLIC_KEY=
    LANGFUSE_SECRET_KEY=
