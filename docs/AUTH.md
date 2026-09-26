@@ -5,7 +5,7 @@
 GitHub Settings > Developer settings > OAuth Apps > New OAuth App.
 
 - Local dev callback: `http://localhost:8000/api/auth/github/callback`
-- Production callback: `https://api-dev.andrewplescan.com/api/auth/github/callback`
+- Production callback: `https://api.buggly.dev/api/auth/github/callback`
 
 Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in `backend/.env` (or `.env.prod`).
 
@@ -15,7 +15,7 @@ Google Cloud Console > APIs & Services > Credentials > Create Credentials >
 OAuth client ID > Application type "Web application".
 
 - Local dev callback: `http://localhost:8000/api/auth/google/callback`
-- Production callback: `https://api-dev.andrewplescan.com/api/auth/google/callback`
+- Production callback: `https://api.buggly.dev/api/auth/google/callback`
 
 Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `backend/.env` (or `.env.prod`).
 
@@ -32,7 +32,7 @@ can point a project at another account's installation. In the App's settings
 
 - **Callback URL**: `{backend}/api/sre/github/callback`, e.g.
   `http://localhost:8000/api/sre/github/callback` (native dev), `http://localhost:8300/...`
-  (docker dev, also what the tunnel forwards) and `https://api-dev.andrewplescan.com/api/sre/github/callback` (prod).
+  (docker dev, also what the tunnel forwards) and `https://api.buggly.dev/api/sre/github/callback` (prod).
   A GitHub App can list several callback URLs.
 - Tick **Request user authorization (OAuth) during installation**. GitHub then sends the
   user to the callback (with `code` and our `state`) after installing. Leave the separate
