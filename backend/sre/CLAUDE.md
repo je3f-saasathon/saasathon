@@ -17,7 +17,7 @@ Uptrace ─POST /api/sre/webhooks/uptrace/{project_id}─▶ Django (HMAC or sha
        confirm_anomaly ─(noise)─▶ no_anomaly
        classify_bug (emits keywords)
        find_candidate_playbooks (keyword overlap, Python, works on SQLite) ─▶ judge_playbook_match
-       ├─ no match  ─▶ create_playbook (UNCONFIRMED) ─▶ new_playbook_created   (never executes first time)
+       ├─ no match  ─▶ create_playbook (UNCONFIRMED) ─▶ runs it in this incident (draft_only: it's unconfirmed)
        └─ match     ─▶ create_playbook_run (freezes mode; UNCONFIRMED capped at draft_only)
             advisory_only ─▶ write_diagnosis_report ─▶ advisory_complete
             else up to 3 attempts of run_playbook_attempt (agent loop in sandbox; each re-plans from the last error)

@@ -210,19 +210,31 @@ def test_no_anomaly_stops_early():
     assert s.telemetry_fetches == 1  # before triage, even when triage stops early
 
 
-def test_no_candidates_creates_unconfirmed_playbook_and_stops():
+def test_no_candidates_writes_a_playbook_and_fixes_the_bug_with_it():
+    """A bug class nobody has seen before still gets fixed in this incident: the playbook is
+    written and then run, instead of being left for a later incident that may never come."""
     s = Scenario(candidates=[])
-    assert run_workflow(s) == "new_playbook_created"
+    assert run_workflow(s) == "succeeded"
     assert "judge_match" not in s.calls
-    assert "create_playbook" in s.calls
-    assert "run_playbook_attempt" not in s.calls
+    assert s.calls.index("create_playbook") < s.calls.index("create_playbook_run")
+    assert "run_playbook_attempt" in s.calls
+    # The run is against the playbook just written, with no runbook.
+    assert [(i.playbook_id, i.runbook_id) for i in s.run_inputs] == [(99, None)]
 
 
-def test_judge_rejects_candidates_creates_playbook():
+def test_judge_rejecting_every_candidate_writes_a_playbook_and_runs_it():
     s = Scenario(match=None)
-    assert run_workflow(s) == "new_playbook_created"
-    assert "create_playbook" in s.calls
-    assert "create_playbook_run" not in s.calls
+    assert run_workflow(s) == "succeeded"
+    assert "create_playbook" in s.calls and "create_playbook_run" in s.calls
+    assert [(i.playbook_id, i.runbook_id) for i in s.run_inputs] == [(99, None)]
+
+
+def test_a_written_playbook_still_only_drafts_a_fix():
+    """The project allows autonomous runs, but create_playbook_run caps a brand-new playbook
+    at draft_only; the workflow must not open a ready PR on its own here."""
+    s = Scenario(match=None, mode="draft_only")
+    assert run_review(s, [("merge", PENDING)]) == "succeeded"
+    assert s.run_status == [PENDING, "succeeded"]
 
 
 def test_autonomous_success_records_outcome_without_approval():

@@ -142,9 +142,19 @@ class IncidentDiagnosisWorkflow:
                 )
 
         if match.matched_playbook_id is None:
-            # New playbooks are only run on a later incident that matches them.
-            await workflow.execute_activity("create_playbook", inp, result_type=int, **IDEMPOTENT_WRITE)
-            return "new_playbook_created"
+            # Nothing known matches: write a playbook for this class of bug and then fix the
+            # bug with it, in this incident. The playbook is unconfirmed, so
+            # create_playbook_run caps the run at draft_only whatever the project allows.
+            playbook_id: int = await workflow.execute_activity(
+                "create_playbook", inp, result_type=int, **IDEMPOTENT_WRITE
+            )
+            # Before this patch the workflow stopped here and left the playbook for a later
+            # incident to match. That incident never came for the bug that prompted it: its
+            # alert stays open (nothing fixed it), so every recurrence deduped onto this
+            # incident and the new playbook was never used.
+            if not workflow.patched("run-new-playbook-v1"):
+                return "new_playbook_created"
+            match = JudgeResult(playbook_id, 1.0, "written for this incident")
 
         info: PlaybookRunInfo = await workflow.execute_activity(
             "create_playbook_run",
