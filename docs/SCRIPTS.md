@@ -19,7 +19,7 @@ All commands below are `make` targets (thin wrappers around `scripts/*.sh`). Run
 
 | Command | What it does |
 |---|---|
-| `make test` | Runs backend (`pytest`) and frontend (`vitest`) test suites. |
+| `make test` | Runs the backend (`pytest`), CLI (`cli/`, `pytest`) and frontend (`vitest`) test suites. |
 | `make contracts` | Regenerates `backend/openapi.json` and the frontend's TypeScript API types. Run this after changing any backend endpoint. |
 | `make dev-token` | Prints a bearer token for the demo user, for `curl`/Postman testing. Only works when `DEBUG=true`. |
 | `make reset-db` | Wipes and recreates the dev database, then reseeds the demo user. |
