@@ -176,6 +176,20 @@ def managed_uptrace(request: HttpRequest):
             "url": settings.UPTRACE_MANAGED_URL if uptrace_admin.configured() else ""}
 
 
+@router.post("/projects/{project_id}/uptrace/resolve-alerts", response={200: dict, 400: dict, 502: dict})
+def resolve_managed_alerts(request: HttpRequest, project_id: int):
+    """Resolves the project's open Uptrace alerts: the next occurrence of the error then
+    reopens its alert and starts a new incident. Lets testing tools re-run a bug without
+    Uptrace access."""
+    project = get_project_for(request.auth, project_id, ProjectRole.ADMIN)
+    if not uptrace_admin.is_managed(project) or not project.uptrace_project_id:
+        return 400, {"detail": "This project's Uptrace isn't managed by the platform"}
+    try:
+        return 200, {"resolved": uptrace_admin.resolve_open_alerts(project)}
+    except uptrace_admin.UptraceAdminError as exc:
+        return 502, {"detail": str(exc)}
+
+
 @router.post("/projects/{project_id}/uptrace/setup", response=ProjectOut)
 def setup_managed_uptrace(request: HttpRequest, project_id: int, payload: UptraceSetupIn):
     """Hands the project's Uptrace side to the platform (or retries its setup), with an

@@ -388,6 +388,70 @@
         ]
       }
     },
+    "/api/sre/projects/{project_id}/uptrace/resolve-alerts": {
+      "post": {
+        "operationId": "sre_api_resolve_managed_alerts",
+        "summary": "Resolve Managed Alerts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "description": "Resolves the project's open Uptrace alerts: the next occurrence of the error then\nreopens its alert and starts a new incident. Lets testing tools re-run a bug without\nUptrace access.",
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/sre/projects/{project_id}/uptrace/setup": {
       "post": {
         "operationId": "sre_api_setup_managed_uptrace",

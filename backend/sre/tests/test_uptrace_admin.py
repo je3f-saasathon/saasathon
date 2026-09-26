@@ -37,6 +37,7 @@ class FakeUptrace:
         self.test_messages = []  # urls Uptrace "posted" a test message to
         self.unreachable = set()  # urls whose test message fails
         self.calls = []
+        self.alerts = []
 
     def _new_project(self, name, org):
         pid = next(self.ids)
@@ -115,6 +116,13 @@ class FakeUptrace:
             for linked in self.links.values():
                 if cid in linked:
                     linked.remove(cid)
+            return 200, {}
+        if (m := re.fullmatch(r"/alerts/(\d+)\?limit=100", path)) and method == "GET":
+            return 200, {"alerts": [a for a in self.alerts if a["projectId"] == int(m[1])]}
+        if (m := re.fullmatch(r"/alerts/(\d+)/resolve", path)) and method == "PUT":
+            for a in self.alerts:
+                if a["id"] in body["ids"]:
+                    a["event"]["status"] = "resolved"
             return 200, {}
         return 200, "<html>SPA</html>"  # unknown /internal/ routes: the SPA's HTML
 
@@ -424,3 +432,28 @@ def test_dsn_is_always_on_the_public_https_url(make_user, make_project, uptrace)
                            uptrace_dsn_encrypted=encrypt("http://tok@uptrace.example.test?grpc=4317"))
     assert uptrace_admin.dsn_of(project) == "https://tok@uptrace.example.test?grpc=4317"
     assert uptrace_admin.public_dsn("") == ""
+
+
+def test_resolving_alerts_only_touches_the_projects_own_open_alerts(api_for, make_user, uptrace, syncs, repo_ok):
+    owner = api_for(make_user())
+    cart = create(owner, name="cart", service_names=["sales-cart"])
+    order = create(owner, name="order", service_names=["sales-order"], uptrace_share_with_project_id=cart["id"])
+    upid = cart["uptrace_project_id"]
+    monitors, _ = uptrace.ours(upid)
+    mine, theirs = monitors[f"platform: project {cart['id']}"]["id"], monitors[f"platform: project {order['id']}"]["id"]
+    uptrace.alerts = [
+        {"id": 1, "projectId": upid, "monitorId": mine, "event": {"status": "unresolved"}},
+        {"id": 2, "projectId": upid, "monitorId": mine, "event": {"status": "resolved"}},
+        {"id": 3, "projectId": upid, "monitorId": theirs, "event": {"status": "unresolved"}},
+    ]
+    resp = owner.post(f"/projects/{cart['id']}/uptrace/resolve-alerts")
+    assert resp.status_code == 200 and resp.json() == {"resolved": 1}
+    assert [a["event"]["status"] for a in uptrace.alerts] == ["resolved", "resolved", "unresolved"]
+
+
+def test_resolving_alerts_needs_admin_and_managed_uptrace(api_for, make_user, make_project, uptrace):
+    owner_user, viewer = make_user(), make_user("viewer@example.com")
+    project = make_project(owner_user)  # not managed
+    ProjectMembership.objects.create(project=project, user=viewer, role=ProjectRole.VIEWER)
+    assert api_for(viewer).post(f"/projects/{project.id}/uptrace/resolve-alerts").status_code == 403
+    assert api_for(owner_user).post(f"/projects/{project.id}/uptrace/resolve-alerts").status_code == 400

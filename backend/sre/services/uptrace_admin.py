@@ -278,3 +278,19 @@ def sync_group(uptrace_project_id: int, base_url: str) -> None:
 def mark_error(project_ids: list[int], message: str) -> None:
     Project.objects.filter(id__in=project_ids, uptrace_managed=True).update(
         uptrace_status=UptraceStatus.ERROR, uptrace_error=message[:500])
+
+
+def resolve_open_alerts(project: Project) -> int:
+    """Resolves the project's open alerts in its Uptrace project, so the next occurrence of
+    each error reopens it and starts a new incident (what testing a fix again needs).
+    Only the project's own monitor's alerts: a shared Uptrace project's other alerts stay."""
+    if not is_managed(project) or not project.uptrace_project_id:
+        raise UptraceAdminError("This project's Uptrace isn't managed by the platform")
+    admin, upid = UptraceAdmin(), project.uptrace_project_id
+    ours = {m["id"] for m in admin.monitors(upid) if m["name"] == monitor_name(project.id)}
+    alerts = admin.call("GET", f"/alerts/{upid}?limit=100").get("alerts", [])
+    open_ids = [a["id"] for a in alerts if a.get("monitorId") in ours
+                and (a.get("event") or {}).get("status") == "unresolved"]
+    if open_ids:
+        admin.call("PUT", f"/alerts/{upid}/resolve", {"ids": open_ids})
+    return len(open_ids)
