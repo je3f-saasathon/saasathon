@@ -112,7 +112,7 @@ export function DashboardPage() {
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelectedId(null)}>
         <DialogContent
           aria-describedby={undefined}
-          className="max-h-[90vh] max-w-5xl overflow-y-auto rounded-xl p-0 w-[calc(100%-2rem)]"
+          className="w-[calc(100%-2rem)] max-w-5xl p-0"
         >
           {selected && <IncidentDetail run={selected} onClose={() => setSelectedId(null)} />}
         </DialogContent>

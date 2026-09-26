@@ -301,9 +301,11 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
 
   const awaitingReview = run.playbook_run_status === "pending_approval";
 
+  // Only the body scrolls, so the scrollbar starts below the header instead of
+  // running into the card's rounded top corner.
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+    <Card className="flex max-h-[90vh] flex-col overflow-hidden">
+      <CardHeader className="flex shrink-0 flex-row items-start justify-between gap-4 space-y-0 border-b">
         <div className="space-y-1">
           <DialogTitle asChild>
             <CardTitle className="text-base">{incidentSummary(run)}</CardTitle>
@@ -333,7 +335,7 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="min-h-0 flex-1 space-y-6 overflow-y-auto pt-6">
         {awaitingReview && (
           <p className="rounded-md border border-amber-500/60 bg-amber-50 p-3 text-sm dark:bg-amber-500/10">
             The agent's fix is waiting for review on GitHub. <strong>Merge the PR</strong> to accept
