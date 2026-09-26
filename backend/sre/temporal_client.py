@@ -14,11 +14,11 @@ from temporalio.client import (
     SchedulePolicy,
     ScheduleSpec,
 )
-from temporalio.common import WorkflowIDReusePolicy
+from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 
-from .temporal_types import ApprovalDecision, GraphRefreshInput, IncidentInput, ScanInput
+from .temporal_types import ApprovalDecision, GraphRefreshInput, IncidentInput, ScanInput, UptraceSyncInput
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,22 @@ async def _start_graph_refresh(organization_id: int, source: str) -> None:
 
 def start_graph_refresh(organization_id: int, source: str = "") -> None:
     async_to_sync(_start_graph_refresh)(organization_id, source)
+
+
+async def _start_uptrace_sync(workflow_id: str, inp: UptraceSyncInput) -> None:
+    client = await _connect()
+    await client.start_workflow(
+        "UptraceSyncWorkflow", inp, id=workflow_id, task_queue=settings.TEMPORAL_TASK_QUEUE,
+        # A newer change replaces a sync still in flight: the sync is idempotent and
+        # reads the database when it runs, so the latest one is all that matters.
+        id_conflict_policy=WorkflowIDConflictPolicy.TERMINATE_EXISTING,
+    )
+
+
+def start_uptrace_sync(inp: UptraceSyncInput) -> None:
+    key = f"project-{inp.project_id}" if inp.project_id else "uptrace-" + "-".join(
+        str(i) for i in sorted(inp.uptrace_project_ids))
+    async_to_sync(_start_uptrace_sync)(f"sre-uptrace-sync-{key}", inp)
 
 
 async def ensure_schedules(client: Client) -> None:

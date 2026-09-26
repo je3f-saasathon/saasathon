@@ -191,6 +191,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sre/uptrace/managed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Managed Uptrace */
+        get: operations["sre_api_managed_uptrace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/projects/{project_id}/uptrace/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Setup Managed Uptrace
+         * @description Hands the project's Uptrace side to the platform (or retries its setup), with an
+         *     Uptrace project of its own or shared with another project.
+         */
+        post: operations["sre_api_setup_managed_uptrace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sre/webhooks/uptrace/{project_id}": {
         parameters: {
             query?: never;
@@ -988,38 +1026,12 @@ export interface components {
                 [key: string]: components["schemas"]["JevQuestionIn"];
             };
         };
-        /** UptraceWebhookOut */
-        UptraceWebhookOut: {
-            /** Incident Run Id */
-            incident_run_id: number;
-            /** Temporal Workflow Id */
-            temporal_workflow_id: string;
-            /** Status */
-            status: string;
-        };
-        /**
-         * UptraceWebhookIn
-         * @description Two shapes are accepted: Uptrace's own alert notification
-         *     ({id, eventName, payload, createdAt, alert: {id, url, name, type, state, createdAt}}),
-         *     or a direct call with a trace_id (scripts, other tools).
-         */
-        UptraceWebhookIn: {
-            /** Trace Id */
-            trace_id?: string | null;
-            /** Exception Id */
-            exception_id?: string | null;
-            /** Source Id */
-            source_id?: string | null;
-            /** Payload */
-            payload?: {
-                [key: string]: unknown;
-            } | null;
-            /** Eventname */
-            eventName?: string | null;
-            /** Alert */
-            alert?: {
-                [key: string]: unknown;
-            } | null;
+        /** ManagedUptraceOut */
+        ManagedUptraceOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Url */
+            url: string;
         };
         /**
          * ExecutionMode
@@ -1067,12 +1079,69 @@ export interface components {
             uptrace_fetch_ready: boolean;
             /** Service Names */
             service_names: string[];
+            /** Uptrace Managed */
+            uptrace_managed: boolean;
+            /** Uptrace Status */
+            uptrace_status: string;
+            /** Uptrace Error */
+            uptrace_error: string;
+            /** Uptrace Project Id */
+            uptrace_project_id: number | null;
+            /** Uptrace Dsn */
+            uptrace_dsn: string;
+            /** Uptrace Shared With */
+            uptrace_shared_with: components["schemas"]["ProjectRefOut"][];
+        };
+        /** ProjectRefOut */
+        ProjectRefOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
         };
         /**
          * ProjectRole
          * @enum {string}
          */
         ProjectRole: "owner" | "admin" | "viewer";
+        /** UptraceSetupIn */
+        UptraceSetupIn: {
+            /** Share With Project Id */
+            share_with_project_id?: number | null;
+        };
+        /** UptraceWebhookOut */
+        UptraceWebhookOut: {
+            /** Incident Run Id */
+            incident_run_id: number;
+            /** Temporal Workflow Id */
+            temporal_workflow_id: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * UptraceWebhookIn
+         * @description Two shapes are accepted: Uptrace's own alert notification
+         *     ({id, eventName, payload, createdAt, alert: {id, url, name, type, state, createdAt}}),
+         *     or a direct call with a trace_id (scripts, other tools).
+         */
+        UptraceWebhookIn: {
+            /** Trace Id */
+            trace_id?: string | null;
+            /** Exception Id */
+            exception_id?: string | null;
+            /** Source Id */
+            source_id?: string | null;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            } | null;
+            /** Eventname */
+            eventName?: string | null;
+            /** Alert */
+            alert?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** ProjectCreatedOut */
         ProjectCreatedOut: {
             /** Id */
@@ -1114,6 +1183,18 @@ export interface components {
             uptrace_fetch_ready: boolean;
             /** Service Names */
             service_names: string[];
+            /** Uptrace Managed */
+            uptrace_managed: boolean;
+            /** Uptrace Status */
+            uptrace_status: string;
+            /** Uptrace Error */
+            uptrace_error: string;
+            /** Uptrace Project Id */
+            uptrace_project_id: number | null;
+            /** Uptrace Dsn */
+            uptrace_dsn: string;
+            /** Uptrace Shared With */
+            uptrace_shared_with: components["schemas"]["ProjectRefOut"][];
             /** Webhook Secret */
             webhook_secret: string;
             /** Webhook Url */
@@ -1155,6 +1236,8 @@ export interface components {
              * @default []
              */
             service_names: string[];
+            /** Uptrace Share With Project Id */
+            uptrace_share_with_project_id?: number | null;
         };
         /** ProjectUpdateIn */
         ProjectUpdateIn: {
@@ -2353,6 +2436,52 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    sre_api_managed_uptrace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedUptraceOut"];
+                };
+            };
+        };
+    };
+    sre_api_setup_managed_uptrace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptraceSetupIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
                 };
             };
         };

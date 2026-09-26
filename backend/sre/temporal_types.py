@@ -126,6 +126,16 @@ class GraphRefreshInput:
 
 
 @dataclass
+class UptraceSyncInput:
+    """Managed Uptrace: set up project_id's Uptrace side (0 = none), then bring every
+    listed Uptrace project's monitors and channels in line with the database. base_url is
+    this server's public URL, which the webhook channels point at."""
+    base_url: str
+    project_id: int = 0
+    uptrace_project_ids: list[int] = field(default_factory=list)
+
+
+@dataclass
 class ScanInput:
     scan_run_id: int = 0
     agent_id: int = 0  # a scheduled run: create the scan run for this agent first

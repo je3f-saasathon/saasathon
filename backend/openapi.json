@@ -333,6 +333,81 @@
         ]
       }
     },
+    "/api/sre/uptrace/managed": {
+      "get": {
+        "operationId": "sre_api_managed_uptrace",
+        "summary": "Managed Uptrace",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedUptraceOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/projects/{project_id}/uptrace/setup": {
+      "post": {
+        "operationId": "sre_api_setup_managed_uptrace",
+        "summary": "Setup Managed Uptrace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Hands the project's Uptrace side to the platform (or retries its setup), with an\nUptrace project of its own or shared with another project.",
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UptraceSetupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/sre/webhooks/uptrace/{project_id}": {
       "post": {
         "operationId": "sre_api_uptrace_webhook",
@@ -3428,102 +3503,22 @@
         "title": "JevRunIn",
         "type": "object"
       },
-      "UptraceWebhookOut": {
+      "ManagedUptraceOut": {
         "properties": {
-          "incident_run_id": {
-            "title": "Incident Run Id",
-            "type": "integer"
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
           },
-          "temporal_workflow_id": {
-            "title": "Temporal Workflow Id",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
+          "url": {
+            "title": "Url",
             "type": "string"
           }
         },
         "required": [
-          "incident_run_id",
-          "temporal_workflow_id",
-          "status"
+          "enabled",
+          "url"
         ],
-        "title": "UptraceWebhookOut",
-        "type": "object"
-      },
-      "UptraceWebhookIn": {
-        "description": "Two shapes are accepted: Uptrace's own alert notification\n({id, eventName, payload, createdAt, alert: {id, url, name, type, state, createdAt}}),\nor a direct call with a trace_id (scripts, other tools).",
-        "properties": {
-          "trace_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Trace Id"
-          },
-          "exception_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Exception Id"
-          },
-          "source_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Id"
-          },
-          "payload": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Payload"
-          },
-          "eventName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Eventname"
-          },
-          "alert": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Alert"
-          }
-        },
-        "title": "UptraceWebhookIn",
+        "title": "ManagedUptraceOut",
         "type": "object"
       },
       "ExecutionMode": {
@@ -3635,6 +3630,40 @@
             },
             "title": "Service Names",
             "type": "array"
+          },
+          "uptrace_managed": {
+            "title": "Uptrace Managed",
+            "type": "boolean"
+          },
+          "uptrace_status": {
+            "title": "Uptrace Status",
+            "type": "string"
+          },
+          "uptrace_error": {
+            "title": "Uptrace Error",
+            "type": "string"
+          },
+          "uptrace_project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptrace Project Id"
+          },
+          "uptrace_dsn": {
+            "title": "Uptrace Dsn",
+            "type": "string"
+          },
+          "uptrace_shared_with": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectRefOut"
+            },
+            "title": "Uptrace Shared With",
+            "type": "array"
           }
         },
         "required": [
@@ -3656,9 +3685,33 @@
           "organization_name",
           "uptrace_credential_id",
           "uptrace_fetch_ready",
-          "service_names"
+          "service_names",
+          "uptrace_managed",
+          "uptrace_status",
+          "uptrace_error",
+          "uptrace_project_id",
+          "uptrace_dsn",
+          "uptrace_shared_with"
         ],
         "title": "ProjectOut",
+        "type": "object"
+      },
+      "ProjectRefOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ProjectRefOut",
         "type": "object"
       },
       "ProjectRole": {
@@ -3669,6 +3722,121 @@
         ],
         "title": "ProjectRole",
         "type": "string"
+      },
+      "UptraceSetupIn": {
+        "properties": {
+          "share_with_project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share With Project Id"
+          }
+        },
+        "title": "UptraceSetupIn",
+        "type": "object"
+      },
+      "UptraceWebhookOut": {
+        "properties": {
+          "incident_run_id": {
+            "title": "Incident Run Id",
+            "type": "integer"
+          },
+          "temporal_workflow_id": {
+            "title": "Temporal Workflow Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "incident_run_id",
+          "temporal_workflow_id",
+          "status"
+        ],
+        "title": "UptraceWebhookOut",
+        "type": "object"
+      },
+      "UptraceWebhookIn": {
+        "description": "Two shapes are accepted: Uptrace's own alert notification\n({id, eventName, payload, createdAt, alert: {id, url, name, type, state, createdAt}}),\nor a direct call with a trace_id (scripts, other tools).",
+        "properties": {
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Id"
+          },
+          "exception_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exception Id"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "eventName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventname"
+          },
+          "alert": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert"
+          }
+        },
+        "title": "UptraceWebhookIn",
+        "type": "object"
       },
       "ProjectCreatedOut": {
         "properties": {
@@ -3771,6 +3939,40 @@
             "title": "Service Names",
             "type": "array"
           },
+          "uptrace_managed": {
+            "title": "Uptrace Managed",
+            "type": "boolean"
+          },
+          "uptrace_status": {
+            "title": "Uptrace Status",
+            "type": "string"
+          },
+          "uptrace_error": {
+            "title": "Uptrace Error",
+            "type": "string"
+          },
+          "uptrace_project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptrace Project Id"
+          },
+          "uptrace_dsn": {
+            "title": "Uptrace Dsn",
+            "type": "string"
+          },
+          "uptrace_shared_with": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectRefOut"
+            },
+            "title": "Uptrace Shared With",
+            "type": "array"
+          },
           "webhook_secret": {
             "title": "Webhook Secret",
             "type": "string"
@@ -3804,6 +4006,12 @@
           "uptrace_credential_id",
           "uptrace_fetch_ready",
           "service_names",
+          "uptrace_managed",
+          "uptrace_status",
+          "uptrace_error",
+          "uptrace_project_id",
+          "uptrace_dsn",
+          "uptrace_shared_with",
           "webhook_secret",
           "webhook_url",
           "uptrace_webhook_url"
@@ -3870,6 +4078,17 @@
             },
             "title": "Service Names",
             "type": "array"
+          },
+          "uptrace_share_with_project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptrace Share With Project Id"
           }
         },
         "required": [

@@ -31,6 +31,7 @@ from django.conf import settings
 from ..crypto import decrypt
 from ..models import IncidentRun, Project, UptraceCredential
 from ..validators import UnsafeURLError, validate_uptrace_api_url
+from . import uptrace_admin
 from .context import MAX_UNTRUSTED_CHARS
 
 logger = logging.getLogger(__name__)
@@ -51,12 +52,15 @@ def pinned_source(project: Project) -> tuple[str, str] | None:
 
 
 def resolve_credential(project: Project) -> UptraceCredential | None:
-    """The project's own credential, else the one org credential for its pinned host.
-    Never a credential from another org, and never one for a different host."""
+    """The platform's own token for a managed project, else the project's own credential,
+    else the one org credential for its pinned host. Never a credential from another org,
+    and never one for a different host."""
     source = pinned_source(project)
     if source is None or project.organization_id is None:
         return None
     host = source[0]
+    if uptrace_admin.is_managed(project):
+        return uptrace_admin.managed_credential(project) if host == uptrace_admin.managed_host() else None
     credential = project.uptrace_credential
     if credential is not None:
         if credential.organization_id != project.organization_id or credential.host != host:
@@ -86,10 +90,13 @@ class UptraceClient:
         self.base = credential.api_base_url.rstrip("/")
         self.token = decrypt(credential.token_encrypted)
         self.project_id = uptrace_project_id
+        # The managed credential's URL comes from server settings, not from a user.
+        self.trusted_url = getattr(credential, "platform_managed", False)
 
     def _get(self, path: str, params: dict | None = None) -> dict:
         try:
-            validate_uptrace_api_url(self.base)
+            if not self.trusted_url:
+                validate_uptrace_api_url(self.base)
         except UnsafeURLError as exc:
             raise UptraceError(str(exc)) from exc
         try:

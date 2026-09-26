@@ -17,6 +17,7 @@ with workflow.unsafe.imports_passed_through():
         Candidates,
         Classification,
         GraphRefreshInput,
+        UptraceSyncInput,
         GraphTarget,
         IncidentInput,
         JudgeInput,
@@ -267,6 +268,35 @@ class ServiceGraphRefreshWorkflow:
             except ActivityError:
                 workflow.logger.warning("service graph refresh failed for %s", target)
         return refreshed
+
+
+# Managed Uptrace calls: a few quick HTTP calls each; Uptrace being down is worth waiting out.
+UPTRACE_ADMIN = dict(
+    start_to_close_timeout=timedelta(minutes=2),
+    retry_policy=RetryPolicy(maximum_attempts=5, initial_interval=timedelta(seconds=10),
+                             backoff_coefficient=2),
+)
+
+
+@workflow.defn
+class UptraceSyncWorkflow:
+    """Managed Uptrace: gives a project its Uptrace project, then syncs the monitors and
+    channels of every Uptrace project involved (the project's, and any it left)."""
+
+    @workflow.run
+    async def run(self, inp: UptraceSyncInput) -> None:
+        targets = list(inp.uptrace_project_ids)
+        if inp.project_id:
+            uptrace_project_id = await workflow.execute_activity(
+                "provision_managed_uptrace", inp, result_type=int, **UPTRACE_ADMIN)
+            if uptrace_project_id:
+                targets.append(uptrace_project_id)
+        targets = sorted(set(t for t in targets if t))
+        if targets:
+            await workflow.execute_activity(
+                "sync_managed_uptrace",
+                UptraceSyncInput(base_url=inp.base_url, uptrace_project_ids=targets),
+                **UPTRACE_ADMIN)
 
 
 @workflow.defn

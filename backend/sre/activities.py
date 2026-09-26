@@ -21,7 +21,7 @@ from .models import (
 )
 from .services.executor import PlaybookExecutor, pr_title_body
 from .services.github import GitHubRepo
-from .services import mesh, scanning
+from .services import mesh, scanning, uptrace_admin
 from .services import runbooks as runbook_outcomes
 from .services.knowledge import GenericPlaybookAuthor, KnowledgeJudge, KnowledgeSearch
 from .services.playbooks import DiagnosisReporter, PlaybookAuthor, PlaybookJudge, PlaybookSearch, visible_playbooks
@@ -47,6 +47,7 @@ from .temporal_types import (
     ScanInput,
     SearchInput,
     StatusUpdate,
+    UptraceSyncInput,
 )
 from .tracing import trace_step
 
@@ -122,6 +123,30 @@ def list_graph_targets(inp: GraphRefreshInput) -> list[GraphTarget]:
 @django_activity
 def refresh_service_graph(target: GraphTarget) -> bool:
     return mesh.refresh_graph(target.organization_id, target.source)
+
+
+@django_activity
+def provision_managed_uptrace(inp: UptraceSyncInput) -> int:
+    """The project's Uptrace project id (created if needed), or 0 if it's no longer managed."""
+    project = Project.objects.filter(id=inp.project_id, uptrace_managed=True).first()
+    if project is None:
+        return 0
+    try:
+        return uptrace_admin.provision(project)
+    except uptrace_admin.UptraceAdminError as exc:
+        uptrace_admin.mark_error([project.id], str(exc))
+        raise
+
+
+@django_activity
+def sync_managed_uptrace(inp: UptraceSyncInput) -> None:
+    for uptrace_project_id in inp.uptrace_project_ids:
+        try:
+            uptrace_admin.sync_group(uptrace_project_id, inp.base_url)
+        except uptrace_admin.UptraceAdminError as exc:
+            uptrace_admin.mark_error(list(Project.objects.filter(
+                uptrace_project_id=uptrace_project_id).values_list("id", flat=True)), str(exc))
+            raise
 
 
 @django_activity
@@ -393,6 +418,8 @@ def finish_scan(scan_run_id: int) -> str:
 
 
 ALL_ACTIVITIES = [
+    provision_managed_uptrace,
+    sync_managed_uptrace,
     fetch_incident_telemetry,
     localize_root_cause,
     list_graph_targets,

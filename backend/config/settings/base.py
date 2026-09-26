@@ -189,6 +189,15 @@ SRE_ALLOW_PRIVATE_UPTRACE_URLS = env_bool("SRE_ALLOW_PRIVATE_UPTRACE_URLS", defa
 # Generic playbooks + project runbooks + org visibility. Off = the pipeline and the
 # playbook API behave exactly as before runbooks existed (project-scoped playbooks).
 SRE_RUNBOOKS_ENABLED = env_bool("SRE_RUNBOOKS_ENABLED", default=False)
+# Managed Uptrace: with a token set, every new project gets its own Uptrace project, error
+# monitor and webhook channel, created by the platform (users never log into Uptrace).
+# UPTRACE_MANAGED_URL is the public Uptrace URL (alert links, DSNs); the API URL defaults
+# to it. The token is an Uptrace user API token of an admin of UPTRACE_MANAGED_ORG_ID
+# (found automatically when unset).
+UPTRACE_MANAGED_URL = os.environ.get("UPTRACE_MANAGED_URL", "").rstrip("/")
+UPTRACE_MANAGED_API_URL = os.environ.get("UPTRACE_MANAGED_API_URL", "").rstrip("/") or UPTRACE_MANAGED_URL
+UPTRACE_MANAGED_TOKEN = os.environ.get("UPTRACE_MANAGED_TOKEN", "")
+UPTRACE_MANAGED_ORG_ID = int(os.environ.get("UPTRACE_MANAGED_ORG_ID", "0") or 0)
 # Fetch the alert's exception/trace from the Uptrace API before triage. Off = the LLM only
 # sees the webhook payload.
 SRE_UPTRACE_FETCH_ENABLED = env_bool("SRE_UPTRACE_FETCH_ENABLED", default=False)
