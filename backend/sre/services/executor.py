@@ -8,17 +8,26 @@ from django.conf import settings
 
 from ..llm.clients import LLMError, client_for, parse_json
 from ..llm.resolve import get_llm_config
+from ..llm.usage import usage_turn
 from ..models import ExecutionMode, PipelineStep, PlaybookExecutionAttempt, PlaybookRun
 from ..temporal_types import AttemptResult
 from .context import UNTRUSTED_NOTICE, incident_context, untrusted
 from . import mesh
+from .agent_history import AgentHistory
 from .github import GitError, GitHubRepo
+from .jev_assist import ENV_PROBLEM_CONFIDENCE, LIST_SOURCE_FILES, STUCK_CONFIDENCE, JevAssist
 from .playbooks import clean_steps
 from .sandbox import NEIGHBOURS, Sandbox, SandboxError
 
 logger = logging.getLogger(__name__)
 
 MAX_TURNS = 40
+# History trimming (see agent_history): every this many turns, leaving the latest few alone.
+COMPACT_EVERY_TURNS = 6
+KEEP_RECENT_TURNS = 4
+# Files Jev picks to read into the first message.
+PRELOAD_MAX_FILES = 4
+PRELOAD_MAX_CHARS = 24000
 
 WRITE_TESTS = (
     "Add or update a test that covers the fix when the repo has tests. "
@@ -264,26 +273,90 @@ class PlaybookExecutor:
                 "\n\nA previous attempt at this fix failed. Take a different approach where "
                 "needed. Its error output:\n" + untrusted("previous_attempt", self.previous_feedback)
             )
-        messages = [{"role": "user", "content": kickoff}]
+        jev = JevAssist.for_run(self.run)
+        if jev is not None:
+            kickoff += self._preload_files(box, jev)
+        history = AgentHistory(kickoff)
         propose = settings.SRE_RUNBOOKS_ENABLED and self.runbook is None
         system = agent_system(self.playbook_run.generate_tests, propose_runbook=propose)
+        env_problems = stuck_reviews = 0
 
         for turn in range(MAX_TURNS):
             self.heartbeat(f"turn {turn}")
-            reply = client.chat(system, messages, name=f"agent_turn_{turn}")
-            messages.append({"role": "assistant", "content": reply})
-            try:
-                action = parse_json(reply)
-            except LLMError as exc:
-                messages.append({"role": "user", "content": f"Invalid reply: {exc}. Reply with one JSON action."})
-                continue
-            if action.get("action") == "finish":
-                if propose and isinstance(action.get("runbook"), dict):
-                    self.runbook_draft = clean_runbook_draft(action["runbook"])
-                return str(action.get("summary", "")), bool(action.get("tests_passed"))
-            observation = self._do(box, action)
-            messages.append({"role": "user", "content": untrusted("tool_result", observation)})
+            with usage_turn(turn):
+                if turn and turn % COMPACT_EVERY_TURNS == 0:
+                    stuck_reviews = stuck_reviews + 1 if self._review(history, jev) else 0
+                    if stuck_reviews >= 2:
+                        return ("Stopped early: the agent kept repeating itself without "
+                                "getting closer to a fix", False)
+                    if stuck_reviews:
+                        history.note("Note from the platform: you seem to be going in circles. "
+                                     "Change your approach, or finish with tests_passed=false "
+                                     "and explain what blocks the fix.")
+                reply = client.chat(system, history.messages, name=f"agent_turn_{turn}")
+                try:
+                    action = parse_json(reply)
+                except LLMError as exc:
+                    history.add_turn(reply, None,
+                                     f"Invalid reply: {exc}. Reply with one JSON action.")
+                    continue
+                if action.get("action") == "finish":
+                    if propose and isinstance(action.get("runbook"), dict):
+                        self.runbook_draft = clean_runbook_draft(action["runbook"])
+                    return str(action.get("summary", "")), bool(action.get("tests_passed"))
+                observation = self._do(box, action)
+                label = ""
+                if (jev is not None and action.get("action") == "run_command"
+                        and not observation.startswith("exit code 0")):
+                    reading = jev.read_output(str(action.get("command")), observation)
+                    if reading is not None:
+                        label = reading.choice
+                        confident_env = (reading.choice == "environment_problem"
+                                         and reading.confidence >= ENV_PROBLEM_CONFIDENCE)
+                        env_problems = env_problems + 1 if confident_env else 0
+                history.add_turn(reply, action, untrusted("tool_result", observation),
+                                 observation, label)
+                if env_problems >= 2:
+                    return ("Stopped early: the sandbox environment looks broken, not the code. "
+                            "Last command output:\n" + observation[-1500:], False)
         return f"Ran out of turns after {MAX_TURNS} steps", False
+
+    def _preload_files(self, box: Sandbox, jev: JevAssist) -> str:
+        """Jev picks the files the fix likely needs; they go in the first message so the
+        agent doesn't spend turns (each resending the whole history) finding them."""
+        exit_code, listing = box.run(LIST_SOURCE_FILES)
+        if exit_code != 0:
+            return ""
+        picked = jev.pick_files(jev.rank_candidates(listing), PRELOAD_MAX_FILES)
+        blocks, budget = [], PRELOAD_MAX_CHARS
+        for path in picked:
+            try:
+                content = box.read_file(path)
+            except SandboxError:
+                continue
+            if len(content) > budget:
+                break
+            budget -= len(content)
+            blocks.append(untrusted(f"file {path}", content))
+        if not blocks:
+            return ""
+        self.heartbeat(f"preloaded {len(blocks)} files")
+        return ("\n\nFiles that are likely relevant, already read for you (don't read them again "
+                "unless you've changed them):\n" + "\n".join(blocks))
+
+    def _review(self, history: AgentHistory, jev: JevAssist | None) -> bool:
+        """Trims old turns (Jev, when present, also judges which old results can go) and
+        returns whether Jev is confident the agent is stuck."""
+        drop, progress = set(), None
+        if jev is not None:
+            candidates = (history.review_candidates(KEEP_RECENT_TURNS)
+                          if settings.SRE_AGENT_COMPACT_HISTORY else [])
+            drop, progress = jev.review(history, candidates)
+        if settings.SRE_AGENT_COMPACT_HISTORY:
+            saved = history.compact(KEEP_RECENT_TURNS, drop)
+            logger.info("run %s: trimmed %d chars from the agent history", self.playbook_run.id, saved)
+        return (progress is not None and progress.choice == "stuck"
+                and progress.confidence >= STUCK_CONFIDENCE)
 
     def _do(self, box: Sandbox, action: dict) -> str:
         kind = action.get("action")

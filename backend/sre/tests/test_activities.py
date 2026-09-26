@@ -35,7 +35,7 @@ class FakeLLM:
         monkeypatch.setattr(AnthropicClient, "_chat", self._chat)
 
     def _chat(self, system, messages):
-        self.prompts.append((system, messages))
+        self.prompts.append((system, list(messages)))  # the loop keeps appending to its list
         reply = self.replies.pop(0)
         return (reply if isinstance(reply, str) else json.dumps(reply)), self.usage
 
