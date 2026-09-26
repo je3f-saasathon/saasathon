@@ -3,6 +3,7 @@ import { ArrowUpDown, ExternalLink } from "lucide-react";
 
 import type { IncidentRun, IncidentStatus } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
+import { ModelTokensList } from "@/components/ModelTokens";
 import { Button } from "@/components/ui/button";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
@@ -167,20 +168,13 @@ export const columns: ColumnDef<IncidentRun>[] = [
     id: "model",
     accessorFn: (run) => run.usage.models.join(", "),
     header: "Model",
-    cell: ({ row }) => {
-      const models = row.getValue<string>("model");
-      return models ? (
-        <div className="font-mono text-xs">
-          {models.split(", ").map((model) => (
-            <div key={model} className="whitespace-nowrap">
-              {model}
-            </div>
-          ))}
-        </div>
+    // Each model with its own tokens: models are priced differently.
+    cell: ({ row }) =>
+      row.original.usage.by_model.length ? (
+        <ModelTokensList models={row.original.usage.by_model} />
       ) : (
         <span className="text-muted-foreground">n/a</span>
-      );
-    },
+      ),
   },
   {
     id: "tokens",

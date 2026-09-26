@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, ExternalLink, X } from "lucide-react";
 
 import { api } from "@/api/client";
 import type { AgentKind, IncidentRun, Playbook, PlaybookRun, Runbook, ScanRun } from "@/api/types";
+import { modelName } from "@/components/ModelTokens";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -310,7 +311,7 @@ function UsageTable({ run }: { run: IncidentRun }) {
         </TableHeader>
         <TableBody>
           {usage.by_step.map((s) => (
-            <TableRow key={`${s.step}-${s.model}`}>
+            <TableRow key={`${s.step}-${s.provider}-${s.model}-${s.billed_to}`}>
               <TableCell>{s.step.replace(/_/g, " ")}</TableCell>
               <TableCell className="font-mono text-xs">{s.model || "unknown"}</TableCell>
               <TableCell className="text-xs">{s.billed_to === "platform" ? "our key" : "your key"}</TableCell>
@@ -320,6 +321,26 @@ function UsageTable({ run }: { run: IncidentRun }) {
               </TableCell>
               <TableCell className="text-right font-mono text-xs">
                 {s.output_tokens.toLocaleString()}
+              </TableCell>
+            </TableRow>
+          ))}
+          {/* Per-model subtotals: each model's tokens are priced differently. */}
+          {usage.by_model.map((m) => (
+            <TableRow key={`model-${m.provider}-${m.model}`} className="bg-muted/40">
+              <TableCell colSpan={3}>
+                <span className="font-mono text-xs">{modelName(m)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {" "}
+                  total ({m.total_tokens.toLocaleString()} tokens
+                  {m.platform_tokens > 0 && `, ${m.platform_tokens.toLocaleString()} on our key`})
+                </span>
+              </TableCell>
+              <TableCell className="text-right">{m.calls}</TableCell>
+              <TableCell className="text-right font-mono text-xs">
+                {m.input_tokens.toLocaleString()}
+              </TableCell>
+              <TableCell className="text-right font-mono text-xs">
+                {m.output_tokens.toLocaleString()}
               </TableCell>
             </TableRow>
           ))}

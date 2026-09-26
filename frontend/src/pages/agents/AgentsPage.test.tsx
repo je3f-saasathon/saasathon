@@ -10,13 +10,21 @@ const agent = {
   id: 4, organization_id: 1, name: "Nightly sweep", kind: "playbook_sweep", trigger: "schedule",
   schedule_cron: "0 3 * * *", branch_pattern: "", project_ids: [], playbook_ids: [],
   execution_mode: "advisory_only", max_findings_per_repo: 3, monthly_token_budget: 500000,
-  tokens_this_month: 12000, enabled: true, created_by_id: 1, created_at: "2026-09-25T00:00:00Z",
+  tokens_this_month: 12000,
+  tokens_by_model_this_month: [
+    { provider: "openai", model: "gpt-5.5", calls: 1, input_tokens: 7000, cached_input_tokens: 0, output_tokens: 2000, total_tokens: 9000 },
+    { provider: "jev_cloudflare", model: "jev", calls: 1, input_tokens: 2000, cached_input_tokens: 0, output_tokens: 1000, total_tokens: 3000 },
+  ],
+  enabled: true, created_by_id: 1, created_at: "2026-09-25T00:00:00Z",
   updated_at: "2026-09-25T00:00:00Z", last_scan_run_id: 9,
 };
 
 const usage = {
   calls: 2, input_tokens: 9000, cached_input_tokens: 0, output_tokens: 3000, total_tokens: 12000,
   platform_tokens: 12000, models: ["gpt-5.5"], by_step: [],
+  by_model: [
+    { provider: "openai", model: "gpt-5.5", calls: 2, input_tokens: 9000, cached_input_tokens: 0, output_tokens: 3000, total_tokens: 12000, platform_tokens: 12000 },
+  ],
 };
 
 const scanRun = {
@@ -35,7 +43,7 @@ const incident = {
   status: "advisory_complete", classification: null, matched_playbook_id: null, created_playbook_id: null,
   playbook_run_id: null, diagnosis_report: "", error_message: "", created_at: "2026-09-26T03:02:00Z",
   updated_at: "2026-09-26T03:05:00Z", playbook: null, pr_url: "", playbook_run_status: null,
-  execution_mode: null, generate_tests: null, usage: { ...usage, calls: 0, total_tokens: 0 },
+  execution_mode: null, generate_tests: null, usage: { ...usage, calls: 0, total_tokens: 0, by_model: [] },
   matched_runbook_id: null, runbook: null, source: "scan", parent_incident_run_id: null, root_cause: {},
   scan_run_id: 9, scan_kind: "playbook_sweep",
   telemetry: {
@@ -105,6 +113,10 @@ describe("AgentsPage", () => {
     expect(screen.getByText("Playbook sweep")).toBeInTheDocument();
     expect(screen.getByText("Schedule · 0 3 * * *")).toBeInTheDocument();
     expect(screen.getByText(`${(12000).toLocaleString()} / ${(500000).toLocaleString()}`)).toBeInTheDocument();
+    // The month's tokens split per model.
+    const byModel = screen.getByTestId("model-tokens");
+    expect(within(byModel).getByText("gpt-5.5").parentElement).toHaveTextContent(`gpt-5.5${(9000).toLocaleString()}`);
+    expect(within(byModel).getByText("jev").parentElement).toHaveTextContent(`jev${(3000).toLocaleString()}`);
 
     // The latest run is expanded, with each repo's outcome.
     expect(await screen.findByText("some repos failed")).toBeInTheDocument();

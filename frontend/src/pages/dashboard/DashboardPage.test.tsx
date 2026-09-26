@@ -15,6 +15,10 @@ const usage = {
     { step: "bug_classification", provider: "openai", model: "gpt-5.4-mini", billed_to: "platform", calls: 1, input_tokens: 400, output_tokens: 34 },
     { step: "playbook_execution", provider: "openai", model: "gpt-5.5", billed_to: "platform", calls: 2, input_tokens: 600, output_tokens: 200 },
   ],
+  by_model: [
+    { provider: "openai", model: "gpt-5.5", calls: 2, input_tokens: 600, cached_input_tokens: 0, output_tokens: 200, total_tokens: 800, platform_tokens: 800 },
+    { provider: "openai", model: "gpt-5.4-mini", calls: 1, input_tokens: 400, cached_input_tokens: 0, output_tokens: 34, total_tokens: 434, platform_tokens: 434 },
+  ],
 };
 
 const run = {
@@ -87,9 +91,14 @@ describe("DashboardPage", () => {
     expect(await screen.findByText("ZeroDivisionError in checkout")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /PR #1/ })).toHaveAttribute("href", run.pr_url);
     expect(screen.getByText("Guard division by zero")).toBeInTheDocument();
-    expect(screen.getByText("gpt-5.4-mini")).toBeInTheDocument();
-    expect(screen.getByText("gpt-5.5")).toBeInTheDocument();
     expect(screen.getAllByText((1234).toLocaleString()).length).toBeGreaterThan(0);
+    // Each model's tokens are shown on their own, in the table and the "Tokens used" tile.
+    const lists = screen.getAllByTestId("model-tokens");
+    expect(lists).toHaveLength(2);
+    for (const list of lists) {
+      expect(within(list).getByText("gpt-5.5").parentElement).toHaveTextContent(`gpt-5.5${(800).toLocaleString()}`);
+      expect(within(list).getByText("gpt-5.4-mini").parentElement).toHaveTextContent("gpt-5.4-mini434");
+    }
     expect(screen.getByText("tests off · our key")).toBeInTheDocument();
   });
 

@@ -20,6 +20,7 @@ import type {
   UptraceCredential,
   WebhookSecret,
 } from "@/api/types";
+import { ModelTokensList } from "@/components/ModelTokens";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -695,6 +696,10 @@ function ProjectModels({ project }: { project: Project }) {
               />
             </div>
           )}
+          <ModelTokensList
+            models={project.platform_tokens_by_model_this_month}
+            className="text-muted-foreground"
+          />
           {cap > 0 && used >= cap && (
             <p className="text-destructive">
               Monthly limit reached: incidents stop until next month or until you pick your own
