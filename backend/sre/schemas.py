@@ -15,7 +15,7 @@ class UptraceWebhookIn(Schema):
     trace_id: str | None = None
     exception_id: str | None = None
     source_id: str | None = None
-    payload: dict = {}
+    payload: dict | None = None  # Uptrace 2.1 sends null when the channel has no custom payload
     eventName: str | None = None
     alert: dict | None = None
 

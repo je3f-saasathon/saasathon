@@ -1010,13 +1010,10 @@ export interface components {
             exception_id?: string | null;
             /** Source Id */
             source_id?: string | null;
-            /**
-             * Payload
-             * @default {}
-             */
-            payload: {
+            /** Payload */
+            payload?: {
                 [key: string]: unknown;
-            };
+            } | null;
             /** Eventname */
             eventName?: string | null;
             /** Alert */
