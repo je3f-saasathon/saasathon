@@ -82,7 +82,8 @@ class FakeUptrace:
                 return 200, {"projects": [p for p in self.projects.values() if p["orgId"] == org]}
             return 200, {"project": self.projects[self._new_project(body["name"], org)]}
         if m := re.fullmatch(r"/projects/(\d+)/tokens", path):
-            return 200, {"tokens": [{"id": 1, "dsn": f"https://secret-{m[1]}@uptrace.example.test?grpc=4317"}]}
+            # Behind a TLS-terminating proxy Uptrace sees http, and builds the DSN from that.
+            return 200, {"tokens": [{"id": 1, "dsn": f"http://secret-{m[1]}@uptrace.example.test?grpc=4317"}]}
         if m := re.fullmatch(r"/monitors/(\d+)", path):
             pid = int(m[1])
             if method == "GET":  # lists leave channelIds empty, like the real one
@@ -415,3 +416,11 @@ def test_managed_credential_never_serves_another_host(make_user, make_project, u
 def test_managed_status_endpoint(api_for, make_user, uptrace):
     assert api_for(make_user()).get("/uptrace/managed").json() == {
         "enabled": True, "url": "https://uptrace.example.test"}
+
+
+def test_dsn_is_always_on_the_public_https_url(make_user, make_project, uptrace):
+    # Stored before this fix: plain http, as Uptrace built it.
+    project = make_project(make_user(), uptrace_managed=True,
+                           uptrace_dsn_encrypted=encrypt("http://tok@uptrace.example.test?grpc=4317"))
+    assert uptrace_admin.dsn_of(project) == "https://tok@uptrace.example.test?grpc=4317"
+    assert uptrace_admin.public_dsn("") == ""
