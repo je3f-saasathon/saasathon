@@ -2153,6 +2153,242 @@
         "responses": {
           "204": {
             "description": "No Content"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/projects/{project_id}/runbooks": {
+      "get": {
+        "operationId": "sre_api_list_runbooks",
+        "summary": "List Runbooks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "playbook_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Playbook Id"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookListOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "sre_api_create_runbook",
+        "summary": "Create Runbook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunbookCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/runbooks/{runbook_id}": {
+      "get": {
+        "operationId": "sre_api_get_runbook",
+        "summary": "Get Runbook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runbook_id",
+            "schema": {
+              "title": "Runbook Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "sre_api_update_runbook",
+        "summary": "Update Runbook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runbook_id",
+            "schema": {
+              "title": "Runbook Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunbookOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunbookUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "sre_api_delete_runbook",
+        "summary": "Delete Runbook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runbook_id",
+            "schema": {
+              "title": "Runbook Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         },
         "tags": [
@@ -3904,9 +4140,9 @@
       },
       "Origin": {
         "enum": [
-          "builtin",
           "agent",
-          "human"
+          "human",
+          "migrated"
         ],
         "title": "Origin",
         "type": "string"
@@ -4234,6 +4470,296 @@
         "title": "PlaybookUpdateIn",
         "type": "object"
       },
+      "RunbookListOut": {
+        "properties": {
+          "runbooks": {
+            "items": {
+              "$ref": "#/components/schemas/RunbookOut"
+            },
+            "title": "Runbooks",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runbooks",
+          "total"
+        ],
+        "title": "RunbookListOut",
+        "type": "object"
+      },
+      "RunbookOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "playbook_id": {
+            "title": "Playbook Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "area": {
+            "title": "Area",
+            "type": "string"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/Origin"
+          },
+          "created_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Id"
+          },
+          "repo_owner": {
+            "title": "Repo Owner",
+            "type": "string"
+          },
+          "repo_name": {
+            "title": "Repo Name",
+            "type": "string"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "consecutive_failure_count": {
+            "title": "Consecutive Failure Count",
+            "type": "integer"
+          },
+          "source_playbook_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Playbook Run Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "playbook_id",
+          "title",
+          "description",
+          "area",
+          "keywords",
+          "steps",
+          "status",
+          "origin",
+          "created_by_id",
+          "repo_owner",
+          "repo_name",
+          "service_name",
+          "consecutive_failure_count",
+          "source_playbook_run_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RunbookOut",
+        "type": "object"
+      },
+      "RunbookCreateIn": {
+        "properties": {
+          "playbook_id": {
+            "title": "Playbook Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "area": {
+            "default": "",
+            "title": "Area",
+            "type": "string"
+          },
+          "keywords": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "steps": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "service_name": {
+            "default": "",
+            "title": "Service Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playbook_id",
+          "title"
+        ],
+        "title": "RunbookCreateIn",
+        "type": "object"
+      },
+      "RunbookUpdateIn": {
+        "properties": {
+          "playbook_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playbook Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          },
+          "service_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Status"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "RunbookUpdateIn",
+        "type": "object"
+      },
       "IncidentRunListOut": {
         "properties": {
           "runs": {
@@ -4396,6 +4922,32 @@
           },
           "usage": {
             "$ref": "#/components/schemas/UsageOut"
+          },
+          "matched_runbook_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Runbook Id"
+          },
+          "runbook": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaybookBriefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "telemetry": {
+            "additionalProperties": true,
+            "title": "Telemetry",
+            "type": "object"
           }
         },
         "required": [
@@ -4419,7 +4971,10 @@
           "playbook_run_status",
           "execution_mode",
           "generate_tests",
-          "usage"
+          "usage",
+          "matched_runbook_id",
+          "runbook",
+          "telemetry"
         ],
         "title": "IncidentRunOut",
         "type": "object"
@@ -4610,6 +5165,17 @@
             "title": "Playbook Id",
             "type": "integer"
           },
+          "runbook_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runbook Id"
+          },
           "execution_mode": {
             "$ref": "#/components/schemas/ExecutionMode"
           },
@@ -4664,6 +5230,7 @@
           "id",
           "incident_run_id",
           "playbook_id",
+          "runbook_id",
           "execution_mode",
           "generate_tests",
           "status",

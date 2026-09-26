@@ -35,6 +35,7 @@ from .models import (
     Project,
     ProjectMembership,
     ProjectRole,
+    Runbook,
     UptraceCredential,
 )
 from .orgs import personal_org
@@ -68,6 +69,10 @@ from .schemas import (
     ProjectCreateIn,
     ProjectOut,
     ProjectUpdateIn,
+    RunbookCreateIn,
+    RunbookListOut,
+    RunbookOut,
+    RunbookUpdateIn,
     StepOverrideOut,
     StepOverridesIn,
     UptraceCredentialIn,
@@ -78,7 +83,7 @@ from .schemas import (
     WebhookSecretOut,
 )
 from .services import github_connect
-from .services.playbooks import clean_playbook_steps, visible_playbooks
+from .services.playbooks import clean_playbook_steps, clean_steps, visible_playbooks
 from .services.triage import CATEGORIES
 from .services.uptrace import resolve_credential
 from .temporal_types import ApprovalDecision, IncidentInput
@@ -155,7 +160,7 @@ def _own_config(user, config_id: int) -> LLMProviderConfig:
 
 INCIDENT_EXTRA_FIELDS = {
     "created_playbook_id", "playbook_run_id", "project_name", "playbook", "pr_url",
-    "playbook_run_status", "execution_mode", "generate_tests", "usage",
+    "playbook_run_status", "execution_mode", "generate_tests", "usage", "runbook",
 }
 
 
@@ -200,12 +205,25 @@ def _incident_out(run: IncidentRun) -> dict:
         "execution_mode": playbook_run.execution_mode if playbook_run else None,
         "generate_tests": playbook_run.generate_tests if playbook_run else None,
         "usage": _usage_out(run.llm_usage.all()),
+        "runbook": _runbook_brief(run, playbook_run),
     }
+
+
+def _runbook_brief(run: IncidentRun, playbook_run) -> dict | None:
+    if run.matched_runbook_id:
+        runbook, source = run.matched_runbook, "matched"
+    else:
+        runbook = getattr(playbook_run, "created_runbook", None) if playbook_run else None
+        source = "created"
+    if runbook is None:
+        return None
+    return {"id": runbook.id, "title": runbook.title, "status": runbook.status, "source": source}
 
 
 def _incident_runs():
     return IncidentRun.objects.select_related(
-        "project", "matched_playbook", "created_playbook", "playbook_run"
+        "project", "matched_playbook", "created_playbook", "playbook_run",
+        "matched_runbook", "playbook_run__created_runbook",
     ).prefetch_related("llm_usage")
 
 
@@ -900,9 +918,100 @@ def update_playbook(request: HttpRequest, playbook_id: int, payload: PlaybookUpd
     return playbook
 
 
-@router.delete("/playbooks/{playbook_id}", response={204: None})
+@router.delete("/playbooks/{playbook_id}", response={204: None, 409: dict})
 def delete_playbook(request: HttpRequest, playbook_id: int):
-    _playbook_for(request.auth, playbook_id, ProjectRole.ADMIN).delete()
+    playbook = _playbook_for(request.auth, playbook_id, ProjectRole.ADMIN)
+    if playbook.runbooks.exists():
+        return 409, {"detail": "Runbooks still use this playbook; move or delete them first"}
+    playbook.delete()
+    return 204, None
+
+
+# ---- runbooks ------------------------------------------------------------------------
+
+def _require_runbooks() -> None:
+    if not settings.SRE_RUNBOOKS_ENABLED:
+        raise Http404("Runbooks aren't enabled on this server")
+
+
+def _runbook_playbook(project: Project, playbook_id: int) -> Playbook:
+    playbook = visible_playbooks(project).filter(id=playbook_id).first()
+    if playbook is None:
+        raise HttpError(400, "This project can't use that playbook")
+    return playbook
+
+
+def _runbook_for(user, runbook_id: int, min_role: ProjectRole) -> Runbook:
+    _require_runbooks()
+    runbook = get_object_or_404(Runbook, id=runbook_id)
+    get_membership(user, runbook.project_id, min_role)
+    return runbook
+
+
+@router.get("/projects/{project_id}/runbooks", response=RunbookListOut)
+def list_runbooks(request: HttpRequest, project_id: int, status: str | None = None,
+                  playbook_id: int | None = None):
+    _require_runbooks()
+    project = get_project_for(request.auth, project_id, ProjectRole.VIEWER)
+    qs = project.runbooks.all()
+    if status:
+        qs = qs.filter(status=status)
+    if playbook_id is not None:
+        qs = qs.filter(playbook_id=playbook_id)
+    return {"runbooks": list(qs), "total": qs.count()}
+
+
+@router.post("/projects/{project_id}/runbooks", response={201: RunbookOut})
+def create_runbook(request: HttpRequest, project_id: int, payload: RunbookCreateIn):
+    _require_runbooks()
+    project = get_project_for(request.auth, project_id, ProjectRole.ADMIN)
+    runbook = Runbook.objects.create(
+        project=project,
+        playbook=_runbook_playbook(project, payload.playbook_id),
+        title=payload.title,
+        description=payload.description,
+        area=payload.area,
+        keywords=[k.lower().strip() for k in payload.keywords if k.strip()],
+        steps=clean_steps(payload.steps),
+        service_name=payload.service_name,
+        repo_owner=project.github_repo_owner,
+        repo_name=project.github_repo_name,
+        origin=Runbook.Origin.HUMAN,
+        created_by=request.auth,
+        status=Playbook.Status.CONFIRMED,  # written by a human admin
+    )
+    return 201, runbook
+
+
+@router.get("/runbooks/{runbook_id}", response=RunbookOut)
+def get_runbook(request: HttpRequest, runbook_id: int):
+    return _runbook_for(request.auth, runbook_id, ProjectRole.VIEWER)
+
+
+@router.patch("/runbooks/{runbook_id}", response=RunbookOut)
+def update_runbook(request: HttpRequest, runbook_id: int, payload: RunbookUpdateIn):
+    runbook = _runbook_for(request.auth, runbook_id, ProjectRole.ADMIN)
+    changes = payload.dict(exclude_unset=True)
+    if changes.get("playbook_id") is not None:
+        runbook.playbook = _runbook_playbook(runbook.project, changes["playbook_id"])
+    for field in ("title", "description", "area", "service_name"):
+        if changes.get(field) is not None:
+            setattr(runbook, field, changes[field])
+    if changes.get("keywords") is not None:
+        runbook.keywords = [k.lower().strip() for k in changes["keywords"] if k.strip()]
+    if changes.get("steps") is not None:
+        runbook.steps = clean_steps(changes["steps"])
+    if changes.get("status") is not None:
+        runbook.status = changes["status"]
+        if runbook.status != Playbook.Status.FAILING:
+            runbook.consecutive_failure_count = 0
+    runbook.save()
+    return runbook
+
+
+@router.delete("/runbooks/{runbook_id}", response={204: None})
+def delete_runbook(request: HttpRequest, runbook_id: int):
+    _runbook_for(request.auth, runbook_id, ProjectRole.ADMIN).delete()
     return 204, None
 
 

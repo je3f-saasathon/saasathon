@@ -256,6 +256,50 @@ class Playbook(models.Model):
         return self.title
 
 
+class Runbook(models.Model):
+    """The specific half of a playbook: the files and commands that fixed a bug in one
+    project's repo. Saved from a successful fix and reused by later incidents there."""
+
+    class Origin(models.TextChoices):
+        AGENT = "agent", "Saved from the agent's fix"
+        HUMAN = "human", "Written by a person"
+        MIGRATED = "migrated", "Converted from an old, specific playbook"
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="runbooks")
+    # PROTECT: a run always needs a playbook (PlaybookRun.playbook is required).
+    playbook = models.ForeignKey(Playbook, on_delete=models.PROTECT, related_name="runbooks")
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    area = models.CharField(max_length=255, blank=True, default="")  # e.g. "orders API"
+    keywords = models.JSONField(default=list)
+    # Same shapes as a legacy playbook: {"type": "edit_file"|"run_command", ...}.
+    steps = models.JSONField(default=list)
+    status = models.CharField(
+        max_length=32, choices=Playbook.Status.choices, default=Playbook.Status.UNCONFIRMED
+    )
+    consecutive_failure_count = models.PositiveIntegerField(default=0)
+    origin = models.CharField(max_length=16, choices=Origin.choices, default=Origin.AGENT)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    # Recorded now so a multi-repo project can later map service.name -> repo.
+    repo_owner = models.CharField(max_length=255, blank=True, default="")
+    repo_name = models.CharField(max_length=255, blank=True, default="")
+    service_name = models.CharField(max_length=255, blank=True, default="")
+    source_playbook_run = models.OneToOneField(
+        "PlaybookRun", null=True, blank=True, on_delete=models.SET_NULL, related_name="created_runbook"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "sre_runbook"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+
 class IncidentRun(models.Model):
     class Status(models.TextChoices):
         RUNNING = "running", "Running"
@@ -277,6 +321,9 @@ class IncidentRun(models.Model):
     telemetry = models.JSONField(default=dict, blank=True)
     matched_playbook = models.ForeignKey(
         Playbook, null=True, blank=True, on_delete=models.SET_NULL, related_name="incident_runs"
+    )
+    matched_runbook = models.ForeignKey(
+        Runbook, null=True, blank=True, on_delete=models.SET_NULL, related_name="incident_runs"
     )
     diagnosis_report = models.TextField(blank=True, default="")
     error_message = models.TextField(blank=True, default="")
@@ -300,6 +347,10 @@ class PlaybookRun(models.Model):
         IncidentRun, on_delete=models.CASCADE, related_name="playbook_run"
     )
     playbook = models.ForeignKey(Playbook, on_delete=models.CASCADE, related_name="runs")
+    # Frozen when the run starts; null = the run followed the playbook alone.
+    runbook = models.ForeignKey(
+        Runbook, null=True, blank=True, on_delete=models.SET_NULL, related_name="runs"
+    )
     execution_mode = models.CharField(max_length=32, choices=ExecutionMode.choices)
     # Frozen from the project when the run starts, so token costs can be compared per run.
     generate_tests = models.BooleanField(default=True)
@@ -326,6 +377,8 @@ class PlaybookExecutionAttempt(models.Model):
     playbook_run = models.ForeignKey(PlaybookRun, on_delete=models.CASCADE, related_name="attempts")
     attempt_number = models.PositiveSmallIntegerField()
     generated_steps = models.JSONField(default=list)
+    # The runbook the agent proposed in its finish action (cleaned); {} if none.
+    runbook_draft = models.JSONField(default=dict, blank=True)
     previous_attempt_feedback = models.TextField(blank=True, default="")
     outcome = models.CharField(max_length=32, choices=Outcome.choices, default=Outcome.PENDING)
     summary = models.TextField(blank=True, default="")

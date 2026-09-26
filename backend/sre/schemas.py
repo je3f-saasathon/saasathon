@@ -2,7 +2,7 @@ from datetime import datetime
 
 from ninja import Schema
 
-from .models import ExecutionMode, LLMProvider, OrgRole, PipelineStep, Playbook, ProjectRole
+from .models import ExecutionMode, LLMProvider, OrgRole, PipelineStep, Playbook, ProjectRole, Runbook
 
 
 class UptraceWebhookIn(Schema):
@@ -246,6 +246,53 @@ class PlaybookUpdateIn(Schema):
     symptoms: str | None = None
 
 
+class RunbookOut(Schema):
+    id: int
+    project_id: int
+    playbook_id: int
+    title: str
+    description: str
+    area: str
+    keywords: list[str]
+    steps: list[dict]
+    status: Playbook.Status
+    origin: Runbook.Origin
+    created_by_id: int | None
+    repo_owner: str
+    repo_name: str
+    service_name: str
+    consecutive_failure_count: int
+    source_playbook_run_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RunbookListOut(Schema):
+    runbooks: list[RunbookOut]
+    total: int
+
+
+class RunbookCreateIn(Schema):
+    playbook_id: int
+    title: str
+    description: str = ""
+    area: str = ""
+    keywords: list[str] = []
+    steps: list[dict] = []
+    service_name: str = ""
+
+
+class RunbookUpdateIn(Schema):
+    playbook_id: int | None = None
+    title: str | None = None
+    description: str | None = None
+    area: str | None = None
+    keywords: list[str] | None = None
+    steps: list[dict] | None = None
+    service_name: str | None = None
+    status: Playbook.Status | None = None
+
+
 class AttemptOut(Schema):
     attempt_number: int
     outcome: str
@@ -261,6 +308,7 @@ class PlaybookRunOut(Schema):
     id: int
     incident_run_id: int
     playbook_id: int
+    runbook_id: int | None
     execution_mode: ExecutionMode
     generate_tests: bool
     status: str
@@ -320,6 +368,9 @@ class IncidentRunOut(Schema):
     execution_mode: ExecutionMode | None
     generate_tests: bool | None  # frozen on the playbook run; None without one
     usage: UsageOut
+    matched_runbook_id: int | None
+    runbook: PlaybookBriefOut | None  # matched, else saved from this incident's fix
+    telemetry: dict
 
 
 class IncidentRunListOut(Schema):

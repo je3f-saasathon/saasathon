@@ -178,6 +178,8 @@ When a project hasn't picked a config for a step, it runs on our keys (server en
 | PATCH | `/sre/runbooks/{id}` | admin | any of the create fields, plus `status` | `Runbook`; a non-`failing` status resets the failure count |
 | DELETE | `/sre/runbooks/{id}` | admin | — | `204` |
 
+With runbooks off, every runbook route returns `404`.
+
 `Runbook`: `{id, project_id, playbook_id, title, description, area, keywords: string[], steps: Step[], status, origin, created_by_id, repo_owner, repo_name, service_name, consecutive_failure_count, source_playbook_run_id, created_at, updated_at}`. Steps use the `edit_file` / `run_command` shapes. `repo_owner` / `repo_name` are the project's repo when the runbook was made; `service_name` is the Uptrace `service.name` it was made for (may be `""`).
 
 ### Incident runs & approvals

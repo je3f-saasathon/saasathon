@@ -637,6 +637,43 @@ export interface paths {
         patch: operations["sre_api_update_playbook"];
         trace?: never;
     };
+    "/api/sre/projects/{project_id}/runbooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runbooks */
+        get: operations["sre_api_list_runbooks"];
+        put?: never;
+        /** Create Runbook */
+        post: operations["sre_api_create_runbook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/runbooks/{runbook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Runbook */
+        get: operations["sre_api_get_runbook"];
+        put?: never;
+        post?: never;
+        /** Delete Runbook */
+        delete: operations["sre_api_delete_runbook"];
+        options?: never;
+        head?: never;
+        /** Update Runbook */
+        patch: operations["sre_api_update_runbook"];
+        trace?: never;
+    };
     "/api/sre/incident-runs": {
         parameters: {
             query?: never;
@@ -1279,7 +1316,7 @@ export interface components {
          * Origin
          * @enum {string}
          */
-        Origin: "builtin" | "agent" | "human";
+        Origin: "agent" | "human" | "migrated";
         /** PlaybookListOut */
         PlaybookListOut: {
             /** Playbooks */
@@ -1388,6 +1425,112 @@ export interface components {
             /** Symptoms */
             symptoms?: string | null;
         };
+        /** RunbookListOut */
+        RunbookListOut: {
+            /** Runbooks */
+            runbooks: components["schemas"]["RunbookOut"][];
+            /** Total */
+            total: number;
+        };
+        /** RunbookOut */
+        RunbookOut: {
+            /** Id */
+            id: number;
+            /** Project Id */
+            project_id: number;
+            /** Playbook Id */
+            playbook_id: number;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Area */
+            area: string;
+            /** Keywords */
+            keywords: string[];
+            /** Steps */
+            steps: {
+                [key: string]: unknown;
+            }[];
+            status: components["schemas"]["Status"];
+            origin: components["schemas"]["Origin"];
+            /** Created By Id */
+            created_by_id: number | null;
+            /** Repo Owner */
+            repo_owner: string;
+            /** Repo Name */
+            repo_name: string;
+            /** Service Name */
+            service_name: string;
+            /** Consecutive Failure Count */
+            consecutive_failure_count: number;
+            /** Source Playbook Run Id */
+            source_playbook_run_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RunbookCreateIn */
+        RunbookCreateIn: {
+            /** Playbook Id */
+            playbook_id: number;
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Area
+             * @default
+             */
+            area: string;
+            /**
+             * Keywords
+             * @default []
+             */
+            keywords: string[];
+            /**
+             * Steps
+             * @default []
+             */
+            steps: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Service Name
+             * @default
+             */
+            service_name: string;
+        };
+        /** RunbookUpdateIn */
+        RunbookUpdateIn: {
+            /** Playbook Id */
+            playbook_id?: number | null;
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Area */
+            area?: string | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /** Steps */
+            steps?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Service Name */
+            service_name?: string | null;
+            status?: components["schemas"]["Status"] | null;
+        };
         /** IncidentRunListOut */
         IncidentRunListOut: {
             /** Runs */
@@ -1444,6 +1587,13 @@ export interface components {
             /** Generate Tests */
             generate_tests: boolean | null;
             usage: components["schemas"]["UsageOut"];
+            /** Matched Runbook Id */
+            matched_runbook_id: number | null;
+            runbook: components["schemas"]["PlaybookBriefOut"] | null;
+            /** Telemetry */
+            telemetry: {
+                [key: string]: unknown;
+            };
         };
         /** PlaybookBriefOut */
         PlaybookBriefOut: {
@@ -1521,6 +1671,8 @@ export interface components {
             incident_run_id: number;
             /** Playbook Id */
             playbook_id: number;
+            /** Runbook Id */
+            runbook_id: number | null;
             execution_mode: components["schemas"]["ExecutionMode"];
             /** Generate Tests */
             generate_tests: boolean;
@@ -2934,6 +3086,17 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
         };
     };
     sre_api_update_playbook: {
@@ -2958,6 +3121,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaybookOut"];
+                };
+            };
+        };
+    };
+    sre_api_list_runbooks: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                playbook_id?: number | null;
+            };
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunbookListOut"];
+                };
+            };
+        };
+    };
+    sre_api_create_runbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunbookCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunbookOut"];
+                };
+            };
+        };
+    };
+    sre_api_get_runbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runbook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunbookOut"];
+                };
+            };
+        };
+    };
+    sre_api_delete_runbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runbook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_api_update_runbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runbook_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunbookUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunbookOut"];
                 };
             };
         };
