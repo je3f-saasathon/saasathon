@@ -34,6 +34,8 @@ All commands below are `make` targets (thin wrappers around `scripts/*.sh`). Run
 | `make infra-down` | Stops the infra containers. Data volumes are kept. |
 | `make uptrace-up` | Starts saasathon's self-hosted Uptrace (`infra/uptrace/`, compose project `saasathon-uptrace`) on http://127.0.0.1:14418 (OTLP/gRPC `:14417`), served publicly as https://uptrace.buggly.dev through the Cloudflare tunnel. The first run creates `infra/uptrace/.env` with random secrets: the admin login, the API token for the SRE worker's Uptrace credential, and the project token for app DSNs. |
 | `make uptrace-down` | Stops Uptrace. Data volumes are kept. |
+| `make langfuse-up` | Starts the production Langfuse (`infra/langfuse/`, compose project `saasathon-langfuse`) on http://127.0.0.1:14420, served publicly as https://langfuse.buggly.dev through the Cloudflare tunnel. The first run creates `infra/langfuse/.env` with random secrets: the admin login (sign-up is off) and the "SRE agent" project's API keys. `scripts/langfuse.sh backend-env` prints the `LANGFUSE_*` lines for the prod `.env.prod`. |
+| `make langfuse-down` | Stops Langfuse. Data volumes are kept. |
 | `make sandbox-image` | Builds the image the agent's sandbox containers run (`backend/sre/sandbox/Dockerfile`). Add the toolchains your monitored repos need to run their tests. |
 | `make sandbox-image-prod` | Builds the same image inside the prod `sre-docker` (dind) sidecar. |
 | `make sre-worker` | Runs just the Temporal worker in the foreground, for iterating on worker code without restarting the whole stack. |

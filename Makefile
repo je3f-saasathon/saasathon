@@ -1,4 +1,4 @@
-.PHONY: setup dev dev-docker stop restart restart-docker status logs doctor test contracts reset-db test-db testdb dev-token sync-agents deploy prod-local tunnel infra-up infra-down uptrace-up uptrace-down sandbox-image sandbox-image-prod sre-worker
+.PHONY: setup dev dev-docker stop restart restart-docker status logs doctor test contracts reset-db test-db testdb dev-token sync-agents deploy prod-local tunnel infra-up infra-down uptrace-up uptrace-down langfuse-up langfuse-down sandbox-image sandbox-image-prod sre-worker
 
 setup:
 	scripts/setup.sh $(if $(DOCKER_ONLY),--docker-only,) $(if $(NATIVE_ONLY),--native-only,) $(if $(YES),--yes,)
@@ -67,6 +67,12 @@ uptrace-up:
 
 uptrace-down:
 	scripts/uptrace.sh down
+
+langfuse-up:
+	scripts/langfuse.sh up
+
+langfuse-down:
+	scripts/langfuse.sh down
 
 sandbox-image:
 	docker build -t $${SRE_SANDBOX_IMAGE:-saasathon-sre-sandbox:latest} backend/sre/sandbox
