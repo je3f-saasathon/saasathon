@@ -19,6 +19,7 @@ from ninja.errors import HttpError
 from . import temporal_client
 from .llm import platform
 from .llm.resolve import provider_supports_step
+from .llm.usage import tokens_by_model
 from .models import (
     ORG_ROLE_RANK,
     ROLE_RANK,
@@ -119,6 +120,7 @@ def _project_out(project: Project, role: str) -> dict:
     return {
         **{f: getattr(project, f) for f in ProjectOut.model_fields
            if f not in ("role", "github_verified", "platform_tokens_this_month",
+                        "platform_tokens_by_model_this_month",
                         "organization_name", "uptrace_fetch_ready", "uptrace_dsn",
                         "uptrace_shared_with")},
         "role": role,
@@ -130,6 +132,7 @@ def _project_out(project: Project, role: str) -> dict:
         "uptrace_fetch_ready": resolve_credential(project) is not None,
         "github_verified": _github_verified(project),
         "platform_tokens_this_month": platform.tokens_this_month(project),
+        "platform_tokens_by_model_this_month": tokens_by_model(platform.usage_this_month(project)),
     }
 
 
@@ -325,6 +328,17 @@ def _usage_out(rows) -> dict:
         entry["cached_input_tokens"] += row.cached_input_tokens
         entry["output_tokens"] += row.output_tokens
     steps = list(by_step.values())
+    by_model: dict[tuple, dict] = {}
+    for s in steps:
+        entry = by_model.setdefault((s["provider"], s["model"]), {
+            "provider": s["provider"], "model": s["model"], "calls": 0, "input_tokens": 0,
+            "cached_input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "platform_tokens": 0,
+        })
+        for f in ("calls", "input_tokens", "cached_input_tokens", "output_tokens"):
+            entry[f] += s[f]
+        entry["total_tokens"] += s["input_tokens"] + s["output_tokens"]
+        if s["billed_to"] == platform.PLATFORM:
+            entry["platform_tokens"] += s["input_tokens"] + s["output_tokens"]
     input_tokens = sum(s["input_tokens"] for s in steps)
     output_tokens = sum(s["output_tokens"] for s in steps)
     return {
@@ -337,6 +351,8 @@ def _usage_out(rows) -> dict:
                                if s["billed_to"] == platform.PLATFORM),
         "models": list(dict.fromkeys(s["model"] for s in steps if s["model"])),
         "by_step": steps,
+        "by_model": sorted(by_model.values(),
+                           key=lambda m: (-m["total_tokens"], m["provider"], m["model"])),
     }
 
 

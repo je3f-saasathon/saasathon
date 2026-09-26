@@ -193,7 +193,11 @@ def test_scan_run_shows_findings_and_usage(org, api_for, temporal):
     assert body["finding_count"] == 1 and body["usage"]["total_tokens"] == 12
     listing = api.get(f"/agents/{agent['id']}/scan-runs").json()
     assert listing["total"] == 1 and listing["scan_runs"][0]["id"] == scan_id
-    assert api.get(f"/agents/{agent['id']}").json()["tokens_this_month"] == 12
+    assert [(m["model"], m["total_tokens"]) for m in body["usage"]["by_model"]] == [("m", 12)]
+    agent_body = api.get(f"/agents/{agent['id']}").json()
+    assert agent_body["tokens_this_month"] == 12
+    assert [(m["model"], m["calls"], m["total_tokens"])
+            for m in agent_body["tokens_by_model_this_month"]] == [("m", 1, 12)]
 
 
 # ---- GitHub triggers ---------------------------------------------------------------------

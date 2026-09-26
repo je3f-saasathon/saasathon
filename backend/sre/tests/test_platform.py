@@ -32,10 +32,10 @@ def project(make_user, make_project):
     return make_project(make_user())  # no default config, no overrides
 
 
-def usage(project, tokens, billed_to="platform", when=None):
+def usage(project, tokens, billed_to="platform", when=None, model="m"):
     run = IncidentRun.objects.create(project=project, trace_id=f"t{LLMUsage.objects.count()}",
                                      temporal_workflow_id=f"w{LLMUsage.objects.count()}")
-    row = LLMUsage.objects.create(incident_run=run, step="bug_classification", model="m",
+    row = LLMUsage.objects.create(incident_run=run, step="bug_classification", model=model,
                                   billed_to=billed_to, input_tokens=tokens, output_tokens=0)
     if when:
         LLMUsage.objects.filter(id=row.id).update(created_at=when)
@@ -137,6 +137,22 @@ def test_platform_endpoint_and_project_usage(api_for, company, project):
     runs = api.get("/incident-runs").json()["runs"]
     assert sorted(r["usage"]["platform_tokens"] for r in runs) == [0, 300]
     assert {s["billed_to"] for r in runs for s in r["usage"]["by_step"]} == {"platform", "user"}
+
+
+def test_project_platform_usage_is_split_per_model(api_for, company, project):
+    api = api_for(project.memberships.get().user)
+    usage(project, 300, model="gpt-strong")
+    usage(project, 20, model="jev")
+    usage(project, 5, model="jev")
+    usage(project, 50, billed_to="user", model="gpt-strong")  # not on our key: left out
+    body = api.get(f"/projects/{project.id}").json()
+    assert body["platform_tokens_this_month"] == 325
+    assert [(m["model"], m["calls"], m["total_tokens"])
+            for m in body["platform_tokens_by_model_this_month"]] == [("gpt-strong", 1, 300),
+                                                                      ("jev", 2, 25)]
+    by_model = {r["usage"]["by_model"][0]["model"]: r["usage"]["by_model"][0]
+                for r in api.get("/incident-runs").json()["runs"] if r["usage"]["total_tokens"] == 50}
+    assert by_model["gpt-strong"]["platform_tokens"] == 0
 
 
 def test_platform_endpoint_when_not_configured(api_for, settings, project):

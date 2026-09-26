@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { api, ApiError } from "@/api/client";
 import type { Organization, RemediationAgent, ScanRun } from "@/api/types";
+import { ModelTokensList, modelName } from "@/components/ModelTokens";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,11 +42,15 @@ function DisabledNotice() {
   );
 }
 
+/** The month's tokens against the budget, naming the model when only one was used (with
+ * several, each model's own count is listed underneath). */
 function tokensNote(agent: RemediationAgent): string {
   const used = agent.tokens_this_month.toLocaleString();
-  return agent.monthly_token_budget
+  const total = agent.monthly_token_budget
     ? `${used} / ${agent.monthly_token_budget.toLocaleString()}`
     : used;
+  const models = agent.tokens_by_model_this_month;
+  return models.length === 1 ? `${total} (${modelName(models[0])})` : total;
 }
 
 export function AgentsPage() {
@@ -230,7 +235,15 @@ export function AgentsPage() {
                       <TableCell className="whitespace-nowrap">
                         {modeLabels[agent.execution_mode] ?? agent.execution_mode}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs">{tokensNote(agent)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        <div>{tokensNote(agent)}</div>
+                        {agent.tokens_by_model_this_month.length > 1 && (
+                          <ModelTokensList
+                            models={agent.tokens_by_model_this_month}
+                            className="text-muted-foreground"
+                          />
+                        )}
+                      </TableCell>
                       {admin && (
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-end gap-1">

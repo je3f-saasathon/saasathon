@@ -35,6 +35,9 @@ export type UptraceCredential = Schemas["UptraceCredentialOut"];
 export type UptraceCredentialRequest = Schemas["UptraceCredentialIn"];
 export type UptraceCredentialUpdateRequest = Schemas["UptraceCredentialUpdateIn"];
 
+export type ModelTokens = Schemas["ModelTokensOut"];
+export type ModelUsage = Schemas["ModelUsageOut"];
+
 export type Project = Schemas["ProjectOut"];
 export type ProjectCreated = Schemas["ProjectCreatedOut"];
 export type ProjectCreateRequest = Schemas["ProjectCreateIn"];

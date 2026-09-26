@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { api } from "@/api/client";
 import type { IncidentRun, RemediationAgent, ScanRun, ScanRunList } from "@/api/types";
+import { ModelTokensList } from "@/components/ModelTokens";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
@@ -148,6 +149,12 @@ export function ScanRuns({ agent }: { agent: RemediationAgent }) {
                     <p className="whitespace-pre-wrap text-sm text-destructive">{run.error_message}</p>
                   )}
                   <Repos run={run} onOpenIncident={setIncidentId} />
+                  {run.usage.by_model.length > 0 && (
+                    <div className="max-w-sm space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Tokens by model</p>
+                      <ModelTokensList models={run.usage.by_model} />
+                    </div>
+                  )}
                 </div>
               )}
             </li>

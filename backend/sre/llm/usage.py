@@ -55,3 +55,16 @@ def record_usage(config, usage: dict) -> None:
         cached_input_tokens=int(usage.get("cached_input") or 0),
         output_tokens=int(usage.get("output") or 0),
     )
+
+
+def tokens_by_model(rows) -> list[dict]:
+    """Sums an LLMUsage queryset per (provider, model), biggest first. Tokens from different
+    models are priced differently, so totals are also reported split by model."""
+    from django.db.models import Count, Sum
+
+    totals = rows.values("provider", "model").annotate(
+        calls=Count("id"), input_tokens=Sum("input_tokens"),
+        cached_input_tokens=Sum("cached_input_tokens"), output_tokens=Sum("output_tokens"),
+    ).order_by()
+    out = [{**t, "total_tokens": t["input_tokens"] + t["output_tokens"]} for t in totals]
+    return sorted(out, key=lambda t: (-t["total_tokens"], t["provider"], t["model"]))

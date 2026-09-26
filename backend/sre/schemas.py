@@ -26,6 +26,18 @@ class UptraceWebhookOut(Schema):
     status: str
 
 
+class ModelTokensOut(Schema):
+    """One model's share of a token total: tokens of different models cost different amounts,
+    so they're never only reported summed together."""
+    provider: str
+    model: str
+    calls: int
+    input_tokens: int
+    cached_input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
 class ProjectOut(Schema):
     id: int
     name: str
@@ -42,6 +54,8 @@ class ProjectOut(Schema):
     platform_preset: str
     # Tokens billed to the company default (our keys) this calendar month.
     platform_tokens_this_month: int
+    # The same, split per (provider, model).
+    platform_tokens_by_model_this_month: list[ModelTokensOut]
     created_at: datetime
     # True when an owner has proved (via Connect GitHub) access to the installation.
     github_verified: bool
@@ -389,6 +403,10 @@ class StepUsageOut(Schema):
     output_tokens: int
 
 
+class ModelUsageOut(ModelTokensOut):
+    platform_tokens: int  # the part of total_tokens billed to our keys
+
+
 class UsageOut(Schema):
     calls: int
     input_tokens: int
@@ -398,6 +416,7 @@ class UsageOut(Schema):
     platform_tokens: int  # the part of total_tokens billed to our keys
     models: list[str]
     by_step: list[StepUsageOut]
+    by_model: list[ModelUsageOut]  # the totals above split per (provider, model), biggest first
 
 
 class IncidentRunOut(Schema):
@@ -558,6 +577,7 @@ class AgentOut(Schema):
     max_findings_per_repo: int
     monthly_token_budget: int
     tokens_this_month: int
+    tokens_by_model_this_month: list[ModelTokensOut]  # tokens_this_month split per model
     enabled: bool
     created_by_id: int | None
     created_at: datetime

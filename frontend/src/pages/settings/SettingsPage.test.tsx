@@ -13,7 +13,7 @@ const project = {
   id: 2, name: "django-buggy-app", role: "owner", github_installation_id: "164850677",
   github_repo_owner: "je3f-saasathon", github_repo_name: "django-buggy-app",
   github_default_branch: "main", uptrace_source_id: "", default_execution_mode: "draft_only",
-  default_llm_config_id: 1, generate_tests: true, platform_preset: "openai_jev", platform_tokens_this_month: 0, created_at: "2026-09-25T00:00:00Z",
+  default_llm_config_id: 1, generate_tests: true, platform_preset: "openai_jev", platform_tokens_this_month: 0, platform_tokens_by_model_this_month: [], created_at: "2026-09-25T00:00:00Z",
   github_verified: false, service_names: [], uptrace_managed: false, uptrace_status: "",
   uptrace_error: "", uptrace_project_id: null, uptrace_dsn: "", uptrace_shared_with: [],
 };
@@ -140,7 +140,11 @@ describe("SettingsPage", () => {
   it("offers the company default for a project without its own model, with its usage", async () => {
     routes["GET /api/sre/projects"] = [
       project,
-      { ...project, id: 3, name: "bare-project", default_llm_config_id: null, platform_tokens_this_month: 500000 },
+      { ...project, id: 3, name: "bare-project", default_llm_config_id: null, platform_tokens_this_month: 500000,
+        platform_tokens_by_model_this_month: [
+          { provider: "openai", model: "gpt-5.5", calls: 3, input_tokens: 400000, cached_input_tokens: 0, output_tokens: 50000, total_tokens: 450000 },
+          { provider: "jev_cloudflare", model: "jev", calls: 9, input_tokens: 45000, cached_input_tokens: 0, output_tokens: 5000, total_tokens: 50000 },
+        ] },
     ];
     renderAt("/settings?tab=projects");
     fireEvent.click(await screen.findByText("bare-project"));
@@ -157,6 +161,7 @@ describe("SettingsPage", () => {
     const [, patch] = fetchMock.mock.calls.find(([u, i]) => i?.method === "PATCH" && String(u).endsWith("/projects/3"))!;
     expect(JSON.parse(patch.body)).toEqual({ default_llm_config_id: null, platform_preset: "gpt_5_4" });
     expect(await screen.findByTestId("company-usage")).toHaveTextContent("500,000 / 2,000,000 tokens");
+    expect(screen.getByTestId("model-tokens")).toHaveTextContent("gpt-5.5450,000jev50,000");
     expect(screen.queryByText(/No default model/)).not.toBeInTheDocument();
     routes["GET /api/sre/projects"] = [project];
   });
