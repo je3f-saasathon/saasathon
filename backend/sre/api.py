@@ -1182,6 +1182,19 @@ def github_webhook(request: HttpRequest):
     event = request.headers.get("X-GitHub-Event", "")
     payload = json.loads(request.body or b"{}")
     action = payload.get("action") or ""
+    # Remediation agents: merges and pushes start on_merge / branch_watch scans. A merged
+    # agent fix both approves its run (below) and triggers these.
+    scans = []
+    if settings.SRE_REMEDIATION_AGENTS_ENABLED and (
+            event == "push" or (event == "pull_request" and action == "closed")):
+        from .services import agents as agent_service
+        try:
+            scans = agent_service.on_push(payload) if event == "push" else agent_service.on_merge(payload)
+        except agent_service.ScanStartFailed:
+            return 503, {"detail": "Could not start a remediation scan; redeliver the webhook"}
+    scans_note = f"Started scan runs {', '.join(str(s.id) for s in scans)}" if scans else ""
+    if event == "push":
+        return (200, {"detail": scans_note}) if scans else (202, {"detail": "Ignored: no agent watches this push"})
     if event != "pull_request" or action not in GITHUB_PR_ACTIONS:
         return 202, {"detail": f"Ignored: {event or 'unknown'} {action}".strip()}
 
@@ -1194,6 +1207,8 @@ def github_webhook(request: HttpRequest):
         incident_run__project__github_repo_name__iexact=name,
     ).first()
     if playbook_run is None:
+        if scans:
+            return 200, {"detail": scans_note}
         return 202, {"detail": "Ignored: not a pull request the agent is waiting on"}
 
     Status = PlaybookRun.Status
@@ -1229,3 +1244,6 @@ def github_webhook(request: HttpRequest):
         # GitHub doesn't retry; redeliver from the App's "Advanced" settings.
         return 503, {"detail": "Could not reach the workflow; redeliver this webhook"}
     return 200, {"detail": done}
+
+
+from . import agents_api  # noqa: E402,F401  (registers the remediation agent routes)

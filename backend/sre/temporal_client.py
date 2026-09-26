@@ -5,6 +5,7 @@ from asgiref.sync import async_to_sync
 from django.conf import settings
 from temporalio.client import (
     Client,
+    ScheduleUpdate,
     Schedule,
     ScheduleActionStartWorkflow,
     ScheduleAlreadyRunningError,
@@ -17,7 +18,7 @@ from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 
-from .temporal_types import ApprovalDecision, GraphRefreshInput, IncidentInput
+from .temporal_types import ApprovalDecision, GraphRefreshInput, IncidentInput, ScanInput
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +91,17 @@ def start_graph_refresh(organization_id: int, source: str = "") -> None:
 
 
 async def ensure_schedules(client: Client) -> None:
-    """Creates the service graph refresh schedule when the mesh is on (idempotent). It's
-    left in place when the mesh is turned off: the workflow then finds nothing to do."""
+    """Worker startup: the service graph refresh schedule when the mesh is on (left in
+    place when it's turned off: the workflow then finds nothing to do), and every
+    remediation agent's schedule, in case an API-side sync was missed."""
+    if settings.SRE_REMEDIATION_AGENTS_ENABLED:
+        from asgiref.sync import sync_to_async
+
+        from .models import RemediationAgent
+
+        agents = await sync_to_async(lambda: list(RemediationAgent.objects.all()))()
+        for agent in agents:
+            await _sync_agent_schedule(client, agent.id, _agent_cron(agent))
     if not settings.SRE_SERVICE_MESH_ENABLED:
         return
     try:
@@ -109,3 +119,69 @@ async def ensure_schedules(client: Client) -> None:
         logger.info("created schedule %s", GRAPH_REFRESH_SCHEDULE_ID)
     except ScheduleAlreadyRunningError:
         pass
+
+
+# ---- remediation agents --------------------------------------------------------------
+
+def agent_schedule_id(agent_id: int) -> str:
+    return f"sre-agent-{agent_id}-schedule"
+
+
+def _agent_cron(agent) -> str:
+    """The cron an agent's schedule should have, or "" for none."""
+    from .models import AgentTrigger
+
+    on = settings.SRE_REMEDIATION_AGENTS_ENABLED and agent.enabled
+    return agent.schedule_cron if on and agent.trigger == AgentTrigger.SCHEDULE else ""
+
+
+async def _sync_agent_schedule(client: Client, agent_id: int, cron: str) -> None:
+    handle = client.get_schedule_handle(agent_schedule_id(agent_id))
+    if not cron:
+        try:
+            await handle.delete()
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.NOT_FOUND:
+                raise
+        return
+    schedule = Schedule(
+        action=ScheduleActionStartWorkflow(
+            "ActiveRemediationWorkflow", ScanInput(agent_id=agent_id),
+            id=f"sre-agent-{agent_id}-scheduled", task_queue=settings.TEMPORAL_TASK_QUEUE,
+        ),
+        spec=ScheduleSpec(cron_expressions=[cron]),
+        # A scan still running when the next one is due: skip the new one.
+        policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+    )
+    try:
+        await client.create_schedule(agent_schedule_id(agent_id), schedule)
+    except ScheduleAlreadyRunningError:
+        await handle.update(lambda _: ScheduleUpdate(schedule=schedule))
+
+
+async def _sync_agent_schedule_now(agent_id: int, cron: str) -> None:
+    await _sync_agent_schedule(await _connect(), agent_id, cron)
+
+
+def sync_agent_schedule(agent) -> None:
+    """Creates, updates or deletes the agent's Temporal Schedule to match it."""
+    async_to_sync(_sync_agent_schedule_now)(agent.id, _agent_cron(agent))
+
+
+def delete_agent_schedule(agent_id: int) -> None:
+    async_to_sync(_sync_agent_schedule_now)(agent_id, "")
+
+
+async def _start_scan(workflow_id: str, inp: ScanInput) -> None:
+    client = await _connect()
+    try:
+        await client.start_workflow(
+            "ActiveRemediationWorkflow", inp, id=workflow_id, task_queue=settings.TEMPORAL_TASK_QUEUE,
+            id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+        )
+    except WorkflowAlreadyStartedError:
+        pass
+
+
+def start_scan(workflow_id: str, scan_run_id: int) -> None:
+    async_to_sync(_start_scan)(workflow_id, ScanInput(scan_run_id=scan_run_id))

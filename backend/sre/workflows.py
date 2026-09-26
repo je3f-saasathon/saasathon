@@ -9,6 +9,7 @@ from temporalio.workflow import ParentClosePolicy
 with workflow.unsafe.imports_passed_through():
     from .temporal_types import (
         MAX_ATTEMPTS,
+        MAX_PARALLEL_REPOS,
         ApprovalDecision,
         AnomalyResult,
         AttemptInput,
@@ -24,6 +25,8 @@ with workflow.unsafe.imports_passed_through():
         PlaybookRunStatus,
         RootCauseResult,
         RunInput,
+        ScanFinding,
+        ScanInput,
         SearchInput,
         StatusUpdate,
     )
@@ -39,6 +42,13 @@ IDEMPOTENT_WRITE = READ_ONLY
 AGENT_ATTEMPT = dict(
     start_to_close_timeout=timedelta(minutes=45),
     heartbeat_timeout=timedelta(minutes=10),  # > the sandbox's 5-minute command timeout
+    retry_policy=RetryPolicy(maximum_attempts=1),
+)
+
+# One repo's scan: a read-only agent loop, like a fix attempt but shorter.
+SCAN_ATTEMPT = dict(
+    start_to_close_timeout=timedelta(minutes=30),
+    heartbeat_timeout=timedelta(minutes=10),
     retry_policy=RetryPolicy(maximum_attempts=1),
 )
 
@@ -257,3 +267,48 @@ class ServiceGraphRefreshWorkflow:
             except ActivityError:
                 workflow.logger.warning("service graph refresh failed for %s", target)
         return refreshed
+
+
+@workflow.defn
+class ActiveRemediationWorkflow:
+    """A remediation agent's scan run: scans each repo (at most MAX_PARALLEL_REPOS at once)
+    and starts the incident pipeline for every new finding. Findings' pipelines are
+    abandoned children: they can wait days on a draft PR's review."""
+
+    @workflow.run
+    async def run(self, inp: ScanInput) -> str:
+        scan_run_id = inp.scan_run_id
+        if not scan_run_id:
+            scan_run_id = await workflow.execute_activity(
+                "create_scheduled_scan", inp, result_type=int, **IDEMPOTENT_WRITE
+            )
+            if not scan_run_id:
+                return "skipped"
+        repo_ids: list[int] = await workflow.execute_activity(
+            "list_scan_repos", scan_run_id, result_type=list[int], **READ_ONLY
+        )
+        slots = asyncio.Semaphore(MAX_PARALLEL_REPOS)
+
+        async def scan(repo_id: int) -> None:
+            async with slots:
+                try:
+                    findings: list[ScanFinding] = await workflow.execute_activity(
+                        "scan_repository", repo_id, result_type=list[ScanFinding], **SCAN_ATTEMPT
+                    )
+                except ActivityError:
+                    return  # the activity marked the repo failed; finish_scan counts it
+            for finding in findings:
+                try:
+                    await workflow.start_child_workflow(
+                        IncidentDiagnosisWorkflow.run,
+                        IncidentInput(finding.incident_run_id, finding.project_id),
+                        id=finding.workflow_id,
+                        parent_close_policy=ParentClosePolicy.ABANDON,
+                    )
+                except WorkflowAlreadyStartedError:
+                    pass
+
+        await asyncio.gather(*(scan(repo_id) for repo_id in repo_ids))
+        return await workflow.execute_activity(
+            "finish_scan", scan_run_id, result_type=str, **IDEMPOTENT_WRITE
+        )

@@ -31,8 +31,10 @@ class Sandbox:
     (file reads/writes and commands) happens in here, never on the worker host."""
 
     def __init__(self, work_tree: Path, name: str, network: str | None = None,
-                 neighbours: dict[str, Path] | None = None):
+                 neighbours: dict[str, Path] | None = None, read_only: bool = False):
         self.work_tree = work_tree
+        # A scan (remediation agents) only reads: the repo is mounted read-only too.
+        self.workspace_mode = "ro" if read_only else "rw"
         # {directory name under /neighbours: host path}, mounted read-only.
         self.neighbours = neighbours or {}
         self.name = name
@@ -57,7 +59,7 @@ class Sandbox:
                 environment={},
                 network_mode=self.network,
                 volumes={
-                    str(self.work_tree): {"bind": WORKSPACE, "mode": "rw"},
+                    str(self.work_tree): {"bind": WORKSPACE, "mode": self.workspace_mode},
                     **{str(path): {"bind": f"{NEIGHBOURS}/{name}", "mode": "ro"}
                        for name, path in self.neighbours.items()},
                 },

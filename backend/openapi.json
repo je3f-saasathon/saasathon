@@ -2806,6 +2806,393 @@
           "sre"
         ]
       }
+    },
+    "/api/sre/organizations/{org_id}/agents": {
+      "get": {
+        "operationId": "sre_agents_api_list_agents",
+        "summary": "List Agents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "sre_agents_api_create_agent",
+        "summary": "Create Agent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/agents/{agent_id}": {
+      "get": {
+        "operationId": "sre_agents_api_get_agent",
+        "summary": "Get Agent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "schema": {
+              "title": "Agent Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "sre_agents_api_update_agent",
+        "summary": "Update Agent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "schema": {
+              "title": "Agent Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "sre_agents_api_delete_agent",
+        "summary": "Delete Agent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "schema": {
+              "title": "Agent Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/agents/{agent_id}/run": {
+      "post": {
+        "operationId": "sre_agents_api_run_agent",
+        "summary": "Run Agent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "schema": {
+              "title": "Agent Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/agents/{agent_id}/scan-runs": {
+      "get": {
+        "operationId": "sre_agents_api_list_scan_runs",
+        "summary": "List Scan Runs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "schema": {
+              "title": "Agent Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 20,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunListOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/scan-runs/{scan_run_id}": {
+      "get": {
+        "operationId": "sre_agents_api_get_scan_run",
+        "summary": "Get Scan Run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_run_id",
+            "schema": {
+              "title": "Scan Run Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -4422,7 +4809,8 @@
           "bug_classification",
           "playbook_similarity_judge",
           "playbook_creation",
-          "playbook_execution"
+          "playbook_execution",
+          "repository_scan"
         ],
         "title": "PipelineStep",
         "type": "string"
@@ -5314,6 +5702,21 @@
             "additionalProperties": true,
             "title": "Root Cause",
             "type": "object"
+          },
+          "scan_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Run Id"
+          },
+          "scan_kind": {
+            "title": "Scan Kind",
+            "type": "string"
           }
         },
         "required": [
@@ -5343,7 +5746,9 @@
           "telemetry",
           "source",
           "parent_incident_run_id",
-          "root_cause"
+          "root_cause",
+          "scan_run_id",
+          "scan_kind"
         ],
         "title": "IncidentRunOut",
         "type": "object"
@@ -5623,6 +6028,496 @@
           "approve"
         ],
         "title": "ApprovePlaybookRunIn",
+        "type": "object"
+      },
+      "AgentKind": {
+        "enum": [
+          "playbook_sweep",
+          "runbook_variant",
+          "find_quiet"
+        ],
+        "title": "AgentKind",
+        "type": "string"
+      },
+      "AgentOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AgentKind"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/AgentTrigger"
+          },
+          "schedule_cron": {
+            "title": "Schedule Cron",
+            "type": "string"
+          },
+          "branch_pattern": {
+            "title": "Branch Pattern",
+            "type": "string"
+          },
+          "project_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Project Ids",
+            "type": "array"
+          },
+          "playbook_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Playbook Ids",
+            "type": "array"
+          },
+          "execution_mode": {
+            "$ref": "#/components/schemas/ExecutionMode"
+          },
+          "max_findings_per_repo": {
+            "title": "Max Findings Per Repo",
+            "type": "integer"
+          },
+          "monthly_token_budget": {
+            "title": "Monthly Token Budget",
+            "type": "integer"
+          },
+          "tokens_this_month": {
+            "title": "Tokens This Month",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "created_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "last_scan_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Scan Run Id"
+          }
+        },
+        "required": [
+          "id",
+          "organization_id",
+          "name",
+          "kind",
+          "trigger",
+          "schedule_cron",
+          "branch_pattern",
+          "project_ids",
+          "playbook_ids",
+          "execution_mode",
+          "max_findings_per_repo",
+          "monthly_token_budget",
+          "tokens_this_month",
+          "enabled",
+          "created_by_id",
+          "created_at",
+          "updated_at",
+          "last_scan_run_id"
+        ],
+        "title": "AgentOut",
+        "type": "object"
+      },
+      "AgentTrigger": {
+        "enum": [
+          "on_merge",
+          "branch_watch",
+          "schedule"
+        ],
+        "title": "AgentTrigger",
+        "type": "string"
+      },
+      "AgentIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentKind"
+              }
+            ],
+            "default": "playbook_sweep"
+          },
+          "trigger": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentTrigger"
+              }
+            ],
+            "default": "on_merge"
+          },
+          "schedule_cron": {
+            "default": "",
+            "title": "Schedule Cron",
+            "type": "string"
+          },
+          "branch_pattern": {
+            "default": "",
+            "title": "Branch Pattern",
+            "type": "string"
+          },
+          "project_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Project Ids",
+            "type": "array"
+          },
+          "playbook_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Playbook Ids",
+            "type": "array"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_findings_per_repo": {
+            "default": 3,
+            "title": "Max Findings Per Repo",
+            "type": "integer"
+          },
+          "monthly_token_budget": {
+            "default": 0,
+            "title": "Monthly Token Budget",
+            "type": "integer"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AgentIn",
+        "type": "object"
+      },
+      "AgentUpdateIn": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentTrigger"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schedule_cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Cron"
+          },
+          "branch_pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Pattern"
+          },
+          "project_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Ids"
+          },
+          "playbook_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playbook Ids"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_findings_per_repo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Findings Per Repo"
+          },
+          "monthly_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Token Budget"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          }
+        },
+        "title": "AgentUpdateIn",
+        "type": "object"
+      },
+      "ScanRepoOut": {
+        "properties": {
+          "project_id": {
+            "title": "Project Id",
+            "type": "integer"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "finding_count": {
+            "title": "Finding Count",
+            "type": "integer"
+          },
+          "incident_run_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Incident Run Ids",
+            "type": "array"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_name",
+          "status",
+          "finding_count",
+          "incident_run_ids",
+          "error"
+        ],
+        "title": "ScanRepoOut",
+        "type": "object"
+      },
+      "ScanRunOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "integer"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/ScanTrigger"
+          },
+          "trigger_ref": {
+            "title": "Trigger Ref",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/ScanRepoOut"
+            },
+            "title": "Repos",
+            "type": "array"
+          },
+          "finding_count": {
+            "title": "Finding Count",
+            "type": "integer"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/UsageOut"
+          },
+          "error_message": {
+            "title": "Error Message",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "required": [
+          "id",
+          "agent_id",
+          "trigger",
+          "trigger_ref",
+          "status",
+          "repos",
+          "finding_count",
+          "usage",
+          "error_message",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "ScanRunOut",
+        "type": "object"
+      },
+      "ScanTrigger": {
+        "enum": [
+          "manual",
+          "on_merge",
+          "branch_watch",
+          "schedule"
+        ],
+        "title": "ScanTrigger",
+        "type": "string"
+      },
+      "ScanRunListOut": {
+        "properties": {
+          "scan_runs": {
+            "items": {
+              "$ref": "#/components/schemas/ScanRunOut"
+            },
+            "title": "Scan Runs",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scan_runs",
+          "total"
+        ],
+        "title": "ScanRunListOut",
         "type": "object"
       }
     },

@@ -206,18 +206,18 @@ How the org's services call each other, from Uptrace's service graph (`GET /inte
 
 **Neighbour repos.** When a fix runs for a service that has mapped neighbours in the graph (services that call it or that it calls, seen in the last TTL window), up to `SRE_MAX_NEIGHBOUR_REPOS` (default 3, `0` = off) of their repos are cloned **read-only** into the sandbox at `/neighbours/<owner>-<repo>` (default branch, files only, no git metadata). Only neighbours on the **same GitHub App installation** as the project being fixed are used, so the agent never reads, and can't copy into this repo's PR, code from a GitHub account this repo doesn't share. A neighbour that fails to clone is left out. Only the project's own repo is writable, and only it is committed or pushed.
 
-### Remediation agents (with `SRE_REMEDIATION_AGENTS_ENABLED=true`; otherwise these return `404`) — *planned, not built yet*
+### Remediation agents (with `SRE_REMEDIATION_AGENTS_ENABLED=true`; otherwise these return `404`)
 
 Agents an org admin starts to look for bugs across the org's repos before they alert. Each scan run scans its repos (one activity per repo, at most 2 at once) and turns each finding into an incident with `source: "scan"` that goes through the usual pipeline. See `docs/MESH_AND_REMEDIATION.md`.
 
 | Method | Path | Role | Body / Params | Returns |
 |---|---|---|---|---|
 | GET | `/sre/organizations/{id}/agents` | org member | — | `RemediationAgent[]` |
-| POST | `/sre/organizations/{id}/agents` | org admin | `{name, kind?, trigger?, schedule_cron?, branch_pattern?, project_ids?, playbook_ids?, execution_mode?, max_findings_per_repo?, monthly_token_budget?, enabled?}` | `201 RemediationAgent`; `400` for a project outside the org, a playbook the org can't see, `schedule` without a valid 5-field `schedule_cron`, `branch_watch` without `branch_pattern`, or `execution_mode: "autonomous"`; `409` duplicate name |
+| POST | `/sre/organizations/{id}/agents` | org admin | `{name, kind?, trigger?, schedule_cron?, branch_pattern?, project_ids?, playbook_ids?, execution_mode?, max_findings_per_repo?, monthly_token_budget?, enabled?}` | `201 RemediationAgent`; `400` for a project outside the org, a playbook that isn't a built-in or the org's own, `schedule` without a valid 5-field `schedule_cron`, `branch_watch` without `branch_pattern`, or `execution_mode: "autonomous"`; `409` duplicate name; `503` if the agent's Temporal Schedule can't be updated (nothing is saved) |
 | GET | `/sre/agents/{id}` | org member | — | `RemediationAgent` |
-| PATCH | `/sre/agents/{id}` | org admin | any subset of the create fields | `RemediationAgent`, same `400`s |
-| DELETE | `/sre/agents/{id}` | org admin | — | `204`; running scans finish, incidents they created stay |
-| POST | `/sre/agents/{id}/run` | org admin | — | `202 ScanRun` (trigger `manual`); `409` if the agent is disabled or already has a running scan; `503` if Temporal is unreachable |
+| PATCH | `/sre/agents/{id}` | org admin | any subset of the create fields | `RemediationAgent`, same `400`/`409`/`503`s. The Schedule follows `trigger`, `schedule_cron` and `enabled`. |
+| DELETE | `/sre/agents/{id}` | org admin | — | `204`; its scan runs go too, and the incidents they created stay (`scan_run_id` becomes `null`). `503` if its Schedule can't be removed |
+| POST | `/sre/agents/{id}/run` | org admin | — | `202 ScanRun` (trigger `manual`, every covered project's default branch, whole repo); `409` if the agent is disabled or already has a running scan; `503` if Temporal is unreachable (no scan run is kept) |
 | GET | `/sre/agents/{id}/scan-runs` | org member | `?page=1&page_size=20` | `{scan_runs: ScanRun[], total}` |
 | GET | `/sre/scan-runs/{id}` | org member | — | `ScanRun` |
 
@@ -260,7 +260,7 @@ Agents an org admin starts to look for bugs across the org's repos before they a
 
 The PR must be in the project's repo and on the run's `branch_name`.
 
-With `SRE_REMEDIATION_AGENTS_ENABLED=true` the same endpoint also starts remediation agents (*planned*): a `pull_request` `closed` + **merged** into a project's default branch starts every enabled `on_merge` agent covering that project, and a `push` event on a branch matching an enabled `branch_watch` agent's `branch_pattern` starts that agent, each for that one repo and diff. This applies to any merge or push, not just the agent's own branches, and returns `200 {detail}` naming the scan runs started. Branch deletions and pushes with no commits are ignored (`202`).
+With `SRE_REMEDIATION_AGENTS_ENABLED=true` the same endpoint also starts remediation agents (subscribe the App to the **Pull request** and **Push** events): a `pull_request` `closed` + **merged** into a project's default branch starts every enabled `on_merge` agent covering that project, and a `push` event on a branch matching an enabled `branch_watch` agent's `branch_pattern` starts that agent, each for that one repo and diff. This applies to any merge or push, not just the agent's own branches, and returns `200 {detail}` naming the scan runs started. A merge is scanned as the merge commit against its first parent (`<sha>^1`); a push as `before..after`, or against the default branch for a new branch. Branch deletions and pushes with no commits are ignored (`202`). A redelivery starts nothing new. `503 {detail}` if Temporal is unreachable: redeliver the webhook.
 
 Returns `200 {detail}` when it changed a run; `202 {detail}` for anything ignored (other events or actions, PRs the agent isn't waiting on, autonomous runs, an event that doesn't fit the run's state — so redeliveries are harmless — or a workflow that has already finished); `401 {detail}` for a bad signature; `503 {detail}` if `GITHUB_APP_WEBHOOK_SECRET` isn't set, or if the workflow can't be reached (the change is released; redeliver the webhook from the App's settings).
 

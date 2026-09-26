@@ -122,6 +122,23 @@ class UptraceClient:
         return self._get(f"/internal/v1/service-graph/{self.project_id}",
                          _window(since, until)).get("edges") or []
 
+    def error_groups(self, since: datetime, until: datetime) -> list[dict]:
+        """Error log groups (what an error alert would fire on), per service, most frequent
+        first: {group_id, service_name, exception_type, message, count, trace_id}."""
+        params = {**_window(since, until), "system": "log:error",
+                  "query": "group by _group_id | group by service_name | count() | max(_time) "
+                           "| any(_trace_id) | any(_display_name) | any(exception_type)"}
+        groups = self._get(f"/internal/v1/spans/{self.project_id}/groups", params).get("groups") or []
+        found = [{
+            "group_id": str(g.get("_group_id") or ""),
+            "service_name": _truncate(g.get("service_name::str"), 200),
+            "exception_type": _truncate(g.get("exception_type::str"), 200),
+            "message": _truncate(g.get("_display_name"), 1000),
+            "count": int(g.get("count()") or 0),
+            "trace_id": str(g.get("_trace_id") or ""),
+        } for g in groups]
+        return sorted((g for g in found if g["group_id"]), key=lambda g: -g["count"])
+
     def service_repos(self, since: datetime, until: datetime) -> dict[str, str]:
         """service.name -> the vcs.repository.url.full its spans carry ("" if none)."""
         params = {**_window(since, until),

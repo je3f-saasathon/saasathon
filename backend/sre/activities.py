@@ -14,11 +14,14 @@ from temporalio.exceptions import ApplicationError
 
 from .llm.clients import LLMError
 from .llm.resolve import NoLLMConfigError
-from .llm.usage import usage_scope
-from .models import ExecutionMode, IncidentRun, Playbook, PlaybookRun, Project, Runbook
+from .llm.usage import scan_usage_scope, usage_scope
+from .models import (
+    ExecutionMode, IncidentRun, PipelineStep, Playbook, PlaybookRun, Project, RemediationAgent, Runbook, ScanRepo,
+    ScanRun, ScanTrigger,
+)
 from .services.executor import PlaybookExecutor, pr_title_body
 from .services.github import GitHubRepo
-from .services import mesh
+from .services import mesh, scanning
 from .services import runbooks as runbook_outcomes
 from .services.knowledge import GenericPlaybookAuthor, KnowledgeJudge, KnowledgeSearch
 from .services.playbooks import DiagnosisReporter, PlaybookAuthor, PlaybookJudge, PlaybookSearch, visible_playbooks
@@ -40,6 +43,8 @@ from .temporal_types import (
     PlaybookRunStatus,
     RootCauseResult,
     RunInput,
+    ScanFinding,
+    ScanInput,
     SearchInput,
     StatusUpdate,
 )
@@ -163,7 +168,26 @@ def find_candidates(inp: SearchInput) -> Candidates:
         return Candidates(playbook_ids=PlaybookSearch(project).top_k(inp.keywords))
     run = IncidentRun.objects.filter(id=inp.incident_run_id).first()
     service = str(((run.telemetry if run else None) or {}).get("service_name") or "")
-    return KnowledgeSearch(project).find(inp.keywords, inp.category, service)
+    candidates = KnowledgeSearch(project).find(inp.keywords, inp.category, service)
+    if run is not None and run.source == IncidentRun.Source.SCAN:
+        _add_scan_suggestions(run, candidates)
+    return candidates
+
+
+def _add_scan_suggestions(run: IncidentRun, candidates: Candidates) -> None:
+    """The scanner's suggested playbook/runbook go first; the judge still has to agree. A
+    runbook from another repo can't be followed here, so its playbook stands in for it."""
+    telemetry = run.telemetry or {}
+    visible = visible_playbooks(run.project).exclude(status=Playbook.Status.FAILING)
+    playbook_ids = [telemetry.get("suggested_playbook_id")]
+    runbook = Runbook.objects.filter(id=telemetry.get("suggested_runbook_id") or 0).first()
+    if runbook is not None and runbook.status != Playbook.Status.FAILING:
+        if runbook.project_id == run.project_id:
+            candidates.runbook_ids = [runbook.id] + [i for i in candidates.runbook_ids if i != runbook.id]
+        playbook_ids.insert(0, runbook.playbook_id)
+    for playbook_id in reversed(playbook_ids):
+        if playbook_id and visible.filter(id=playbook_id).exists():
+            candidates.playbook_ids = [playbook_id] + [i for i in candidates.playbook_ids if i != playbook_id]
 
 
 @django_activity
@@ -219,6 +243,11 @@ def create_playbook_run(inp: RunInput) -> PlaybookRunInfo:
     # A never-reviewed playbook must not run unattended, whatever the project allows.
     elif playbook.status == Playbook.Status.UNCONFIRMED and mode == ExecutionMode.AUTONOMOUS:
         mode = ExecutionMode.DRAFT_ONLY
+    # Remediation agents: capped by the agent and the finding's evidence; never autonomous.
+    if run.execution_mode_cap:
+        mode = scanning.lower_mode(mode, run.execution_mode_cap)
+    if run.source == IncidentRun.Source.SCAN:
+        mode = scanning.lower_mode(mode, ExecutionMode.DRAFT_ONLY)
     playbook_run, _ = PlaybookRun.objects.get_or_create(
         incident_run=run,
         defaults={"playbook": playbook, "runbook": runbook, "execution_mode": mode,
@@ -323,11 +352,55 @@ def mark_incident_status(inp: StatusUpdate) -> None:
     )
 
 
+@django_activity
+def create_scheduled_scan(inp: ScanInput) -> int:
+    """A schedule fired: the scan run for it (0 if the agent is gone, off or disabled).
+    Keyed by the workflow id, so a retry reuses the same scan run."""
+    if not settings.SRE_REMEDIATION_AGENTS_ENABLED:
+        return 0
+    agent = RemediationAgent.objects.filter(id=inp.agent_id, enabled=True).first()
+    if agent is None:
+        return 0
+    workflow_id = activity.info().workflow_id
+    existing = ScanRun.objects.filter(temporal_workflow_id=workflow_id).first()
+    if existing is not None:
+        return existing.id
+    with transaction.atomic():
+        scan_run = scanning.create_scan_run(agent, ScanTrigger.SCHEDULE, timezone.now().isoformat(),
+                                            workflow_id)
+    return scan_run.id
+
+
+@django_activity
+def list_scan_repos(scan_run_id: int) -> list[int]:
+    return list(ScanRepo.objects.filter(scan_run_id=scan_run_id, status=ScanRepo.Status.PENDING)
+                .values_list("id", flat=True))
+
+
+@django_activity
+def scan_repository(scan_repo_id: int) -> list[ScanFinding]:
+    scan_repo = ScanRepo.objects.select_related("scan_run__agent", "project").get(id=scan_repo_id)
+    with trace_step("repository_scan", project_id=scan_repo.project_id, incident_run_id=0,
+                    session_id=f"scan-run-{scan_repo.scan_run_id}"):
+        with scan_usage_scope(scan_repo.id, PipelineStep.REPOSITORY_SCAN):
+            created = scanning.scan_repository(scan_repo, heartbeat=activity.heartbeat)
+    return [ScanFinding(run.id, run.project_id, run.temporal_workflow_id) for run in created]
+
+
+@django_activity
+def finish_scan(scan_run_id: int) -> str:
+    return scanning.finish_scan_run(ScanRun.objects.get(id=scan_run_id))
+
+
 ALL_ACTIVITIES = [
     fetch_incident_telemetry,
     localize_root_cause,
     list_graph_targets,
     refresh_service_graph,
+    create_scheduled_scan,
+    list_scan_repos,
+    scan_repository,
+    finish_scan,
     confirm_anomaly,
     classify_bug,
     find_candidate_playbooks,

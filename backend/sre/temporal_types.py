@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 
 MAX_ATTEMPTS = 3
 FAILING_THRESHOLD = 3
+# Remediation agents: repos scanned at once within one scan run.
+MAX_PARALLEL_REPOS = 2
 
 
 @dataclass
@@ -121,6 +123,20 @@ class GraphTarget:
 class GraphRefreshInput:
     organization_id: int = 0  # 0 = every org
     source: str = ""  # "" = every source the org's projects use
+
+
+@dataclass
+class ScanInput:
+    scan_run_id: int = 0
+    agent_id: int = 0  # a scheduled run: create the scan run for this agent first
+
+
+@dataclass
+class ScanFinding:
+    """A new scan incident whose pipeline the scan workflow starts."""
+    incident_run_id: int
+    project_id: int
+    workflow_id: str
 
 
 @dataclass

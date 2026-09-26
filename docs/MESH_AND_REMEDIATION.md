@@ -13,8 +13,10 @@ The endpoints are in `docs/CONTRACTS.md` ("Service mesh" and "Remediation agents
 trade-offs are in `docs/tradeoffs.md` §7–§9. This file explains what the features do, why they
 were designed this way, and how to use them.
 
-**Status:** the service mesh is being built first. Remediation agents come after it, because
-two of the three agent kinds need the mesh. The build order is at the end.
+**Status:** both features are built and tested on this branch, behind
+`SRE_SERVICE_MESH_ENABLED` and `SRE_REMEDIATION_AGENTS_ENABLED`. They haven't yet been run
+end to end against real multi-service traffic, and there's no frontend yet. See the checklist at
+the end.
 
 ---
 
@@ -235,8 +237,32 @@ didn't, and why.
    - [x] Read-only neighbour repos in the sandbox
    - [ ] Live check against the local Uptrace + Temporal with two instrumented services
 2. **Remediation agents**
-   - [ ] `RemediationAgent`, `ScanRun`, `repository_scan` step
-   - [ ] `ActiveRemediationWorkflow` (per-repo fan-out, max 2) → child incident workflows
-   - [ ] `playbook_sweep`, then `runbook_variant`, then `find_quiet`
-   - [ ] Triggers: manual, `on_merge`, `branch_watch`, `schedule`
+   - [x] `RemediationAgent`, `ScanRun`, `ScanRepo`, `repository_scan` step, scan usage counted toward caps
+   - [x] `ActiveRemediationWorkflow` (per-repo fan-out, max 2) → child incident workflows
+   - [x] `playbook_sweep`, `runbook_variant`, `find_quiet`
+   - [x] Triggers: manual, `on_merge`, `branch_watch`, `schedule`
+   - [ ] Live check: a real scan through Temporal, and a GitHub merge/push delivery
    - [ ] Frontend: org service map, agents page, `source`/`root_cause` on the dashboard
+
+## Implementation map
+
+| Piece | Where |
+|---|---|
+| Graph, service → project mapping, trace walk, neighbours | `backend/sre/services/mesh.py` |
+| Uptrace routes (trace, service graph, repo grouping, error groups) | `backend/sre/services/uptrace.py` |
+| `localize_root_cause`, graph refresh, scan activities | `backend/sre/activities.py` |
+| `IncidentDiagnosisWorkflow` (delegation), `ServiceGraphRefreshWorkflow`, `ActiveRemediationWorkflow` | `backend/sre/workflows.py` |
+| Schedules (graph refresh, per-agent cron), starting scans | `backend/sre/temporal_client.py` (reconciled on worker start) |
+| Read-only neighbour repos | `backend/sre/services/executor.py`, `backend/sre/services/sandbox.py` |
+| Scanner (per-kind material, agent loop, finding validation, evidence caps) | `backend/sre/services/scanning.py` |
+| Manual / merge / push triggers | `backend/sre/services/agents.py`, the GitHub webhook in `backend/sre/api.py` |
+| Agent and scan-run API | `backend/sre/agents_api.py` |
+| Scan-aware triage and matching | `AnomalyChecker.SCAN_SYSTEM` (`services/triage.py`), `_add_scan_suggestions` and the mode caps in `activities.py` |
+
+Scanner safeguards:
+- The repo is mounted read-only with no network.
+- A finding must point at a file that exists in the checkout.
+- Playbook, runbook and error-group ids must be ones the scanner was shown.
+- At most `max_findings_per_repo` findings are kept.
+- `runbook_variant` only reads runbooks from repos on the same GitHub App installation.
+- `find_quiet` skips error groups some incident already covers.

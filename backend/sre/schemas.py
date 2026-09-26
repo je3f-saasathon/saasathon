@@ -2,7 +2,10 @@ from datetime import datetime
 
 from ninja import Schema
 
-from .models import ExecutionMode, LLMProvider, OrgRole, PipelineStep, Playbook, ProjectRole, Runbook
+from .models import (
+    AgentKind, AgentTrigger, ExecutionMode, LLMProvider, OrgRole, PipelineStep, Playbook, ProjectRole,
+    Runbook, ScanTrigger,
+)
 
 
 class UptraceWebhookIn(Schema):
@@ -378,6 +381,8 @@ class IncidentRunOut(Schema):
     source: str  # alert | linked | scan
     parent_incident_run_id: int | None
     root_cause: dict  # the service mesh's trace walk; {} when not run
+    scan_run_id: int | None
+    scan_kind: str
 
 
 class IncidentRunListOut(Schema):
@@ -453,3 +458,80 @@ class ServiceGraphOut(Schema):
     refreshed_at: datetime | None
     nodes: list[ServiceNodeOut]
     edges: list[ServiceEdgeOut]
+
+
+class AgentIn(Schema):
+    name: str
+    kind: AgentKind = AgentKind.PLAYBOOK_SWEEP
+    trigger: AgentTrigger = AgentTrigger.ON_MERGE
+    schedule_cron: str = ""
+    branch_pattern: str = ""
+    project_ids: list[int] = []  # [] = every project in the org
+    playbook_ids: list[int] = []  # playbook_sweep; [] = every visible playbook
+    execution_mode: ExecutionMode | None = None  # default depends on kind
+    max_findings_per_repo: int = 3
+    monthly_token_budget: int = 0
+    enabled: bool = True
+
+
+class AgentUpdateIn(Schema):
+    name: str | None = None
+    kind: AgentKind | None = None
+    trigger: AgentTrigger | None = None
+    schedule_cron: str | None = None
+    branch_pattern: str | None = None
+    project_ids: list[int] | None = None
+    playbook_ids: list[int] | None = None
+    execution_mode: ExecutionMode | None = None
+    max_findings_per_repo: int | None = None
+    monthly_token_budget: int | None = None
+    enabled: bool | None = None
+
+
+class AgentOut(Schema):
+    id: int
+    organization_id: int
+    name: str
+    kind: AgentKind
+    trigger: AgentTrigger
+    schedule_cron: str
+    branch_pattern: str
+    project_ids: list[int]
+    playbook_ids: list[int]
+    execution_mode: ExecutionMode
+    max_findings_per_repo: int
+    monthly_token_budget: int
+    tokens_this_month: int
+    enabled: bool
+    created_by_id: int | None
+    created_at: datetime
+    updated_at: datetime
+    last_scan_run_id: int | None
+
+
+class ScanRepoOut(Schema):
+    project_id: int
+    project_name: str
+    status: str
+    finding_count: int
+    incident_run_ids: list[int]
+    error: str
+
+
+class ScanRunOut(Schema):
+    id: int
+    agent_id: int
+    trigger: ScanTrigger
+    trigger_ref: str
+    status: str
+    repos: list[ScanRepoOut]
+    finding_count: int
+    usage: UsageOut
+    error_message: str
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class ScanRunListOut(Schema):
+    scan_runs: list[ScanRunOut]
+    total: int

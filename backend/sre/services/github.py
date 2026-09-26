@@ -82,16 +82,22 @@ class GitHubRepo:
         exclude_install_dirs(git_dir)
         self._git(git_dir, work_tree, "checkout", "-b", branch)
 
-    def clone_snapshot(self, dest: Path) -> None:
-        """A read-only copy of the default branch for another repo's fix agent to read:
-        files only, no git metadata, so nothing in it is ever run or pushed by the worker."""
+    def clone_snapshot(self, dest: Path, branch: str = "") -> None:
+        """A copy of a branch (default: the default branch) for an agent to read: files
+        only, no git metadata, so nothing in it is ever run or pushed by the worker."""
         cmd = ["git", *SAFE_GIT_CONFIG, *self._auth_config(), "clone", "--depth", "1",
-               "--single-branch", "--no-tags", "--branch", self.project.github_default_branch,
+               "--single-branch", "--no-tags", "--branch", branch or self.project.github_default_branch,
                self.url, str(dest)]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if result.returncode != 0:
             raise GitError(f"git clone failed: {result.stderr.strip()[-2000:]}")
         shutil.rmtree(dest / ".git", ignore_errors=True)
+
+    def compare(self, base: str, head: str, max_files: int = 100) -> list[dict]:
+        """The files a push or merge changed, with their patches (GitHub's compare API)."""
+        comparison = self._repo().compare(base, head)
+        return [{"path": f.filename, "status": f.status, "patch": (f.patch or "")[:6000]}
+                for f in list(comparison.files)[:max_files]]
 
     def has_changes(self, git_dir: Path, work_tree: Path) -> bool:
         return bool(self._git(git_dir, work_tree, "status", "--porcelain").strip())
