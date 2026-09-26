@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import secrets
+from urllib.parse import urlsplit
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -67,6 +68,7 @@ from .schemas import (
     PlaybookOut,
     PlaybookRunOut,
     PlaybookUpdateIn,
+    CliProjectOut,
     ManagedUptraceOut,
     ProjectCreatedOut,
     ProjectCreateIn,
@@ -87,7 +89,7 @@ from .schemas import (
     UptraceWebhookOut,
     WebhookSecretOut,
 )
-from .services import github_connect, mesh
+from .services import auto_projects, github_connect, mesh
 from .services.playbooks import clean_playbook_steps, clean_steps, visible_playbooks
 from .services.triage import CATEGORIES
 from .services import uptrace_admin
@@ -174,6 +176,39 @@ def _start_uptrace_sync(request: HttpRequest, project: Project | None = None,
 def managed_uptrace(request: HttpRequest):
     return {"enabled": uptrace_admin.configured(),
             "url": settings.UPTRACE_MANAGED_URL if uptrace_admin.configured() else ""}
+
+
+@router.get("/cli/project", response={200: CliProjectOut, 400: dict, 404: dict, 409: dict})
+def cli_project(request: HttpRequest, repo: str, project_id: int | None = None):
+    """What `buggly run` needs to send a repo's telemetry: its project's DSN and service
+    name. The DSN is admin-only, like on the project page."""
+    owner, _, name = repo.strip().partition("/")
+    if not owner or not name:
+        return 400, {"detail": "repo must be owner/name"}
+    memberships = ProjectMembership.objects.filter(
+        user=request.auth, role__in=[ProjectRole.OWNER, ProjectRole.ADMIN],
+        project__github_repo_owner__iexact=owner, project__github_repo_name__iexact=name,
+    ).select_related("project").order_by("project_id")
+    if project_id is not None:
+        memberships = memberships.filter(project_id=project_id)
+    projects = [m.project for m in memberships]
+    if not projects:
+        return 404, {"detail": f"You administer no project for {owner}/{name}: install the GitHub "
+                               "App on the repo, or create a project for it in Settings"}
+    if len(projects) > 1:
+        return 409, {"detail": f"Several projects use {owner}/{name}: pass --project",
+                     "projects": [{"id": p.id, "name": p.name} for p in projects]}
+    project = projects[0]
+    dsn = uptrace_admin.dsn_of(project) if project.uptrace_managed else ""
+    parts = urlsplit(dsn)
+    return 200, {
+        "project_id": project.id, "name": project.name,
+        "repo": f"{project.github_repo_owner}/{project.github_repo_name}",
+        "service_name": (project.service_names or [project.github_repo_name])[0],
+        "uptrace_status": project.uptrace_status,
+        "dsn": dsn,
+        "otlp_endpoint": f"{parts.scheme}://{parts.netloc.rpartition('@')[2]}" if dsn else "",
+    }
 
 
 @router.post("/projects/{project_id}/uptrace/resolve-alerts", response={200: dict, 400: dict, 502: dict})
@@ -632,17 +667,53 @@ def github_connect_callback(request: HttpRequest, code: str = "", state: str = "
         return _settings_redirect(github_error="github_api_failed")
 
     with transaction.atomic():
-        seen = []
+        seen, new = [], []
         for inst in installations:
-            GitHubInstallation.objects.update_or_create(
+            _, created = GitHubInstallation.objects.update_or_create(
                 user=user, installation_id=inst["installation_id"],
                 defaults={"account_login": inst["account_login"],
                           "account_type": inst["account_type"]},
             )
             seen.append(inst["installation_id"])
+            if created:
+                new.append(inst["installation_id"])
         # Access this GitHub user no longer has (uninstalled, removed from the org) is dropped.
         GitHubInstallation.objects.filter(user=user).exclude(installation_id__in=seen).delete()
-    return _settings_redirect(github="connected", count=len(seen))
+    if not auto_projects.enabled():
+        return _settings_redirect(github="connected", count=len(seen))
+    # Only newly connected installations: reconnecting mustn't bring back deleted projects.
+    projects = []
+    for installation_id in new:
+        try:
+            projects += auto_projects.create_for_repos(user, installation_id)
+        except Exception:
+            logger.exception("could not create projects for installation %s", installation_id)
+    _sync_new_projects(request, projects)
+    return _settings_redirect(github="connected", count=len(seen), projects=len(projects))
+
+
+def _sync_new_projects(request: HttpRequest, projects: list[Project]) -> None:
+    for project in projects:
+        if project.uptrace_managed:
+            _start_uptrace_sync(request, project)
+
+
+def _installation_event(request: HttpRequest, event: str, payload: dict):
+    """Projects on install: an installation created, or repos added to one."""
+    repos = auto_projects.repos_from_event(event, payload)
+    action = payload.get("action") or ""
+    if not auto_projects.enabled() or not repos:
+        return 202, {"detail": f"Ignored: {event} {action}".strip()}
+    installation_id = str((payload.get("installation") or {}).get("id", ""))
+    user = auto_projects.owner_for_event(installation_id, (payload.get("sender") or {}).get("id"))
+    if user is None:
+        return 202, {"detail": "Ignored: no single connected user owns this installation yet"}
+    repos = auto_projects.with_default_branches(installation_id, repos)
+    projects = auto_projects.create_for_repos(user, installation_id, repos)
+    _sync_new_projects(request, projects)
+    if not projects:
+        return 202, {"detail": "Ignored: every repo already has a project"}
+    return 200, {"detail": "Created projects " + ", ".join(str(p.id) for p in projects)}
 
 
 @router.get("/github/installations", response=list[GitHubInstallationOut])
@@ -1345,6 +1416,8 @@ def github_webhook(request: HttpRequest):
     event = request.headers.get("X-GitHub-Event", "")
     payload = json.loads(request.body or b"{}")
     action = payload.get("action") or ""
+    if event in ("installation", "installation_repositories"):
+        return _installation_event(request, event, payload)
     # Remediation agents: merges and pushes start on_merge / branch_watch scans. A merged
     # agent fix both approves its run (below) and triggers these.
     scans = []

@@ -93,6 +93,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/cli/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cli Start
+         * @description `buggly login`: the CLI shows the user code and opens verification_url, then polls.
+         */
+        post: operations["accounts_api_cli_start"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/cli/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cli Approve */
+        post: operations["accounts_api_cli_approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/cli/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cli Poll */
+        post: operations["accounts_api_cli_poll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/logout": {
         parameters: {
             query?: never;
@@ -221,6 +275,27 @@ export interface paths {
         };
         /** Managed Uptrace */
         get: operations["sre_api_managed_uptrace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/cli/project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cli Project
+         * @description What `buggly run` needs to send a repo's telemetry: its project's DSN and service
+         *     name. The DSN is admin-only, like on the project page.
+         */
+        get: operations["sre_api_cli_project"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1026,6 +1101,19 @@ export interface components {
              */
             expires_at: string;
         };
+        /** CliStartOut */
+        CliStartOut: {
+            /** Device Code */
+            device_code: string;
+            /** User Code */
+            user_code: string;
+            /** Verification Url */
+            verification_url: string;
+            /** Expires In */
+            expires_in: number;
+            /** Interval */
+            interval: number;
+        };
         /** OkOut */
         OkOut: {
             /**
@@ -1033,6 +1121,21 @@ export interface components {
              * @default true
              */
             ok: boolean;
+        };
+        /** CliApproveIn */
+        CliApproveIn: {
+            /** User Code */
+            user_code: string;
+        };
+        /** CliPendingOut */
+        CliPendingOut: {
+            /** Status */
+            status: string;
+        };
+        /** CliPollIn */
+        CliPollIn: {
+            /** Device Code */
+            device_code: string;
         };
         /** ProvidersOut */
         ProvidersOut: {
@@ -1085,6 +1188,23 @@ export interface components {
             enabled: boolean;
             /** Url */
             url: string;
+        };
+        /** CliProjectOut */
+        CliProjectOut: {
+            /** Project Id */
+            project_id: number;
+            /** Name */
+            name: string;
+            /** Repo */
+            repo: string;
+            /** Service Name */
+            service_name: string;
+            /** Uptrace Status */
+            uptrace_status: string;
+            /** Dsn */
+            dsn: string;
+            /** Otlp Endpoint */
+            otlp_endpoint: string;
         };
         /**
          * ExecutionMode
@@ -2390,6 +2510,116 @@ export interface operations {
             };
         };
     };
+    accounts_api_cli_start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliStartOut"];
+                };
+            };
+        };
+    };
+    accounts_api_cli_approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CliApproveIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    accounts_api_cli_poll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CliPollIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenOut"];
+                };
+            };
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliPendingOut"];
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     accounts_api_logout: {
         parameters: {
             query?: never;
@@ -2559,6 +2789,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ManagedUptraceOut"];
+                };
+            };
+        };
+    };
+    sre_api_cli_project: {
+        parameters: {
+            query: {
+                repo: string;
+                project_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliProjectOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

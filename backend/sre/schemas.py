@@ -79,6 +79,16 @@ class ManagedUptraceOut(Schema):
     url: str
 
 
+class CliProjectOut(Schema):
+    project_id: int
+    name: str
+    repo: str
+    service_name: str
+    uptrace_status: str
+    dsn: str
+    otlp_endpoint: str
+
+
 class ProjectCreatedOut(ProjectOut):
     webhook_secret: str
     webhook_url: str
