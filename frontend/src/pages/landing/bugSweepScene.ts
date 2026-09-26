@@ -14,7 +14,6 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
-const BACKGROUND = 0x120a0c;
 
 // Code layout: side-by-side "files", each a column of indented lines made of tokens.
 const PANES = 5;
@@ -37,14 +36,51 @@ const SWEEP_SECONDS = 5.5; // one pass of the scanner across the field
 const PARTICLES = 3000;
 const PARTICLES_PER_BURST = 46;
 const PARTICLE_LIFE = 1.3;
+const BUG_SCALE = 1.45;
 
-// Dim syntax colors (kept below the bloom threshold so healthy code doesn't glow).
-const SYNTAX = [0x5a2e2a, 0x4a2640, 0x5a3c28, 0x40283a, 0x584428, 0x4a2a30].map(
-  (hex) => new THREE.Color(hex),
-);
-const INFECTED = new THREE.Color(1.4, 0.15, 0.9);
-const HEALED = new THREE.Color(0.35, 1.5, 0.7);
-const SCAN = new THREE.Color(1.4, 0.55, 0.25);
+export type SceneTheme = "light" | "dark";
+
+type Palette = {
+  background: number;
+  plate: number;
+  syntax: THREE.Color[];
+  infected: THREE.Color;
+  healed: THREE.Color;
+  scan: THREE.Color;
+  bugBody: number;
+  bugGlow: number; // emissive intensity
+  bloom: number; // bloom strength; 0 skips the pass (a pale background would bloom everywhere)
+  // Additive light vanishes on a pale background, so light mode blends normally.
+  blending: THREE.Blending;
+};
+
+const PALETTES: Record<SceneTheme, Palette> = {
+  dark: {
+    background: 0x120a0c,
+    plate: 0x1c1014,
+    // Dim syntax colors (kept below the bloom threshold so healthy code doesn't glow).
+    syntax: [0x5a2e2a, 0x4a2640, 0x5a3c28, 0x40283a, 0x584428, 0x4a2a30].map((hex) => new THREE.Color(hex)),
+    infected: new THREE.Color(1.4, 0.15, 0.9),
+    healed: new THREE.Color(0.35, 1.5, 0.7),
+    scan: new THREE.Color(1.4, 0.55, 0.25),
+    bugBody: 0x3a0528,
+    bugGlow: 1.3,
+    bloom: 1.05,
+    blending: THREE.AdditiveBlending,
+  },
+  light: {
+    background: 0xefe9e8,
+    plate: 0xf8f4f3,
+    syntax: [0xb88a80, 0xae8aa3, 0xbd9a74, 0xa88c9c, 0xb8a276, 0xb48a8f].map((hex) => new THREE.Color(hex)),
+    infected: new THREE.Color(0.85, 0.08, 0.55),
+    healed: new THREE.Color(0.1, 0.62, 0.36),
+    scan: new THREE.Color(0.9, 0.38, 0.2),
+    bugBody: 0x4a062e,
+    bugGlow: 0.12,
+    bloom: 0,
+    blending: THREE.NormalBlending,
+  },
+};
 
 type Line = {
   pane: number;
@@ -68,8 +104,7 @@ type Bug = {
 };
 
 export type BugSweepOptions = {
-  /** Called with the running total each time the scanner removes a bug. */
-  onSquash?: (total: number) => void;
+  theme?: SceneTheme;
   reducedMotion?: boolean;
 };
 
@@ -77,7 +112,7 @@ function rand(min: number, max: number) {
   return min + Math.random() * (max - min);
 }
 
-function buildCode() {
+function buildCode(syntax: THREE.Color[]) {
   const lines: Line[] = [];
   const tokens: { line: number; x: number; width: number; color: THREE.Color }[] = [];
   for (let pane = 0; pane < PANES; pane++) {
@@ -101,7 +136,7 @@ function buildCode() {
           line: lineIndex,
           x: x + width / 2,
           width,
-          color: SYNTAX[Math.floor(Math.random() * SYNTAX.length)],
+          color: syntax[Math.floor(Math.random() * syntax.length)],
         });
         x += width + 0.12;
       }
@@ -139,7 +174,7 @@ function buildBugGeometry() {
   return merged;
 }
 
-function buildParticles() {
+function buildParticles(blending: THREE.Blending) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(PARTICLES * 3), 3));
   geometry.setAttribute("velocity", new THREE.BufferAttribute(new Float32Array(PARTICLES * 3), 3));
@@ -188,16 +223,16 @@ function buildParticles() {
     `,
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    blending,
   });
   const points = new THREE.Points(geometry, material);
   points.frustumCulled = false;
   return { points, geometry, material };
 }
 
-function buildBeam() {
+function buildBeam(scan: THREE.Color, blending: THREE.Blending) {
   const material = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uColor: { value: scan } },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
       void main() {
@@ -207,6 +242,7 @@ function buildBeam() {
     `,
     fragmentShader: /* glsl */ `
       uniform float uTime;
+      uniform vec3 uColor;
       varying vec2 vUv;
       void main() {
         // Interpolated UVs can land just outside 0..1, and pow() of a negative base is NaN, which
@@ -214,21 +250,20 @@ function buildBeam() {
         float rise = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 2.2);
         float edge = smoothstep(0.0, 0.12, vUv.x) * (1.0 - smoothstep(0.88, 1.0, vUv.x));
         float scan = 0.75 + 0.25 * sin(vUv.y * 60.0 - uTime * 14.0);
-        vec3 color = vec3(1.4, 0.6, 0.3);
-        gl_FragColor = vec4(color, rise * edge * scan * 0.55);
+        gl_FragColor = vec4(uColor, rise * edge * scan * 0.55);
       }
     `,
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
+    blending,
   });
   const curtain = new THREE.Mesh(new THREE.PlaneGeometry(FIELD_DEPTH + 1.5, 3.2), material);
   curtain.rotation.y = Math.PI / 2;
   curtain.position.y = 1.6;
   const floorLine = new THREE.Mesh(
     new THREE.BoxGeometry(0.06, 0.03, FIELD_DEPTH + 1.5),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(2.0, 0.9, 0.5), toneMapped: false }),
+    new THREE.MeshBasicMaterial({ color: scan.clone().multiplyScalar(1.4), toneMapped: false }),
   );
   curtain.position.z = floorLine.position.z = FIELD_CENTER_Z;
   const beam = new THREE.Group();
@@ -237,18 +272,20 @@ function buildBeam() {
 }
 
 export function mountBugSweep(container: HTMLElement, options: BugSweepOptions = {}) {
-  const { onSquash, reducedMotion = false } = options;
+  const { theme = "dark", reducedMotion = false } = options;
+  const palette = PALETTES[theme];
+  const { infected: INFECTED, healed: HEALED, scan: SCAN } = palette;
 
   // Throws when WebGL isn't available (old devices, jsdom); the caller falls back.
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setClearColor(BACKGROUND, 1);
+  renderer.setClearColor(palette.background, 1);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.domElement.style.display = "block";
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(BACKGROUND, 0.034);
+  scene.fog = new THREE.FogExp2(palette.background, 0.034);
 
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
   const cameraHome = new THREE.Vector3(0, 6.2, 10.5);
@@ -261,7 +298,7 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
   scene.add(key);
 
   // --- code tokens -------------------------------------------------------------------
-  const { lines, tokens } = buildCode();
+  const { lines, tokens } = buildCode(palette.syntax);
   const tokenGeometry = new THREE.BoxGeometry(1, TOKEN_HEIGHT, TOKEN_DEPTH);
   const tokenMaterial = new THREE.MeshBasicMaterial({ toneMapped: false });
   const tokenMesh = new THREE.InstancedMesh(tokenGeometry, tokenMaterial, tokens.length);
@@ -276,7 +313,7 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
 
   // Faint pane backplates so the lines read as files.
   const plateMaterial = new THREE.MeshBasicMaterial({
-    color: 0x1c1014,
+    color: palette.plate,
     transparent: true,
     opacity: 0.85,
   });
@@ -304,9 +341,9 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
   // --- bugs --------------------------------------------------------------------------
   const bugGeometry = buildBugGeometry();
   const bugMaterial = new THREE.MeshStandardMaterial({
-    color: 0x3a0528,
+    color: palette.bugBody,
     emissive: new THREE.Color(1.0, 0.1, 0.65),
-    emissiveIntensity: 1.3,
+    emissiveIntensity: palette.bugGlow,
     roughness: 0.4,
     metalness: 0.2,
   });
@@ -335,10 +372,10 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
   }
 
   // --- particles & beam --------------------------------------------------------------
-  const particles = buildParticles();
+  const particles = buildParticles(palette.blending);
   scene.add(particles.points);
   let nextParticle = 0;
-  const burstColors = [new THREE.Color(1.3, 0.15, 0.85), new THREE.Color(0.3, 1.4, 0.8), SCAN];
+  const burstColors = [INFECTED, HEALED, SCAN];
 
   function burst(position: THREE.Vector3, now: number) {
     const pos = particles.geometry.getAttribute("position") as THREE.BufferAttribute;
@@ -359,14 +396,14 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
     pos.needsUpdate = vel.needsUpdate = col.needsUpdate = birth.needsUpdate = true;
   }
 
-  const beam = buildBeam();
+  const beam = buildBeam(SCAN, palette.blending);
   scene.add(beam.beam);
 
   // --- post-processing ---------------------------------------------------------------
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 1.05, 0.55, 0.62);
-  composer.addPass(bloom);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), palette.bloom, 0.55, 0.62);
+  if (palette.bloom > 0) composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
   // --- sizing & input ----------------------------------------------------------------
@@ -401,7 +438,6 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
   // --- simulation --------------------------------------------------------------------
   const start = performance.now() / 1000;
   let last = 0;
-  let squashed = 0;
   let frame = 0;
   const color = new THREE.Color();
   const bugPosition = new THREE.Vector3();
@@ -450,12 +486,10 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
           spawnBug(now, hop[Math.floor(Math.random() * hop.length)]);
         }
       }
-      if (now - bug.born > 0.35 && Math.abs(bug.x - beamX) < 0.3) {
+      if (now - bug.born > 0.35 && Math.abs(bug.x - beamX) < 0.3 * BUG_SCALE) {
         bug.alive = false;
-        squashed += 1;
-        onSquash?.(squashed);
         line.heal = 1;
-        burst(bugPosition.set(bug.x, 0.15, line.z), now);
+        burst(bugPosition.set(bug.x, 0.15 * BUG_SCALE, line.z), now);
       }
     }
     // Keep the codebase from ever being clean for long.
@@ -493,15 +527,15 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
       const line = lines[bug.line];
       const grow = Math.min(1, (now - bug.born) / 0.4);
       const wobble = Math.sin(now * 14 + bug.phase);
-      bugPosition.set(bug.x, 0.11 + Math.abs(wobble) * 0.025, line.z);
+      bugPosition.set(bug.x, (0.11 + Math.abs(wobble) * 0.025) * BUG_SCALE, line.z);
       quaternion.setFromAxisAngle(up, (bug.dir > 0 ? Math.PI / 2 : -Math.PI / 2) + wobble * 0.12);
-      scale.setScalar(grow * 0.95);
+      scale.setScalar(grow * 0.95 * BUG_SCALE);
       matrix.compose(bugPosition, quaternion, scale);
       bugMesh.setMatrixAt(count++, matrix);
     }
     bugMesh.count = count;
     bugMesh.instanceMatrix.needsUpdate = true;
-    bugMaterial.emissiveIntensity = 1.15 + Math.sin(now * 5) * 0.2;
+    bugMaterial.emissiveIntensity = palette.bugGlow * (0.9 + Math.sin(now * 5) * 0.15);
 
     particles.material.uniforms.uTime.value = now;
 

@@ -3,14 +3,17 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AuthProvider } from "@/auth/AuthContext";
+import { ThemeProvider } from "@/components/theme";
 import { LandingPage } from "./LandingPage";
 
 function renderLanding() {
   return render(
     <MemoryRouter>
-      <AuthProvider>
-        <LandingPage />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <LandingPage />
+        </AuthProvider>
+      </ThemeProvider>
     </MemoryRouter>,
   );
 }
@@ -28,6 +31,6 @@ describe("LandingPage", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/Production bugs/);
     expect(screen.getAllByRole("link", { name: /Get started/ })[0]).toHaveAttribute("href", "/register");
     expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/login");
-    expect(screen.getByTestId("squash-count")).toHaveTextContent("0");
+    expect(screen.queryByTestId("squash-count")).not.toBeInTheDocument();
   });
 });
