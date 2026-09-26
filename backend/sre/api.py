@@ -277,6 +277,10 @@ def _webhook_authorized(request: HttpRequest, project: Project) -> bool:
 UPTRACE_ACTIONABLE_EVENTS = {"created", "recurring", "state_changed", "status_changed",
                              "state-changed", "status-changed"}
 UPTRACE_OPEN_STATES = {"open", "unresolved"}
+# The events an alert comes back with after someone resolved it (or it auto-resolved).
+UPTRACE_REOPEN_EVENTS = {"state_changed", "status_changed", "state-changed", "status-changed"}
+# An incident in one of these is still working on its alert.
+_ACTIVE_INCIDENT_STATUSES = {IncidentRun.Status.RUNNING, IncidentRun.Status.AWAITING_APPROVAL}
 
 # alert.url is ".../alerting/<uptrace project id>/alerts/<alert id>" on the Uptrace instance.
 _UPTRACE_ALERT_URL = re.compile(r"^https?://([^/?#]+)/alerting/(\d+)/alerts/")
@@ -286,6 +290,22 @@ def uptrace_source(alert: dict) -> str:
     """Which Uptrace instance + project an alert came from, e.g. "app.uptrace.dev/1"."""
     match = _UPTRACE_ALERT_URL.match(str(alert.get("url") or ""))
     return f"{match.group(1).lower()}/{match.group(2)}" if match else ""
+
+
+def _uptrace_incident_key(project: Project, alert_id: str, event_name: str) -> str:
+    """One incident per Uptrace alert, plus one more each time the alert reopens after its
+    last incident finished: the bug came back (or the fix didn't hold), so it's new work.
+    While an incident is still running, and for `recurring` reminders, it's the same one.
+    Keys are uptrace-alert-{id}, then uptrace-alert-{id}-r2, -r3, ..."""
+    base = f"uptrace-alert-{alert_id}"
+    runs = IncidentRun.objects.filter(project=project).filter(
+        Q(trace_id=base) | Q(trace_id__startswith=f"{base}-r"))
+    latest = runs.order_by("-id").first()
+    if latest is None:
+        return base
+    if latest.status in _ACTIVE_INCIDENT_STATUSES or event_name not in UPTRACE_REOPEN_EVENTS:
+        return latest.trace_id
+    return f"{base}-r{runs.count() + 1}"
 
 
 def _pin_uptrace_source(project: Project, source: str) -> str | None:
@@ -324,9 +344,9 @@ def uptrace_webhook(request: HttpRequest, project_id: int, payload: UptraceWebho
         mismatch = _pin_uptrace_source(project, uptrace_source(alert))
         if mismatch:
             return 409, {"detail": mismatch}
-        # One incident per Uptrace alert: Uptrace already groups repeats of the same error
-        # into one alert, so a crash loop is one incident, not one per occurrence.
-        incident_key = f"uptrace-alert-{alert['id']}"
+        # Uptrace already groups repeats of the same error into one alert, so a crash loop
+        # is one incident, not one per occurrence.
+        incident_key = _uptrace_incident_key(project, str(alert["id"]), payload.eventName or "")
     elif payload.trace_id:
         incident_key = payload.trace_id
     else:

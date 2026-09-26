@@ -217,6 +217,74 @@ def test_uptrace_21_resolved_alert_is_ignored(client, make_user, make_project, t
     assert not IncidentRun.objects.exists()
 
 
+def _reopened(alert_id="123", event="state_changed"):
+    body = uptrace_alert(alert_id, event=event, state="unresolved")
+    body["alert"]["status"] = "unresolved"
+    return body
+
+
+def _finish(run_id, status=IncidentRun.Status.FAILED):
+    IncidentRun.objects.filter(id=run_id).update(status=status)
+
+
+@pytest.mark.parametrize("event", ["state_changed", "status_changed"])
+def test_reopened_alert_starts_a_new_incident_once_the_last_one_finished(
+        client, make_user, make_project, temporal_calls, event):
+    project = make_project(make_user())
+    first = post_uptrace(client, project, uptrace_alert()).json()
+    _finish(first["incident_run_id"], IncidentRun.Status.REJECTED)
+
+    second = post_uptrace(client, project, _reopened(event=event))
+    assert second.status_code == 200
+    run = IncidentRun.objects.get(id=second.json()["incident_run_id"])
+    assert run.id != first["incident_run_id"]
+    assert run.trace_id == "uptrace-alert-123-r2"
+    assert run.temporal_workflow_id == f"sre-incident-{project.id}-uptrace-alert-123-r2"
+    assert temporal_calls["start"][-1][0] == run.temporal_workflow_id
+
+    # Uptrace redelivering the same reopen is the same incident.
+    again = post_uptrace(client, project, _reopened(event=event))
+    assert again.json()["incident_run_id"] == run.id
+
+    _finish(run.id)
+    third = post_uptrace(client, project, _reopened(event=event)).json()
+    assert IncidentRun.objects.get(id=third["incident_run_id"]).trace_id == "uptrace-alert-123-r3"
+    assert IncidentRun.objects.count() == 3
+
+
+@pytest.mark.parametrize("status", ["running", "awaiting_approval"])
+def test_reopen_while_the_incident_is_still_active_is_the_same_incident(
+        client, make_user, make_project, temporal_calls, status):
+    project = make_project(make_user())
+    first = post_uptrace(client, project, uptrace_alert()).json()
+    _finish(first["incident_run_id"], status)
+    assert post_uptrace(client, project, _reopened()).json()["incident_run_id"] == first["incident_run_id"]
+    assert IncidentRun.objects.count() == 1
+
+
+def test_recurring_alert_after_its_incident_finished_does_not_start_another(
+        client, make_user, make_project, temporal_calls):
+    project = make_project(make_user())
+    first = post_uptrace(client, project, uptrace_alert()).json()
+    _finish(first["incident_run_id"])
+    again = post_uptrace(client, project, uptrace_alert(event="recurring"))
+    assert again.json()["incident_run_id"] == first["incident_run_id"]
+    assert IncidentRun.objects.count() == 1
+
+
+def test_reopen_keys_do_not_collide_across_alerts_or_projects(
+        client, make_user, make_project, temporal_calls):
+    user = make_user()
+    project, other = make_project(user), make_project(user)
+    for alert_id in ("12", "123"):
+        _finish(post_uptrace(client, project, uptrace_alert(alert_id)).json()["incident_run_id"])
+    reopened = post_uptrace(client, project, _reopened("12")).json()
+    assert IncidentRun.objects.get(id=reopened["incident_run_id"]).trace_id == "uptrace-alert-12-r2"
+    # Another project's first alert with the same Uptrace id is its own first incident.
+    fresh = post_uptrace(client, other, _reopened("12")).json()
+    assert IncidentRun.objects.get(id=fresh["incident_run_id"]).trace_id == "uptrace-alert-12"
+
+
 def test_webhook_needs_an_alert_or_a_trace_id(client, make_user, make_project, temporal_calls):
     project = make_project(make_user())
     assert post_uptrace(client, project, {"payload": {"x": 1}}).status_code == 422
