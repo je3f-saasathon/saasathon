@@ -20,7 +20,7 @@ const errorMessages: Record<string, string> = {
   invalid_state: "The connect link was invalid. Please try again.",
   state_expired: "The connect link expired. Please try again.",
   authorization_missing:
-    "GitHub didn't send an authorization. Use “Re-link existing installation”, or check the App has “Request user authorization during installation” ticked.",
+    "GitHub didn't send an authorization. Use “Re-link existing installation” (“Refresh from GitHub” once connected), or check the App has “Request user authorization during installation” ticked.",
   token_exchange_failed: "GitHub rejected the authorization. Please try again.",
   github_api_failed: "Couldn't read your installations from GitHub. Please try again.",
   not_configured: "The GitHub App isn't configured on this server.",
@@ -65,6 +65,8 @@ export function GitHubTab() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["github-installations"] }),
   });
 
+  const connected = (installations.data?.length ?? 0) > 0;
+
   async function go(which: keyof GitHubConnect) {
     const urls = await connect.mutateAsync();
     window.location.assign(urls[which]);
@@ -88,17 +90,23 @@ export function GitHubTab() {
             <code>docs/AUTH.md</code>).
           </p>
         )}
+        {/* Still offered once connected: installing on another account or org, or
+            re-syncing after changing an install on GitHub, goes through the same flow. */}
         {status.data?.configured && (
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => go("install_url")} disabled={connect.isPending}>
-              <Plug /> Connect GitHub
+            <Button
+              variant={connected ? "outline" : "default"}
+              onClick={() => go("install_url")}
+              disabled={connect.isPending}
+            >
+              <Plug /> {connected ? "Add another account" : "Connect GitHub"}
             </Button>
             <Button
               variant="outline"
               onClick={() => go("authorize_url")}
               disabled={connect.isPending}
             >
-              Re-link existing installation
+              {connected ? "Refresh from GitHub" : "Re-link existing installation"}
             </Button>
           </div>
         )}

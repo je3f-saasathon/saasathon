@@ -133,7 +133,10 @@ describe("SettingsPage", () => {
     renderAt("/settings?tab=github&github=connected&count=1");
     expect(screen.getByText(/GitHub connected: 1 installation available/)).toBeInTheDocument();
     expect(await screen.findByText("je3f-saasathon")).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /Connect GitHub/ })).toBeInTheDocument();
+    // Already connected: the buttons read as adding to or refreshing the connection.
+    expect(await screen.findByRole("button", { name: /Add another account/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh from GitHub" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Connect GitHub/ })).not.toBeInTheDocument();
   });
 
   it("explains a connect error", () => {

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DashboardPage } from "./DashboardPage";
 
@@ -180,6 +180,17 @@ describe("DashboardPage", () => {
     responses["/api/sre/github/installations"] = [];
     let view = renderPage();
     expect(await screen.findByRole("button", { name: /Connect GitHub/ })).toBeEnabled();
+    view.unmount();
+
+    // Already installed on GitHub: re-linking goes through authorize, which always redirects back.
+    const authorizeUrl = "https://github.com/login/oauth/authorize?client_id=c&state=s";
+    responses["/api/sre/github/connect"] = { install_url: "", authorize_url: authorizeUrl };
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    view = renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Already installed\? Re-link it/ }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(authorizeUrl));
+    delete responses["/api/sre/github/connect"];
     view.unmount();
 
     // No GitHub App on the server: still shown, but it can't connect.

@@ -28,9 +28,9 @@ export function ConnectGitHubCard() {
   }
   const configured = status.data.configured;
 
-  async function go() {
+  async function go(which: keyof GitHubConnect) {
     const urls = await connect.mutateAsync();
-    window.location.assign(urls.install_url);
+    window.location.assign(urls[which]);
   }
 
   return (
@@ -51,9 +51,22 @@ export function ConnectGitHubCard() {
             </p>
           )}
         </div>
-        <Button onClick={go} disabled={!configured || connect.isPending}>
-          <Plug /> Connect GitHub
-        </Button>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Button onClick={() => go("install_url")} disabled={!configured || connect.isPending}>
+            <Plug /> Connect GitHub
+          </Button>
+          {/* GitHub doesn't redirect back from the configure page it shows for an
+              existing install; authorizing alone always does. */}
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0"
+            onClick={() => go("authorize_url")}
+            disabled={!configured || connect.isPending}
+          >
+            Already installed? Re-link it
+          </Button>
+        </div>
       </CardHeader>
       {connect.error && (
         <CardContent>
