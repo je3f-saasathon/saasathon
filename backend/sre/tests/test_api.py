@@ -546,7 +546,7 @@ def test_incident_run_without_playbook_run_reports_created_playbook(api_for, mak
     body = api_for(project.memberships.get().user).get(f"/incident-runs/{run.id}").json()
     assert body["playbook"]["id"] == playbook.id and body["playbook"]["source"] == "created"
     assert body["pr_url"] == "" and body["playbook_run_status"] is None
-    assert body["usage"] == {"calls": 0, "input_tokens": 0, "output_tokens": 0,
+    assert body["usage"] == {"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0,
                              "total_tokens": 0, "platform_tokens": 0, "models": [], "by_step": []}
 
 

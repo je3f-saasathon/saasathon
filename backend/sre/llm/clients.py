@@ -48,9 +48,10 @@ class ChatClient:
         return {} if self.temperature is None else {"temperature": self.temperature}
 
     def chat(self, system: str, messages: list[dict], name: str = "chat") -> str:
-        with trace_generation(name, model=self.config.model, input=messages) as generation:
+        with trace_generation(name, model=self.config.model, input=list(messages)) as generation:
             text, usage = self._chat(system, messages)
-            generation.update(output=text, usage_details=usage)
+            generation.update(output=text, usage_details={k: usage[k] for k in ("input", "output")
+                                                          if k in usage})
         record_usage(self.config, usage)
         return text
 
@@ -82,7 +83,11 @@ class AnthropicClient(ChatClient):
         except anthropic.APIError as exc:
             raise LLMError(str(exc)) from exc
         text = "".join(block.text for block in resp.content if block.type == "text")
-        usage = {"input": resp.usage.input_tokens, "output": resp.usage.output_tokens}
+        # Anthropic's input_tokens leaves out cache reads/writes; count them in, like OpenAI.
+        cached = getattr(resp.usage, "cache_read_input_tokens", None) or 0
+        written = getattr(resp.usage, "cache_creation_input_tokens", None) or 0
+        usage = {"input": resp.usage.input_tokens + cached + written,
+                 "cached_input": cached, "output": resp.usage.output_tokens}
         return text, usage
 
 
@@ -116,7 +121,9 @@ class OpenAICompatibleClient(ChatClient):
         text = resp.choices[0].message.content or ""
         usage = {}
         if resp.usage:
-            usage = {"input": resp.usage.prompt_tokens, "output": resp.usage.completion_tokens}
+            details = getattr(resp.usage, "prompt_tokens_details", None)
+            usage = {"input": resp.usage.prompt_tokens, "output": resp.usage.completion_tokens,
+                     "cached_input": int(getattr(details, "cached_tokens", None) or 0)}
         return text, usage
 
 

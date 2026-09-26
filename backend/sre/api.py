@@ -282,10 +282,12 @@ def _usage_out(rows) -> dict:
     for row in rows:
         entry = by_step.setdefault((row.step, row.provider, row.model, row.billed_to), {
             "step": row.step, "provider": row.provider, "model": row.model,
-            "billed_to": row.billed_to, "calls": 0, "input_tokens": 0, "output_tokens": 0,
+            "billed_to": row.billed_to, "calls": 0, "input_tokens": 0, "cached_input_tokens": 0,
+            "output_tokens": 0,
         })
         entry["calls"] += 1
         entry["input_tokens"] += row.input_tokens
+        entry["cached_input_tokens"] += row.cached_input_tokens
         entry["output_tokens"] += row.output_tokens
     steps = list(by_step.values())
     input_tokens = sum(s["input_tokens"] for s in steps)
@@ -293,6 +295,7 @@ def _usage_out(rows) -> dict:
     return {
         "calls": sum(s["calls"] for s in steps),
         "input_tokens": input_tokens,
+        "cached_input_tokens": sum(s["cached_input_tokens"] for s in steps),
         "output_tokens": output_tokens,
         "total_tokens": input_tokens + output_tokens,
         "platform_tokens": sum(s["input_tokens"] + s["output_tokens"] for s in steps

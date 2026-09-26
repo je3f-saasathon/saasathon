@@ -6209,6 +6209,10 @@
             "title": "Input Tokens",
             "type": "integer"
           },
+          "cached_input_tokens": {
+            "title": "Cached Input Tokens",
+            "type": "integer"
+          },
           "output_tokens": {
             "title": "Output Tokens",
             "type": "integer"
@@ -6221,6 +6225,7 @@
           "billed_to",
           "calls",
           "input_tokens",
+          "cached_input_tokens",
           "output_tokens"
         ],
         "title": "StepUsageOut",
@@ -6234,6 +6239,10 @@
           },
           "input_tokens": {
             "title": "Input Tokens",
+            "type": "integer"
+          },
+          "cached_input_tokens": {
+            "title": "Cached Input Tokens",
             "type": "integer"
           },
           "output_tokens": {
@@ -6266,6 +6275,7 @@
         "required": [
           "calls",
           "input_tokens",
+          "cached_input_tokens",
           "output_tokens",
           "total_tokens",
           "platform_tokens",
