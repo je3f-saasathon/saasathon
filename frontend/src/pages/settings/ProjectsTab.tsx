@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Plus, RefreshCw, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { Copy, Plus, RefreshCw, ShieldAlert, ShieldCheck, Trash2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { api } from "@/api/client";
@@ -787,6 +787,14 @@ function ProjectDetail({
     mutationFn: () => api.post<WebhookSecret>(`/sre/projects/${project.id}/webhook-secret/rotate`),
     onSuccess: setSecret,
   });
+  const queryClient = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => api.delete<void>(`/sre/projects/${project.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      onClose();
+    },
+  });
 
   return (
     <Card>
@@ -846,6 +854,36 @@ function ProjectDetail({
               </Button>
             )}
             <ErrorText error={rotate.error} />
+          </section>
+        )}
+        {project.role === "owner" && (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Delete project</h3>
+            <p className="text-sm text-muted-foreground">
+              Cancels its running incidents and scans, then removes the project with its
+              incidents, runbooks and project-only playbooks. Pull requests on GitHub stay open.
+            </p>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Delete project "${project.name}"?\n\n` +
+                      "Running incidents (including ones waiting for PR review) and any scan " +
+                      "that only covers this project are cancelled. The project, its incidents, " +
+                      "runbooks and project-only playbooks are removed, and remediation agents " +
+                      "stop covering it. Pull requests already opened on GitHub are left open.\n\n" +
+                      "This can't be undone.",
+                  )
+                ) {
+                  remove.mutate();
+                }
+              }}
+              disabled={remove.isPending}
+            >
+              <Trash2 /> Delete project
+            </Button>
+            <ErrorText error={remove.error} />
           </section>
         )}
       </CardContent>

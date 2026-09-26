@@ -994,8 +994,21 @@
         "responses": {
           "204": {
             "description": "No Content"
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
           }
         },
+        "description": "Cancels the project's running workflows first (services/project_deletion.py); if\nTemporal can't be reached nothing is deleted.",
         "tags": [
           "sre"
         ],

@@ -89,7 +89,7 @@ from .schemas import (
     UptraceWebhookOut,
     WebhookSecretOut,
 )
-from .services import auto_projects, github_connect, mesh
+from .services import auto_projects, github_connect, mesh, project_deletion
 from .services.playbooks import clean_playbook_steps, clean_steps, visible_playbooks
 from .services.triage import CATEGORIES
 from .services import uptrace_admin
@@ -605,11 +605,17 @@ def update_project(request: HttpRequest, project_id: int, payload: ProjectUpdate
     return _project_out(project, membership.role)
 
 
-@router.delete("/projects/{project_id}", response={204: None})
+@router.delete("/projects/{project_id}", response={204: None, 503: dict})
 def delete_project(request: HttpRequest, project_id: int):
+    """Cancels the project's running workflows first (services/project_deletion.py); if
+    Temporal can't be reached nothing is deleted."""
     project = get_project_for(request.auth, project_id, ProjectRole.OWNER)
     uptrace_project_id = project.uptrace_project_id if project.uptrace_managed else None
-    project.delete()
+    try:
+        project_deletion.delete_project(project)
+    except project_deletion.TemporalUnavailable:
+        return 503, {"detail": "Could not cancel this project's running work in Temporal, "
+                               "so nothing was deleted; try again"}
     # Removes its monitor and channel (and unshares the rest of its Uptrace project).
     if uptrace_project_id and uptrace_admin.configured():
         _start_uptrace_sync(request, uptrace_project_ids=[uptrace_project_id])

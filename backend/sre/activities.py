@@ -404,7 +404,9 @@ def list_scan_repos(scan_run_id: int) -> list[int]:
 
 @django_activity
 def scan_repository(scan_repo_id: int) -> list[ScanFinding]:
-    scan_repo = ScanRepo.objects.select_related("scan_run__agent", "project").get(id=scan_repo_id)
+    scan_repo = ScanRepo.objects.select_related("scan_run__agent", "project").filter(id=scan_repo_id).first()
+    if scan_repo is None:
+        return []  # its project was deleted while the run was going
     with trace_step("repository_scan", project_id=scan_repo.project_id, incident_run_id=0,
                     session_id=f"scan-run-{scan_repo.scan_run_id}"):
         with scan_usage_scope(scan_repo.id, PipelineStep.REPOSITORY_SCAN):

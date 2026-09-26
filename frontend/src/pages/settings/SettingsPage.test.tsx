@@ -192,6 +192,50 @@ describe("SettingsPage", () => {
     expect(JSON.parse(init.body)).toEqual({ share_with_project_id: null });
   });
 
+  it("lets an owner delete a project after confirming, showing API errors", async () => {
+    let deleteStatus = 503;
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method !== "DELETE") return base(url, init);
+      if (deleteStatus !== 204) {
+        return {
+          ok: false, status: deleteStatus, statusText: "Service Unavailable",
+          json: async () => ({ detail: "Could not cancel this project's running work in Temporal" }),
+        };
+      }
+      routes["GET /api/sre/projects"] = [];
+      return { ok: true, status: 204, json: async () => ({}) };
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const deletes = () => fetchMock.mock.calls.filter(([, i]) => i?.method === "DELETE");
+
+    renderAt("/settings?tab=projects");
+    fireEvent.click(await screen.findByText("django-buggy-app"));
+    const button = await screen.findByRole("button", { name: "Delete project" });
+    fireEvent.click(button);
+    expect(confirm.mock.calls[0][0]).toMatch(/cancelled[\s\S]*left open/);
+    expect(deletes()).toHaveLength(0);
+
+    confirm.mockReturnValue(true);
+    fireEvent.click(button);
+    expect(await screen.findByText(/Could not cancel this project's running work/)).toBeInTheDocument();
+    expect(String(deletes()[0][0])).toMatch(/\/api\/sre\/projects\/2$/);
+
+    deleteStatus = 204;
+    fireEvent.click(screen.getByRole("button", { name: "Delete project" }));
+    expect(await screen.findByText("No projects yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete project" })).not.toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("hides delete from a project admin who isn't the owner", async () => {
+    routes["GET /api/sre/projects"] = [{ ...project, role: "admin" }];
+    renderAt("/settings?tab=projects");
+    fireEvent.click(await screen.findByText("django-buggy-app"));
+    expect(await screen.findByText("Models for this project")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete project" })).not.toBeInTheDocument();
+  });
+
   it("creates a project on the user's own Uptrace even when managed Uptrace is on", async () => {
     routes["GET /api/sre/uptrace/managed"] = { enabled: true, url: "https://uptrace.buggly.dev" };
     routes["POST /api/sre/projects"] = { ...project, id: 7, name: "shop", webhook_secret: "s", webhook_url: "u" };
