@@ -3628,6 +3628,10 @@
             "title": "Generate Tests",
             "type": "boolean"
           },
+          "platform_preset": {
+            "title": "Platform Preset",
+            "type": "string"
+          },
           "platform_tokens_this_month": {
             "title": "Platform Tokens This Month",
             "type": "integer"
@@ -3725,6 +3729,7 @@
           "default_execution_mode",
           "default_llm_config_id",
           "generate_tests",
+          "platform_preset",
           "platform_tokens_this_month",
           "created_at",
           "github_verified",
@@ -3936,6 +3941,10 @@
             "title": "Generate Tests",
             "type": "boolean"
           },
+          "platform_preset": {
+            "title": "Platform Preset",
+            "type": "string"
+          },
           "platform_tokens_this_month": {
             "title": "Platform Tokens This Month",
             "type": "integer"
@@ -4045,6 +4054,7 @@
           "default_execution_mode",
           "default_llm_config_id",
           "generate_tests",
+          "platform_preset",
           "platform_tokens_this_month",
           "created_at",
           "github_verified",
@@ -4136,6 +4146,11 @@
               }
             ],
             "title": "Uptrace Share With Project Id"
+          },
+          "platform_preset": {
+            "default": "openai_jev",
+            "title": "Platform Preset",
+            "type": "string"
           }
         },
         "required": [
@@ -4282,6 +4297,17 @@
               }
             ],
             "title": "Service Names"
+          },
+          "platform_preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Preset"
           }
         },
         "title": "ProjectUpdateIn",
@@ -4905,15 +4931,56 @@
           "monthly_token_cap": {
             "title": "Monthly Token Cap",
             "type": "integer"
+          },
+          "default_preset": {
+            "title": "Default Preset",
+            "type": "string"
+          },
+          "presets": {
+            "items": {
+              "$ref": "#/components/schemas/PlatformPresetOut"
+            },
+            "title": "Presets",
+            "type": "array"
           }
         },
         "required": [
           "available",
           "triage_model",
           "strong_model",
-          "monthly_token_cap"
+          "monthly_token_cap",
+          "default_preset",
+          "presets"
         ],
         "title": "PlatformOut",
+        "type": "object"
+      },
+      "PlatformPresetOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "triage_model": {
+            "title": "Triage Model",
+            "type": "string"
+          },
+          "strong_model": {
+            "title": "Strong Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "triage_model",
+          "strong_model"
+        ],
+        "title": "PlatformPresetOut",
         "type": "object"
       },
       "LLMConfigOut": {

@@ -38,6 +38,8 @@ class ProjectOut(Schema):
     default_execution_mode: ExecutionMode
     default_llm_config_id: int | None
     generate_tests: bool
+    # Company-model mix used when no own config is picked (see GET /sre/platform presets).
+    platform_preset: str
     # Tokens billed to the company default (our keys) this calendar month.
     platform_tokens_this_month: int
     created_at: datetime
@@ -108,6 +110,7 @@ class ProjectCreateIn(Schema):
     # Managed Uptrace: share this existing project's Uptrace project instead of getting a
     # new one (both need service_names). Ignored when managed Uptrace is off.
     uptrace_share_with_project_id: int | None = None
+    platform_preset: str = "openai_jev"
 
 
 class ProjectUpdateIn(Schema):
@@ -123,6 +126,7 @@ class ProjectUpdateIn(Schema):
     organization_id: int | None = None
     uptrace_credential_id: int | None = None
     service_names: list[str] | None = None
+    platform_preset: str | None = None
 
 
 class OrganizationOut(Schema):
@@ -446,11 +450,20 @@ class GitHubRepoOut(Schema):
     private: bool
 
 
+class PlatformPresetOut(Schema):
+    key: str
+    label: str
+    triage_model: str  # "jev", or a chat model
+    strong_model: str
+
+
 class PlatformOut(Schema):
     available: bool  # false = no company default; projects must bring their own model
-    triage_model: str  # "jev", or the fast chat model
+    triage_model: str  # of the default preset: "jev", or the fast chat model
     strong_model: str
     monthly_token_cap: int  # per project; 0 = unlimited
+    default_preset: str
+    presets: list[PlatformPresetOut]
 
 
 class ServiceNodeOut(Schema):

@@ -1091,6 +1091,8 @@ export interface components {
             default_llm_config_id: number | null;
             /** Generate Tests */
             generate_tests: boolean;
+            /** Platform Preset */
+            platform_preset: string;
             /** Platform Tokens This Month */
             platform_tokens_this_month: number;
             /**
@@ -1195,6 +1197,8 @@ export interface components {
             default_llm_config_id: number | null;
             /** Generate Tests */
             generate_tests: boolean;
+            /** Platform Preset */
+            platform_preset: string;
             /** Platform Tokens This Month */
             platform_tokens_this_month: number;
             /**
@@ -1269,6 +1273,11 @@ export interface components {
             service_names: string[];
             /** Uptrace Share With Project Id */
             uptrace_share_with_project_id?: number | null;
+            /**
+             * Platform Preset
+             * @default openai_jev
+             */
+            platform_preset: string;
         };
         /** ProjectUpdateIn */
         ProjectUpdateIn: {
@@ -1295,6 +1304,8 @@ export interface components {
             uptrace_credential_id?: number | null;
             /** Service Names */
             service_names?: string[] | null;
+            /** Platform Preset */
+            platform_preset?: string | null;
         };
         /** WebhookSecretOut */
         WebhookSecretOut: {
@@ -1538,6 +1549,21 @@ export interface components {
             strong_model: string;
             /** Monthly Token Cap */
             monthly_token_cap: number;
+            /** Default Preset */
+            default_preset: string;
+            /** Presets */
+            presets: components["schemas"]["PlatformPresetOut"][];
+        };
+        /** PlatformPresetOut */
+        PlatformPresetOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Triage Model */
+            triage_model: string;
+            /** Strong Model */
+            strong_model: string;
         };
         /** LLMConfigOut */
         LLMConfigOut: {

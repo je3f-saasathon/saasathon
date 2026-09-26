@@ -22,6 +22,18 @@ TRIAGE_STEPS = {
 }
 
 
+# Company-model mixes a project can choose. "triage" runs the classification-style steps
+# ("jev", or a chat model); "strong" writes and runs playbooks. None = the env-configured
+# fast/strong model (SRE_PLATFORM_FAST_MODEL / SRE_PLATFORM_STRONG_MODEL).
+PRESETS = {
+    "openai_jev": {"label": "OpenAI + Jev", "triage": "jev", "strong": None},
+    "openai": {"label": "OpenAI", "triage": None, "strong": None},
+    "gpt_5_4": {"label": "GPT-5.4 only", "triage": "gpt-5.4", "strong": "gpt-5.4"},
+    "gpt_5_5": {"label": "GPT-5.5 only", "triage": "gpt-5.5", "strong": "gpt-5.5"},
+}
+DEFAULT_PRESET = "openai_jev"
+
+
 class PlatformCapReached(Exception):
     pass
 
@@ -36,26 +48,45 @@ def available() -> bool:
     return bool(settings.SRE_PLATFORM_OPENAI_API_KEY)
 
 
+def preset_models(preset: str) -> tuple[str, str]:
+    """(triage, strong) for a preset. Triage is "jev" only when Jev is really configured;
+    otherwise the preset falls back to the fast chat model for those steps."""
+    spec = PRESETS.get(preset) or PRESETS[DEFAULT_PRESET]
+    strong = spec["strong"] or settings.SRE_PLATFORM_STRONG_MODEL
+    triage = spec["triage"] or settings.SRE_PLATFORM_FAST_MODEL
+    if triage == "jev" and not jev_available():
+        triage = settings.SRE_PLATFORM_FAST_MODEL
+    return triage, strong
+
+
 def describe() -> dict:
+    ok = available()
+    presets = []
+    for key, spec in PRESETS.items():
+        triage, strong = preset_models(key)
+        presets.append({"key": key, "label": spec["label"], "triage_model": triage,
+                        "strong_model": strong})
+    triage, strong = preset_models(DEFAULT_PRESET)
     return {
-        "available": available(),
-        "triage_model": ("jev" if jev_available() else settings.SRE_PLATFORM_FAST_MODEL)
-        if available() else "",
-        "strong_model": settings.SRE_PLATFORM_STRONG_MODEL if available() else "",
+        "available": ok,
+        "triage_model": triage if ok else "",
+        "strong_model": strong if ok else "",
         "monthly_token_cap": settings.SRE_PLATFORM_MONTHLY_TOKEN_CAP,
+        "default_preset": DEFAULT_PRESET,
+        "presets": presets if ok else [],
     }
 
 
-def config_for(step: str) -> LLMProviderConfig | None:
+def config_for(step: str, preset: str = DEFAULT_PRESET) -> LLMProviderConfig | None:
     if not available():
         return None
-    if step in TRIAGE_STEPS and jev_available():
+    triage, strong = preset_models(preset)
+    model = triage if step in TRIAGE_STEPS else strong
+    if model == "jev":
         # No key on the config: JevClient falls back to the server's CLOUDFLARE_* credentials.
         config = LLMProviderConfig(name="Company default (Jev)", provider=LLMProvider.JEV_CLOUDFLARE,
                                    model=settings.CLOUDFLARE_JEV_MODEL)
     else:
-        model = (settings.SRE_PLATFORM_FAST_MODEL if step in TRIAGE_STEPS
-                 else settings.SRE_PLATFORM_STRONG_MODEL)
         config = LLMProviderConfig(name="Company default", provider=LLMProvider.OPENAI, model=model,
                                    api_key_encrypted=encrypt(settings.SRE_PLATFORM_OPENAI_API_KEY))
     config.is_platform = True

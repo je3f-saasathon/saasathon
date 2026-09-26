@@ -577,8 +577,8 @@ function ProjectModels({ project }: { project: Project }) {
   const editable = canAdmin(project);
 
   const setDefault = useMutation({
-    mutationFn: (id: number | null) =>
-      api.patch<Project>(`/sre/projects/${project.id}`, { default_llm_config_id: id }),
+    mutationFn: (changes: ProjectUpdateRequest) =>
+      api.patch<Project>(`/sre/projects/${project.id}`, changes),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
   const setOverride = useMutation({
@@ -601,9 +601,20 @@ function ProjectModels({ project }: { project: Project }) {
       : [];
 
   const company = platform.data?.available ? platform.data : null;
-  const companyLabel = company
-    ? `Company default (${company.triage_model === "jev" ? "Jev" : company.triage_model} + ${company.strong_model})`
-    : "None";
+  const presetLabel = (p: Platform["presets"][number]) => {
+    const triage = p.triage_model === "jev" ? "Jev" : p.triage_model;
+    return triage === p.strong_model ? `${p.label}` : `${p.label} (${triage} + ${p.strong_model})`;
+  };
+  // One dropdown for both: "company:<preset>" runs on our keys, a number is the user's config.
+  const selected =
+    defaultId != null ? String(defaultId) : company ? `company:${project.platform_preset}` : "";
+  const choose = (value: string) => {
+    if (value.startsWith("company:")) {
+      setDefault.mutate({ default_llm_config_id: null, platform_preset: value.slice(8) });
+    } else {
+      setDefault.mutate({ default_llm_config_id: value ? Number(value) : null });
+    }
+  };
   const cap = company?.monthly_token_cap ?? 0;
   const used = project.platform_tokens_this_month;
 
@@ -618,19 +629,34 @@ function ProjectModels({ project }: { project: Project }) {
         }
       >
         <Select
-          value={defaultId?.toString() ?? ""}
+          aria-label="Default model"
+          value={selected}
           disabled={!editable || setDefault.isPending}
-          onChange={(e) => setDefault.mutate(e.target.value ? Number(e.target.value) : null)}
+          onChange={(e) => choose(e.target.value)}
         >
-          <option value="">{companyLabel}</option>
-          {defaultId != null && !defaultConfig && (
-            <option value={defaultId}>Another member's config (#{defaultId})</option>
+          {company ? (
+            <optgroup label="Company model (our key)">
+              {company.presets.map((p) => (
+                <option key={p.key} value={`company:${p.key}`}>
+                  {presetLabel(p)}
+                </option>
+              ))}
+            </optgroup>
+          ) : (
+            <option value="">None</option>
           )}
-          {mine.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} ({c.model || c.provider})
-            </option>
-          ))}
+          {(mine.length > 0 || (defaultId != null && !defaultConfig)) && (
+            <optgroup label="Your configs (your key)">
+              {defaultId != null && !defaultConfig && (
+                <option value={defaultId}>Another member's config (#{defaultId})</option>
+              )}
+              {mine.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.model || c.provider})
+                </option>
+              ))}
+            </optgroup>
+          )}
         </Select>
       </Field>
       {defaultId == null && !company && platform.isSuccess && (
