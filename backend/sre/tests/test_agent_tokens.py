@@ -100,10 +100,14 @@ class RepoSandbox(FakeSandbox):
         super().__init__(*args, **kwargs)
         self.files = {"db.py": "POOL = 5\n", "views.py": "VIEWS\n", "README.md": "BUGS"}
 
+    listed = False
+
+    def source_files(self):
+        RepoSandbox.listed = True
+        return list(self.files)
+
     def run(self, command, timeout=None):
         self.commands.append((command, self.network))
-        if command.startswith("find "):
-            return 0, "\n".join(f"./{p}" for p in self.files)
         if command in self.fail:
             return self.fail[command]
         return 0, "1 passed"
@@ -113,6 +117,7 @@ class RepoSandbox(FakeSandbox):
 def repo_sandbox(monkeypatch, fake_infra):
     from sre.services import executor as executor_module
     RepoSandbox.fail = {}
+    RepoSandbox.listed = False
     monkeypatch.setattr(executor_module, "Sandbox", RepoSandbox)
 
 
@@ -135,7 +140,7 @@ def test_without_jev_nothing_is_preloaded(monkeypatch, repo_sandbox, project, in
     PlaybookExecutor(_playbook_run(project, incident, "autonomous"), 1, "").execute()
     assert jev.calls == []
     assert "already read for you" not in llm.prompts[0][1][0]["content"]
-    assert not any(c.startswith("find ") for c, _ in RepoSandbox.instances[0].commands)
+    assert not RepoSandbox.listed
 
 
 def test_a_broken_environment_ends_the_attempt_early(monkeypatch, repo_sandbox, project, incident):
@@ -221,3 +226,145 @@ def test_jev_assist_is_off_by_setting(settings, project, incident):
     assert JevAssist.for_run(incident) is not None
     settings.SRE_AGENT_JEV_ASSIST = False
     assert JevAssist.for_run(incident) is None
+
+
+# ---- twenty questions: where the bug is --------------------------------------------------
+
+from sre.services.executor import function_excerpt  # noqa: E402
+from sre.services.jev_assist import python_functions  # noqa: E402
+from sre.services.jev_assist import test_command_candidates as command_candidates  # noqa: E402
+
+VIEWS = ("import json\n\n\n"
+         + "".join(f"def helper_{n}(x):\n    return x + {n}\n\n\n" for n in range(400))
+         + "def create_order(request):\n    customer = None\n"
+           "    discount = 10 if customer.loyalty_tier == 'gold' else 0\n    return discount\n")
+
+
+class LocalizeSandbox(RepoSandbox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.files = {"catalog/views.py": VIEWS, "catalog/tests.py": "class T: pass\n",
+                      "catalog/models.py": "class Order: pass\n", "manage.py": "",
+                      "pyproject.toml": "[dependency-groups]\ndev = ['pytest-django']\n",
+                      "uv.lock": ""}
+
+
+def _localizing_jev(key, question):
+    if key == "function":
+        return "create_order", 0.9
+    if key == "tests":
+        return "catalog/tests.py", 0.9
+    if key == "command":
+        return "uv run python manage.py test", 0.8
+    return ("yes", 0.9) if "views.py" in question else ("no", 0.9)
+
+
+def test_the_brief_names_the_function_tests_and_command(monkeypatch, fake_infra, project, incident):
+    from sre.services import executor as executor_module
+    monkeypatch.setattr(executor_module, "Sandbox", LocalizeSandbox)
+    incident.telemetry = {"stacktrace": 'File "/app/catalog/views.py", line 1606, in create_order'}
+    incident.save()
+    _use_jev(project)
+    FakeJev(monkeypatch, _localizing_jev)
+    llm = FakeLLM(monkeypatch, *AGENT_TURNS)
+    PlaybookExecutor(_playbook_run(project, incident, "autonomous"), 1, "").execute()
+    kickoff = llm.prompts[0][1][0]["content"]
+    assert "`catalog/views.py`, function `create_order` (lines 1604-1607)" in kickoff
+    assert "Tests for it: `catalog/tests.py`" in kickoff
+    assert "Test command: `uv run python manage.py test`" in kickoff
+    assert 'label="repo_files"' in kickoff and "catalog/models.py" in kickoff
+    # The long file goes in as an outline plus the function, not whole.
+    assert "outline + lines around create_order" in kickoff and "loyalty_tier" in kickoff
+    assert "return x + 200" not in kickoff
+    assert 'label="file catalog/tests.py"' in kickoff
+
+
+def test_localization_can_be_turned_off(monkeypatch, settings, fake_infra, project, incident):
+    from sre.services import executor as executor_module
+    settings.SRE_AGENT_JEV_LOCALIZE = False
+    monkeypatch.setattr(executor_module, "Sandbox", LocalizeSandbox)
+    _use_jev(project)
+    jev = FakeJev(monkeypatch, _localizing_jev)
+    llm = FakeLLM(monkeypatch, *AGENT_TURNS)
+    PlaybookExecutor(_playbook_run(project, incident, "autonomous"), 1, "").execute()
+    assert "Where to look" not in llm.prompts[0][1][0]["content"]
+    assert [list(q) for _, q in jev.calls][0][0] == "f0"  # only the file question
+
+
+def test_narrowing_walks_down_the_directory_tree(project, incident):
+    _use_jev(project)
+    incident.telemetry = {"stacktrace": 'File "/app/billing/invoice.py", line 3'}
+    assist = JevAssist.for_run(incident)
+    paths = (["billing/invoice.py"] + [f"billing/api/v{n}.py" for n in range(20)]
+             + [f"shop/m{n}.py" for n in range(40)] + [f"admin/a{n}.py" for n in range(40)])
+    asked = []
+
+    def choose_many(state, questions, name):
+        asked.append(questions["where"][1])
+        choice = "billing" if "billing" in questions["where"][1] else "api"
+        return {"where": clients.JevChoice(choice, 0.9)}
+
+    assist.client = NS(choose_many=choose_many)
+    candidates = assist.narrow(paths)
+    assert asked and set(asked[0]) == {"billing", "shop", "admin"}
+    assert candidates[0] == "billing/invoice.py"  # named in the stack trace: always kept
+    assert not any(c.startswith(("shop/", "admin/")) for c in candidates)
+
+
+def test_python_functions_and_excerpt():
+    functions = python_functions("class A:\n    def m(self, x):\n        pass\n\ndef f():\n    pass\n")
+    assert [(f.name, f.start, f.end) for f in functions] == [("A.m", 2, 3), ("f", 5, 6)]
+    assert python_functions("def broken(:\n") == []
+    excerpt = function_excerpt(VIEWS, python_functions(VIEWS)[-1])
+    assert "1604: def create_order(request):" in excerpt and "loyalty_tier" in excerpt
+    assert len(excerpt) < len(VIEWS) / 2
+
+
+def test_test_command_candidates():
+    files = {"pyproject.toml", "uv.lock", "manage.py"}
+    read = {"pyproject.toml": "pytest"}.get
+    assert command_candidates(files, lambda f: read(f, "")) == [
+        "uv run python -m pytest -q", "uv run python manage.py test"]
+    assert command_candidates({"requirements.txt"}, lambda f: "pytest==8") == [
+        ".venv/bin/python -m pytest -q"]
+    assert command_candidates({"package.json"}, lambda f: '{"scripts": {"test": "x"}}') == [
+        "npm test"]
+
+
+# ---- edit_file and ranged reads ---------------------------------------------------------
+
+def test_the_agent_edits_with_search_and_replace(monkeypatch, repo_sandbox, project, incident):
+    turns = [{"action": "edit_file", "path": "db.py", "old": "POOL = 5", "new": "POOL = 20"},
+             {"action": "edit_file", "path": "db.py", "old": "missing", "new": "x"},
+             {"action": "read_file", "path": "db.py", "start": 1, "end": 1},
+             AGENT_TURNS[-1]]
+    llm = FakeLLM(monkeypatch, *turns)
+    playbook_run = _playbook_run(project, incident, "autonomous")
+    result = PlaybookExecutor(playbook_run, 1, "").execute()
+    assert result.outcome == "succeeded"
+    assert RepoSandbox.instances[0].files["db.py"] == "POOL = 20\n"
+    results = [m["content"] for m in llm.prompts[-1][1][2::2]]
+    assert "ok" in results[0] and "0 times" in results[1] and "POOL = 20" in results[2]
+    assert playbook_run.attempts.get().generated_steps == [{"type": "edit_file", "path": "db.py"}]
+
+
+def test_edits_and_full_reads_make_older_reads_stale():
+    history = AgentHistory("k")
+    _turn(history, {"action": "read_file", "path": "a.py"}, "A" * 100)
+    _turn(history, {"action": "read_file", "path": "b.py", "start": 1, "end": 5}, "B" * 100)
+    _turn(history, {"action": "read_file", "path": "b.py", "start": 6, "end": 9}, "C" * 100)
+    _turn(history, {"action": "edit_file", "path": "a.py", "old": "x" * 400, "new": "y" * 400}, "ok")
+    _turn(history, {"action": "run_command", "command": "pytest"}, "exit code 0")
+    history.compact(keep_recent=1)
+    assert "a later turn replaced it" in history.messages[2]["content"]  # edited afterwards
+    assert history.messages[4]["content"].count("B") == 100  # another range doesn't replace it
+    assert "x" * 400 not in history.messages[7]["content"]  # the old edit's text is stubbed
+
+
+def test_the_test_file_next_to_the_code_needs_no_question(project, incident):
+    _use_jev(project)
+    assist = JevAssist.for_run(incident)
+    assist.client = NS(choose_many=lambda *a, **k: pytest.fail("Jev shouldn't be asked"))
+    assert assist.pick_test_file("catalog/views.py", ["catalog/tests.py", "x/tests.py"]) == \
+        "catalog/tests.py"
+    assert assist.pick_test_file("app/views.py", ["tests/test_views.py"]) == "tests/test_views.py"

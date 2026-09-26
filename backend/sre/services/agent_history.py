@@ -32,10 +32,16 @@ class Turn:
     def path(self) -> str:
         return str(self.action.get("path") or ".")
 
+    @property
+    def ranged(self) -> bool:
+        return self.action.get("start") is not None or self.action.get("end") is not None
+
     def describe(self) -> str:
         if self.kind == "run_command":
             return f"run_command {str(self.action.get('command'))[:120]!r}"
-        if self.kind in ("read_file", "write_file", "list_files"):
+        if self.kind == "read_file" and self.ranged:
+            return f"read_file {self.path} lines {self.action.get('start')}-{self.action.get('end')}"
+        if self.kind in ("read_file", "write_file", "edit_file", "list_files"):
             return f"{self.kind} {self.path}"
         return "invalid reply"
 
@@ -79,7 +85,13 @@ class AgentHistory:
         latest command's."""
         later = self.turns[index + 1:]
         if turn.kind == "read_file":
-            return any(t.kind in ("read_file", "write_file") and t.path == turn.path for t in later)
+            # Replaced by a change to the file, a full re-read, or the same range re-read.
+            return any(t.path == turn.path and (
+                t.kind in ("write_file", "edit_file")
+                or (t.kind == "read_file" and (not t.ranged or (
+                    t.action.get("start"), t.action.get("end"))
+                    == (turn.action.get("start"), turn.action.get("end")))))
+                for t in later)
         if turn.kind == "list_files":
             return any(t.kind == "list_files" and t.path == turn.path for t in later)
         if turn.kind == "run_command":
@@ -103,6 +115,13 @@ class AgentHistory:
                     stub = {**turn.action,
                             "content": f"[{lines} lines written; removed from history, "
                                        "read_file shows the current version]"}
+                    self._set(turn.reply_index, json.dumps(stub))
+                    turn.trimmed.add("reply")
+                elif turn.kind == "edit_file" and len(str(turn.action.get("old", ""))
+                                                       + str(turn.action.get("new", ""))) > 600:
+                    stub = {"action": "edit_file", "path": turn.action.get("path"),
+                            "old": "[removed from history]",
+                            "new": "[applied; read_file shows the current version]"}
                     self._set(turn.reply_index, json.dumps(stub))
                     turn.trimmed.add("reply")
                 elif turn.kind == "invalid":

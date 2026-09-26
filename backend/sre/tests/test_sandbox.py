@@ -99,3 +99,29 @@ def test_neighbour_repos_are_readable_but_not_writable(settings, tmp_path):
         box.write_file("/neighbours/acme-worker/client.py", "pwned")
     assert (neighbour / "client.py").read_text() == "def charge(): ...\n"
     assert (work_tree / "neighbours" / "acme-worker" / "client.py").read_text() == "pwned"
+
+
+def test_edit_replaces_exactly_one_match(sandbox):
+    box, tmp_path = sandbox
+    (tmp_path / "calc.py").write_text("a = 1\nb = 1\nc = 2\n")
+    box.replace_in_file("calc.py", "c = 2", "c = 3")
+    assert (tmp_path / "calc.py").read_text() == "a = 1\nb = 1\nc = 3\n"
+    with pytest.raises(SandboxError, match="2 times"):
+        box.replace_in_file("calc.py", "= 1", "= 5")
+    with pytest.raises(SandboxError, match="0 times"):
+        box.replace_in_file("calc.py", "zzz", "y")
+    with pytest.raises(SandboxError):
+        box.replace_in_file("../outside.py", "a", "b")
+
+
+def test_ranged_reads_and_the_full_listing(sandbox):
+    box, tmp_path = sandbox
+    (tmp_path / "long.py").write_text("".join(f"line {n}\n" for n in range(1, 3001)))
+    assert box.read_file("long.py", 10, 12) == "[lines 10-12 of 3000]\nline 10\nline 11\nline 12\n"
+    assert len(box.read_text("long.py")) > 8000  # the worker's own reads aren't truncated
+    (tmp_path / "pkg").mkdir()
+    for n in range(600):  # far more than list_files' 8000 characters
+        (tmp_path / "pkg" / f"module_with_a_long_name_{n}.py").write_text("")
+    files = box.source_files()
+    assert "long.py" in files and "pkg/module_with_a_long_name_599.py" in files
+    assert len(files) == 602
