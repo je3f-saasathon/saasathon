@@ -5,7 +5,6 @@ import { AlertCircle, Coins, GitPullRequest, Siren } from "lucide-react";
 import { api } from "@/api/client";
 import type { IncidentRunList } from "@/api/types";
 import { DataTable } from "@/components/data-table";
-import { mergeByModel, ModelTokensList } from "@/components/ModelTokens";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,7 +35,6 @@ export function DashboardPage() {
   );
   const selected = runs.find((run) => run.id === selectedId);
 
-  const hint = `Last ${runs.length} incidents`;
   const stats = [
     { title: "Incidents", value: runs.length, icon: Siren },
     { title: "PRs opened", value: runs.filter((run) => run.pr_url).length, icon: GitPullRequest },
@@ -49,7 +47,6 @@ export function DashboardPage() {
       title: "Tokens used",
       value: runs.reduce((sum, run) => sum + run.usage.total_tokens, 0),
       icon: Coins,
-      byModel: mergeByModel(runs.map((run) => run.usage.by_model)),
     },
   ];
 
@@ -65,7 +62,7 @@ export function DashboardPage() {
       <ConnectGitHubCard />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map(({ title, value, icon: Icon, byModel }) => (
+        {stats.map(({ title, value, icon: Icon }) => (
           <Card key={title}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{title}</CardTitle>
@@ -73,10 +70,6 @@ export function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{data ? value.toLocaleString() : "—"}</div>
-              <p className="text-xs text-muted-foreground">{hint}</p>
-              {byModel && (
-                <ModelTokensList models={byModel} className="mt-2 text-muted-foreground" />
-              )}
             </CardContent>
           </Card>
         ))}

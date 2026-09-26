@@ -6,25 +6,6 @@ export function modelName(m: Pick<ModelTokens, "provider" | "model">): string {
   return m.model || m.provider || "unknown";
 }
 
-/** Sums per-model token lists (e.g. from several runs) into one, biggest first. */
-export function mergeByModel(lists: ModelTokens[][]): ModelTokens[] {
-  const merged = new Map<string, ModelTokens>();
-  for (const m of lists.flat()) {
-    const key = `${m.provider}\u0000${m.model}`;
-    const entry = merged.get(key);
-    if (!entry) {
-      merged.set(key, { ...m });
-      continue;
-    }
-    entry.calls += m.calls;
-    entry.input_tokens += m.input_tokens;
-    entry.cached_input_tokens += m.cached_input_tokens;
-    entry.output_tokens += m.output_tokens;
-    entry.total_tokens += m.total_tokens;
-  }
-  return [...merged.values()].sort((a, b) => b.total_tokens - a.total_tokens);
-}
-
 /** One line per model with its own token count: models are priced differently, so a
  * single summed number hides what the tokens cost. */
 export function ModelTokensList({
