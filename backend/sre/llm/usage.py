@@ -1,4 +1,5 @@
-"""Per-call LLM usage, recorded against the incident run whose activity made the call.
+"""Per-call LLM usage, recorded against the incident run whose activity made the call (or,
+for a remediation agent's scan, the scanned repo: scan_usage_scope).
 
 Activities open a scope; clients record into it. Outside a scope (e.g. ad-hoc calls)
 nothing is written. Each activity runs in its own worker thread, so scopes can't leak."""
@@ -6,16 +7,25 @@ nothing is written. Each activity runs in its own worker thread, so scopes can't
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-_scope: ContextVar[tuple[int, str] | None] = ContextVar("sre_llm_usage_scope", default=None)
+# {"incident_run_id" | "scan_repo_id": id, "step": step}
+_scope: ContextVar[dict | None] = ContextVar("sre_llm_usage_scope", default=None)
 
 
 @contextmanager
-def usage_scope(incident_run_id: int, step: str):
-    token = _scope.set((incident_run_id, step))
+def _scoped(value: dict):
+    token = _scope.set(value)
     try:
         yield
     finally:
         _scope.reset(token)
+
+
+def usage_scope(incident_run_id: int, step: str):
+    return _scoped({"incident_run_id": incident_run_id, "step": step})
+
+
+def scan_usage_scope(scan_repo_id: int, step: str):
+    return _scoped({"scan_repo_id": scan_repo_id, "step": step})
 
 
 def record_usage(config, usage: dict) -> None:
@@ -25,10 +35,8 @@ def record_usage(config, usage: dict) -> None:
     from ..models import LLMUsage
     from .platform import billed_to
 
-    incident_run_id, step = scope
     LLMUsage.objects.create(
-        incident_run_id=incident_run_id,
-        step=step,
+        **scope,
         provider=config.provider,
         model=config.model,
         billed_to=billed_to(config),

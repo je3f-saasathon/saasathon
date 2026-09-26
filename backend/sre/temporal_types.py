@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 
 MAX_ATTEMPTS = 3
 FAILING_THRESHOLD = 3
+# Remediation agents: repos scanned at once within one scan run.
+MAX_PARALLEL_REPOS = 2
 
 
 @dataclass
@@ -100,6 +102,41 @@ class ApprovalDecision:
     # True when the PR was merged/closed on GitHub: the PR is already in its final state,
     # so the workflow mustn't mark it ready or close it again.
     via_github: bool = False
+
+
+@dataclass
+class RootCauseResult:
+    """localize_root_cause: the linked child incident to start, if the culprit is elsewhere."""
+    child_incident_run_id: int | None = None
+    child_project_id: int = 0
+    child_workflow_id: str = ""
+
+
+@dataclass
+class GraphTarget:
+    """One service graph: an org and a pinned Uptrace project ("host/project id")."""
+    organization_id: int
+    source: str
+
+
+@dataclass
+class GraphRefreshInput:
+    organization_id: int = 0  # 0 = every org
+    source: str = ""  # "" = every source the org's projects use
+
+
+@dataclass
+class ScanInput:
+    scan_run_id: int = 0
+    agent_id: int = 0  # a scheduled run: create the scan run for this agent first
+
+
+@dataclass
+class ScanFinding:
+    """A new scan incident whose pipeline the scan workflow starts."""
+    incident_run_id: int
+    project_id: int
+    workflow_id: str
 
 
 @dataclass

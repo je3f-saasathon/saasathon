@@ -78,6 +78,7 @@ class PipelineStep(models.TextChoices):
     PLAYBOOK_SIMILARITY_JUDGE = "playbook_similarity_judge", "Playbook similarity judge"
     PLAYBOOK_CREATION = "playbook_creation", "Playbook creation"
     PLAYBOOK_EXECUTION = "playbook_execution", "Playbook execution"
+    REPOSITORY_SCAN = "repository_scan", "Repository scan (remediation agents)"
 
 
 class UptraceCredential(models.Model):
@@ -141,6 +142,9 @@ class Project(models.Model):
     )
     # Off = the fix agent runs the repo's existing tests but writes none (cheaper runs).
     generate_tests = models.BooleanField(default=True)
+    # Uptrace service.names this repo runs; the service mesh's fallback when a service
+    # doesn't send vcs.repository.url.full.
+    service_names = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -319,6 +323,14 @@ class IncidentRun(models.Model):
         # agent produced a fix; it can go back up for review if the PR is reopened.
         REJECTED = "rejected", "Rejected (PR not merged)"
         ADVISORY_COMPLETE = "advisory_complete", "Advisory complete"
+        # Service mesh: the root cause is in another project's service; a linked child
+        # incident there took over.
+        DELEGATED = "delegated", "Delegated to another project"
+
+    class Source(models.TextChoices):
+        ALERT = "alert", "Uptrace alert"
+        LINKED = "linked", "Linked from another project's incident"
+        SCAN = "scan", "Remediation agent finding"
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="incident_runs")
     trace_id = models.CharField(max_length=255, db_index=True)
@@ -335,6 +347,21 @@ class IncidentRun(models.Model):
     matched_runbook = models.ForeignKey(
         Runbook, null=True, blank=True, on_delete=models.SET_NULL, related_name="incident_runs"
     )
+    source = models.CharField(max_length=16, choices=Source.choices, default=Source.ALERT)
+    parent_incident_run = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="linked_incident_runs"
+    )
+    # The service mesh's trace walk (services/mesh.py); {} when not run.
+    root_cause = models.JSONField(default=dict, blank=True)
+    # Remediation agents: the scan that found this (source=scan) and the most its fix may
+    # do (null = no cap beyond the usual rules).
+    scan_run = models.ForeignKey(
+        "ScanRun", null=True, blank=True, on_delete=models.SET_NULL, related_name="incident_runs"
+    )
+    scan_kind = models.CharField(max_length=32, blank=True, default="")
+    execution_mode_cap = models.CharField(
+        max_length=32, choices=ExecutionMode.choices, null=True, blank=True
+    )
     diagnosis_report = models.TextField(blank=True, default="")
     error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -343,6 +370,65 @@ class IncidentRun(models.Model):
     class Meta:
         db_table = "sre_incident_run"
         ordering = ["-created_at"]
+
+
+class ServiceGraph(models.Model):
+    """An org's view of one Uptrace project's services (source = uptrace_source_id, e.g.
+    "uptrace.buggly.dev/1"). Filled from Uptrace's service graph and from alert traces."""
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="service_graphs"
+    )
+    source = models.CharField(max_length=128)
+    refreshed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "sre_service_graph"
+        unique_together = [("organization", "source")]
+
+
+class ServiceNode(models.Model):
+    class Kind(models.TextChoices):
+        SERVICE = "service", "Instrumented service"
+        SYSTEM = "system", "Dependency or uninstrumented client"
+
+    graph = models.ForeignKey(ServiceGraph, on_delete=models.CASCADE, related_name="nodes")
+    name = models.CharField(max_length=255)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.SERVICE)
+    # The last vcs.repository.url.full seen on this service's spans; "" if none. Which
+    # project it maps to is worked out on read (services/mesh.py), so it's never stale.
+    repo_url = models.CharField(max_length=500, blank=True, default="")
+    first_seen_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "sre_service_node"
+        unique_together = [("graph", "name")]
+        ordering = ["name"]
+
+
+class ServiceEdge(models.Model):
+    graph = models.ForeignKey(ServiceGraph, on_delete=models.CASCADE, related_name="edges")
+    client = models.ForeignKey(ServiceNode, on_delete=models.CASCADE, related_name="outgoing")
+    server = models.ForeignKey(ServiceNode, on_delete=models.CASCADE, related_name="incoming")
+    type = models.CharField(max_length=32, blank=True, default="")
+    # From the last refresh window; an edge seen only in a trace keeps its old numbers.
+    count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    duration_avg_ms = models.FloatField(default=0)
+    duration_max_ms = models.FloatField(default=0)
+    rate_per_min = models.FloatField(default=0)
+    first_seen_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "sre_service_edge"
+        unique_together = [("client", "server", "type")]
+
+    @property
+    def error_rate(self) -> float:
+        return self.error_count / self.count if self.count else 0.0
 
 
 class PlaybookRun(models.Model):
@@ -409,7 +495,13 @@ class LLMUsage(models.Model):
     models without asking Langfuse. `step` is the trace step name (includes
     "diagnosis_report", which isn't a PipelineStep)."""
 
-    incident_run = models.ForeignKey(IncidentRun, on_delete=models.CASCADE, related_name="llm_usage")
+    # One of the two: an incident's call, or a remediation agent's scan of one repo.
+    incident_run = models.ForeignKey(
+        IncidentRun, null=True, blank=True, on_delete=models.CASCADE, related_name="llm_usage"
+    )
+    scan_repo = models.ForeignKey(
+        "ScanRepo", null=True, blank=True, on_delete=models.CASCADE, related_name="llm_usage"
+    )
     step = models.CharField(max_length=64)
     provider = models.CharField(max_length=32, blank=True, default="")
     model = models.CharField(max_length=255, blank=True, default="")
@@ -441,3 +533,110 @@ class GitHubInstallation(models.Model):
         db_table = "sre_github_installation"
         unique_together = [("user", "installation_id")]
         ordering = ["account_login"]
+
+
+class AgentKind(models.TextChoices):
+    PLAYBOOK_SWEEP = "playbook_sweep", "Playbook sweep"
+    RUNBOOK_VARIANT = "runbook_variant", "Runbook variant hunt"
+    FIND_QUIET = "find_quiet", "Quiet errors from Uptrace"
+
+
+class AgentTrigger(models.TextChoices):
+    ON_MERGE = "on_merge", "A PR merged into the default branch"
+    BRANCH_WATCH = "branch_watch", "A push to a watched branch"
+    SCHEDULE = "schedule", "A cron schedule"
+
+
+class ScanTrigger(models.TextChoices):
+    MANUAL = "manual", "Run by hand"
+    ON_MERGE = "on_merge", "A PR merged into the default branch"
+    BRANCH_WATCH = "branch_watch", "A push to a watched branch"
+    SCHEDULE = "schedule", "A cron schedule"
+
+
+class RemediationAgent(models.Model):
+    """Looks for bugs across an org's repos before they alert (docs/MESH_AND_REMEDIATION.md).
+    Each finding becomes a scan-sourced incident that runs the usual pipeline."""
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="remediation_agents"
+    )
+    name = models.CharField(max_length=100)
+    kind = models.CharField(max_length=32, choices=AgentKind.choices, default=AgentKind.PLAYBOOK_SWEEP)
+    trigger = models.CharField(max_length=32, choices=AgentTrigger.choices, default=AgentTrigger.ON_MERGE)
+    schedule_cron = models.CharField(max_length=100, blank=True, default="")
+    branch_pattern = models.CharField(max_length=255, blank=True, default="")
+    # Empty = every project in the org, including ones added later.
+    projects = models.ManyToManyField(Project, blank=True, related_name="remediation_agents")
+    # playbook_sweep only; empty = every non-failing playbook each project can see.
+    playbooks = models.ManyToManyField(Playbook, blank=True, related_name="remediation_agents")
+    # A ceiling: advisory_only or draft_only, never autonomous.
+    execution_mode = models.CharField(
+        max_length=32, choices=ExecutionMode.choices, default=ExecutionMode.ADVISORY_ONLY
+    )
+    max_findings_per_repo = models.PositiveSmallIntegerField(default=3)
+    monthly_token_budget = models.PositiveIntegerField(default=0)  # 0 = no limit
+    enabled = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "sre_remediation_agent"
+        unique_together = [("organization", "name")]
+        ordering = ["created_at"]
+
+    def covered_projects(self):
+        chosen = self.projects.all()
+        return chosen if chosen.exists() else Project.objects.filter(organization=self.organization)
+
+
+class ScanRun(models.Model):
+    class Status(models.TextChoices):
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        PARTIAL = "partial", "Some repos failed"
+        FAILED = "failed", "Failed"
+
+    agent = models.ForeignKey(RemediationAgent, on_delete=models.CASCADE, related_name="scan_runs")
+    trigger = models.CharField(max_length=32, choices=ScanTrigger.choices)
+    trigger_ref = models.CharField(max_length=255, blank=True, default="")
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.RUNNING)
+    error_message = models.TextField(blank=True, default="")
+    temporal_workflow_id = models.CharField(max_length=255, unique=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "sre_scan_run"
+        ordering = ["-started_at"]
+
+
+class ScanRepo(models.Model):
+    """One repo (project) in a scan run."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        SKIPPED = "skipped", "Skipped"
+
+    scan_run = models.ForeignKey(ScanRun, on_delete=models.CASCADE, related_name="repos")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="scan_repos")
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    # The branch scanned, and the diff to look at ("" base = the whole repo).
+    branch = models.CharField(max_length=255, blank=True, default="")
+    base_sha = models.CharField(max_length=64, blank=True, default="")
+    head_sha = models.CharField(max_length=64, blank=True, default="")
+    finding_count = models.PositiveSmallIntegerField(default=0)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "sre_scan_repo"
+        unique_together = [("scan_run", "project")]
+        ordering = ["id"]

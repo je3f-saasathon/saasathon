@@ -1,4 +1,5 @@
 import json
+import logging
 import shutil
 from pathlib import Path
 from typing import Callable
@@ -10,9 +11,12 @@ from ..llm.resolve import get_llm_config
 from ..models import ExecutionMode, PipelineStep, PlaybookExecutionAttempt, PlaybookRun
 from ..temporal_types import AttemptResult
 from .context import UNTRUSTED_NOTICE, incident_context, untrusted
+from . import mesh
 from .github import GitError, GitHubRepo
 from .playbooks import clean_steps
-from .sandbox import Sandbox, SandboxError
+from .sandbox import NEIGHBOURS, Sandbox, SandboxError
+
+logger = logging.getLogger(__name__)
 
 MAX_TURNS = 40
 
@@ -100,6 +104,8 @@ class PlaybookExecutor:
         self.heartbeat = heartbeat
         self.branch = branch_name_for(playbook_run, attempt_number)
         self.steps: list[dict] = []
+        # {directory under /neighbours: (service project, host path)} for the agent's kickoff.
+        self.neighbours: dict[str, tuple] = {}
 
     def execute(self) -> AttemptResult:
         attempt, _ = PlaybookExecutionAttempt.objects.get_or_create(
@@ -134,6 +140,7 @@ class PlaybookExecutor:
         repo = GitHubRepo(self.project)
         repo.clone(git_dir, work_tree, self.branch)
         self.heartbeat("cloned")
+        self._clone_neighbours(workdir / "neighbours")
 
         # Dependencies are installed with network, then the sandbox is cut off before the
         # agent (which reads attacker-influenced telemetry) gets a single turn.
@@ -143,7 +150,8 @@ class PlaybookExecutor:
         start_network = (install_network if commands and agent_offline and install_network != "none"
                          else settings.SRE_SANDBOX_NETWORK)
         name = f"sre-{self.playbook_run.id}-a{self.attempt_number}"
-        with Sandbox(work_tree, name=name, network=start_network) as box:
+        with Sandbox(work_tree, name=name, network=start_network,
+                     neighbours={d: path for d, (_, path) in self.neighbours.items()}) as box:
             install_report = self._install_dependencies(box, commands)
             if agent_offline and start_network != "none":
                 box.isolate()
@@ -167,6 +175,36 @@ class PlaybookExecutor:
             self.branch, *pr_title_body(self.playbook_run, summary), draft=draft
         )
         return AttemptResult("succeeded", "", self.branch, pr_url, summary=summary)
+
+    def _neighbour_projects(self) -> list:
+        """Service mesh: the repos of services the failing one calls or is called by. Only
+        repos on this project's own GitHub App installation, so the agent never reads code
+        from a GitHub account this project's repo doesn't share (and could copy it into
+        this repo's PR)."""
+        if not (settings.SRE_SERVICE_MESH_ENABLED and settings.SRE_MAX_NEIGHBOUR_REPOS > 0):
+            return []
+        service = str((self.run.root_cause or {}).get("service_name")
+                      or (self.run.telemetry or {}).get("service_name") or "")
+        candidates = mesh.neighbour_projects(self.project, service, limit=50)
+        same_account = [p for p in candidates
+                        if p.github_installation_id == self.project.github_installation_id]
+        return same_account[:settings.SRE_MAX_NEIGHBOUR_REPOS]
+
+    def _clone_neighbours(self, root: Path) -> None:
+        """Best effort: a neighbour that can't be cloned is left out, never fails the fix."""
+        for project in self._neighbour_projects():
+            directory = f"{project.github_repo_owner}-{project.github_repo_name}"[:100]
+            dest = root / directory
+            try:
+                root.mkdir(parents=True, exist_ok=True)
+                GitHubRepo(project).clone_snapshot(dest)
+            except Exception as exc:  # includes a revoked installation token
+                logger.warning("could not clone neighbour %s for run %s: %s", directory,
+                               self.playbook_run.id, exc)
+                shutil.rmtree(dest, ignore_errors=True)
+                continue
+            self.neighbours[directory] = (project, dest)
+            self.heartbeat(f"cloned neighbour {directory}")
 
     def _install_dependencies(self, box: Sandbox, commands: list[str]) -> str:
         """Returns a report for the agent: what ran and how it went."""
@@ -196,6 +234,15 @@ class PlaybookExecutor:
                 "where the code has changed:\n"
                 + untrusted("runbook", {"title": self.runbook.title, "area": self.runbook.area,
                                         "steps": self.runbook.steps})
+            )
+        if self.neighbours:
+            listing = {f"{NEIGHBOURS}/{d}": f"{p.github_repo_owner}/{p.github_repo_name}"
+                       for d, (p, _) in self.neighbours.items()}
+            kickoff += (
+                "\n\nRead-only copies of the repos of services this one calls or is called by "
+                "are available for reference (read_file / list_files with these absolute paths). "
+                "Use them to see how the other side uses this code; only /workspace can be "
+                "changed, and only it becomes the pull request:\n" + json.dumps(listing, indent=2)
             )
         if install_report:
             kickoff += (

@@ -5,7 +5,7 @@ The configs built here are never saved. They're in-memory `LLMProviderConfig`s m
 `is_platform`, so the clients and usage recording treat them like any other config."""
 
 from django.conf import settings
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from ..crypto import encrypt
@@ -75,7 +75,8 @@ def billed_to(config: LLMProviderConfig) -> str:
 def tokens_this_month(project: Project) -> int:
     start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     totals = LLMUsage.objects.filter(
-        incident_run__project=project, billed_to=PLATFORM, created_at__gte=start
+        Q(incident_run__project=project) | Q(scan_repo__project=project),
+        billed_to=PLATFORM, created_at__gte=start,
     ).aggregate(input=Sum("input_tokens"), output=Sum("output_tokens"))
     return (totals["input"] or 0) + (totals["output"] or 0)
 

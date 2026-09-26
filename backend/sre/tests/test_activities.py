@@ -356,7 +356,7 @@ class FakeRepo:
 class FakeSandbox:
     instances = []
 
-    def __init__(self, work_tree, name, network=None):
+    def __init__(self, work_tree, name, network=None, neighbours=None, read_only=False):
         self.files = {}
         self.network = network
         self.commands = []  # (command, network at the time)

@@ -476,6 +476,40 @@ export interface paths {
         patch: operations["sre_api_update_org_member"];
         trace?: never;
     };
+    "/api/sre/organizations/{org_id}/service-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Service Graph */
+        get: operations["sre_api_get_service_graph"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/organizations/{org_id}/service-graph/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Service Graph */
+        post: operations["sre_api_refresh_service_graph"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sre/organizations/{org_id}/uptrace-credentials": {
         parameters: {
             query?: never;
@@ -765,6 +799,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sre/organizations/{org_id}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agents */
+        get: operations["sre_agents_api_list_agents"];
+        put?: never;
+        /** Create Agent */
+        post: operations["sre_agents_api_create_agent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/agents/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent */
+        get: operations["sre_agents_api_get_agent"];
+        put?: never;
+        post?: never;
+        /** Delete Agent */
+        delete: operations["sre_agents_api_delete_agent"];
+        options?: never;
+        head?: never;
+        /** Update Agent */
+        patch: operations["sre_agents_api_update_agent"];
+        trace?: never;
+    };
+    "/api/sre/agents/{agent_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Agent */
+        post: operations["sre_agents_api_run_agent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/agents/{agent_id}/scan-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Scan Runs */
+        get: operations["sre_agents_api_list_scan_runs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/scan-runs/{scan_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scan Run */
+        get: operations["sre_agents_api_get_scan_run"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -946,6 +1068,8 @@ export interface components {
             uptrace_credential_id: number | null;
             /** Uptrace Fetch Ready */
             uptrace_fetch_ready: boolean;
+            /** Service Names */
+            service_names: string[];
         };
         /**
          * ProjectRole
@@ -991,6 +1115,8 @@ export interface components {
             uptrace_credential_id: number | null;
             /** Uptrace Fetch Ready */
             uptrace_fetch_ready: boolean;
+            /** Service Names */
+            service_names: string[];
             /** Webhook Secret */
             webhook_secret: string;
             /** Webhook Url */
@@ -1027,6 +1153,11 @@ export interface components {
             generate_tests: boolean;
             /** Organization Id */
             organization_id?: number | null;
+            /**
+             * Service Names
+             * @default []
+             */
+            service_names: string[];
         };
         /** ProjectUpdateIn */
         ProjectUpdateIn: {
@@ -1051,6 +1182,8 @@ export interface components {
             organization_id?: number | null;
             /** Uptrace Credential Id */
             uptrace_credential_id?: number | null;
+            /** Service Names */
+            service_names?: string[] | null;
         };
         /** WebhookSecretOut */
         WebhookSecretOut: {
@@ -1161,6 +1294,79 @@ export interface components {
         /** OrgMemberUpdateIn */
         OrgMemberUpdateIn: {
             role: components["schemas"]["OrgRole"];
+        };
+        /** ServiceEdgeOut */
+        ServiceEdgeOut: {
+            /** Id */
+            id: number;
+            /** Client Id */
+            client_id: number;
+            /** Server Id */
+            server_id: number;
+            /** Type */
+            type: string;
+            /** Count */
+            count: number;
+            /** Error Count */
+            error_count: number;
+            /** Error Rate */
+            error_rate: number;
+            /** Duration Avg Ms */
+            duration_avg_ms: number;
+            /** Duration Max Ms */
+            duration_max_ms: number;
+            /** Rate Per Min */
+            rate_per_min: number;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+        };
+        /** ServiceGraphOut */
+        ServiceGraphOut: {
+            /** Organization Id */
+            organization_id: number;
+            /** Source */
+            source: string;
+            /** Refreshed At */
+            refreshed_at: string | null;
+            /** Nodes */
+            nodes: components["schemas"]["ServiceNodeOut"][];
+            /** Edges */
+            edges: components["schemas"]["ServiceEdgeOut"][];
+        };
+        /** ServiceNodeOut */
+        ServiceNodeOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Project Name */
+            project_name: string;
+            /** Mapped By */
+            mapped_by: string;
+            /** Repo Url */
+            repo_url: string;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
         };
         /** UptraceCredentialOut */
         UptraceCredentialOut: {
@@ -1297,7 +1503,7 @@ export interface components {
          * PipelineStep
          * @enum {string}
          */
-        PipelineStep: "anomaly_double_check" | "bug_classification" | "playbook_similarity_judge" | "playbook_creation" | "playbook_execution";
+        PipelineStep: "anomaly_double_check" | "bug_classification" | "playbook_similarity_judge" | "playbook_creation" | "playbook_execution" | "repository_scan";
         /** StepOverrideOut */
         StepOverrideOut: {
             step: components["schemas"]["PipelineStep"];
@@ -1600,6 +1806,18 @@ export interface components {
             telemetry: {
                 [key: string]: unknown;
             };
+            /** Source */
+            source: string;
+            /** Parent Incident Run Id */
+            parent_incident_run_id: number | null;
+            /** Root Cause */
+            root_cause: {
+                [key: string]: unknown;
+            };
+            /** Scan Run Id */
+            scan_run_id: number | null;
+            /** Scan Kind */
+            scan_kind: string;
         };
         /** PlaybookBriefOut */
         PlaybookBriefOut: {
@@ -1699,6 +1917,178 @@ export interface components {
         ApprovePlaybookRunIn: {
             /** Approve */
             approve: boolean;
+        };
+        /**
+         * AgentKind
+         * @enum {string}
+         */
+        AgentKind: "playbook_sweep" | "runbook_variant" | "find_quiet";
+        /** AgentOut */
+        AgentOut: {
+            /** Id */
+            id: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Name */
+            name: string;
+            kind: components["schemas"]["AgentKind"];
+            trigger: components["schemas"]["AgentTrigger"];
+            /** Schedule Cron */
+            schedule_cron: string;
+            /** Branch Pattern */
+            branch_pattern: string;
+            /** Project Ids */
+            project_ids: number[];
+            /** Playbook Ids */
+            playbook_ids: number[];
+            execution_mode: components["schemas"]["ExecutionMode"];
+            /** Max Findings Per Repo */
+            max_findings_per_repo: number;
+            /** Monthly Token Budget */
+            monthly_token_budget: number;
+            /** Tokens This Month */
+            tokens_this_month: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Created By Id */
+            created_by_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Last Scan Run Id */
+            last_scan_run_id: number | null;
+        };
+        /**
+         * AgentTrigger
+         * @enum {string}
+         */
+        AgentTrigger: "on_merge" | "branch_watch" | "schedule";
+        /** AgentIn */
+        AgentIn: {
+            /** Name */
+            name: string;
+            /** @default playbook_sweep */
+            kind: components["schemas"]["AgentKind"];
+            /** @default on_merge */
+            trigger: components["schemas"]["AgentTrigger"];
+            /**
+             * Schedule Cron
+             * @default
+             */
+            schedule_cron: string;
+            /**
+             * Branch Pattern
+             * @default
+             */
+            branch_pattern: string;
+            /**
+             * Project Ids
+             * @default []
+             */
+            project_ids: number[];
+            /**
+             * Playbook Ids
+             * @default []
+             */
+            playbook_ids: number[];
+            execution_mode?: components["schemas"]["ExecutionMode"] | null;
+            /**
+             * Max Findings Per Repo
+             * @default 3
+             */
+            max_findings_per_repo: number;
+            /**
+             * Monthly Token Budget
+             * @default 0
+             */
+            monthly_token_budget: number;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /** AgentUpdateIn */
+        AgentUpdateIn: {
+            /** Name */
+            name?: string | null;
+            kind?: components["schemas"]["AgentKind"] | null;
+            trigger?: components["schemas"]["AgentTrigger"] | null;
+            /** Schedule Cron */
+            schedule_cron?: string | null;
+            /** Branch Pattern */
+            branch_pattern?: string | null;
+            /** Project Ids */
+            project_ids?: number[] | null;
+            /** Playbook Ids */
+            playbook_ids?: number[] | null;
+            execution_mode?: components["schemas"]["ExecutionMode"] | null;
+            /** Max Findings Per Repo */
+            max_findings_per_repo?: number | null;
+            /** Monthly Token Budget */
+            monthly_token_budget?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+        };
+        /** ScanRepoOut */
+        ScanRepoOut: {
+            /** Project Id */
+            project_id: number;
+            /** Project Name */
+            project_name: string;
+            /** Status */
+            status: string;
+            /** Finding Count */
+            finding_count: number;
+            /** Incident Run Ids */
+            incident_run_ids: number[];
+            /** Error */
+            error: string;
+        };
+        /** ScanRunOut */
+        ScanRunOut: {
+            /** Id */
+            id: number;
+            /** Agent Id */
+            agent_id: number;
+            trigger: components["schemas"]["ScanTrigger"];
+            /** Trigger Ref */
+            trigger_ref: string;
+            /** Status */
+            status: string;
+            /** Repos */
+            repos: components["schemas"]["ScanRepoOut"][];
+            /** Finding Count */
+            finding_count: number;
+            usage: components["schemas"]["UsageOut"];
+            /** Error Message */
+            error_message: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /**
+         * ScanTrigger
+         * @enum {string}
+         */
+        ScanTrigger: "manual" | "on_merge" | "branch_watch" | "schedule";
+        /** ScanRunListOut */
+        ScanRunListOut: {
+            /** Scan Runs */
+            scan_runs: components["schemas"]["ScanRunOut"][];
+            /** Total */
+            total: number;
         };
     };
     responses: never;
@@ -2713,6 +3103,78 @@ export interface operations {
             };
         };
     };
+    sre_api_get_service_graph: {
+        parameters: {
+            query?: {
+                source?: string;
+            };
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceGraphOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_refresh_service_graph: {
+        parameters: {
+            query?: {
+                source?: string;
+            };
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     sre_api_list_uptrace_credentials: {
         parameters: {
             query?: never;
@@ -3418,6 +3880,246 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    sre_agents_api_list_agents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOut"][];
+                };
+            };
+        };
+    };
+    sre_agents_api_create_agent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_agents_api_get_agent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOut"];
+                };
+            };
+        };
+    };
+    sre_agents_api_delete_agent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_agents_api_update_agent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_agents_api_run_agent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanRunOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_agents_api_list_scan_runs: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                agent_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanRunListOut"];
+                };
+            };
+        };
+    };
+    sre_agents_api_get_scan_run: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scan_run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanRunOut"];
                 };
             };
         };

@@ -38,6 +38,8 @@ def incident_context(run: IncidentRun) -> str:
     # Only when something was fetched, so prompts are unchanged with the fetch off.
     if run.telemetry:
         incident["telemetry"] = run.telemetry
+    if run.root_cause:
+        incident["root_cause"] = run.root_cause
     return untrusted("incident", incident)
 
 

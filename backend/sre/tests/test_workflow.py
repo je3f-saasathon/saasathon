@@ -21,11 +21,16 @@ from sre.temporal_types import (
     JudgeResult,
     PlaybookRunInfo,
     PlaybookRunStatus,
+    RootCauseResult,
     RunInput,
+    GraphRefreshInput,
+    GraphTarget,
+    ScanFinding,
+    ScanInput,
     SearchInput,
     StatusUpdate,
 )
-from sre.workflows import IncidentDiagnosisWorkflow
+from sre.workflows import ActiveRemediationWorkflow, IncidentDiagnosisWorkflow, ServiceGraphRefreshWorkflow
 
 
 @dataclass
@@ -45,6 +50,10 @@ class Scenario:
     runbook_match: int | None = None
     judged_runbooks: list[int] = field(default_factory=list)
     run_inputs: list = field(default_factory=list)
+    # Service mesh: the linked child incident localize_root_cause hands back, if any.
+    delegate_to: int | None = None
+    localized: list[int] = field(default_factory=list)
+    child_workflow_ids: list[str] = field(default_factory=list)
 
 
 def stub_activities(s: Scenario):
@@ -52,6 +61,14 @@ def stub_activities(s: Scenario):
     async def fetch_incident_telemetry(inp: IncidentInput) -> None:
         # Not in s.calls, so the call-order assertions stay about the pipeline itself.
         s.telemetry_fetches += 1
+
+    @activity.defn(name="localize_root_cause")
+    async def localize_root_cause(inp: IncidentInput) -> RootCauseResult:
+        s.localized.append(inp.incident_run_id)
+        if s.delegate_to is None or inp.incident_run_id == s.delegate_to:
+            return RootCauseResult()  # the child finds the culprit is its own service
+        s.child_workflow_ids.append(f"child-{uuid.uuid4()}")
+        return RootCauseResult(s.delegate_to, 2, s.child_workflow_ids[-1])
 
     @activity.defn(name="confirm_anomaly")
     async def confirm_anomaly(inp: IncidentInput) -> AnomalyResult:
@@ -121,7 +138,7 @@ def stub_activities(s: Scenario):
     async def mark_incident_status(inp: StatusUpdate) -> None:
         s.incident_status.append((inp.status, inp.error_message))
 
-    return [fetch_incident_telemetry, confirm_anomaly, classify_bug, find_candidates, judge_match,
+    return [fetch_incident_telemetry, localize_root_cause, confirm_anomaly, classify_bug, find_candidates, judge_match,
             create_playbook, create_playbook_run, run_playbook_attempt, write_diagnosis_report,
             open_pull_request, close_pull_request, set_playbook_run_status, record_playbook_outcome,
             mark_incident_status]
@@ -346,3 +363,123 @@ def test_workflow_from_before_runbooks_still_replays(fixture, workflow_id):
     raw = (Path(__file__).parent / "fixtures" / fixture).read_text()
     history = WorkflowHistory.from_json(workflow_id, raw)
     asyncio.run(Replayer(workflows=[IncidentDiagnosisWorkflow]).replay_workflow(history))
+
+
+def test_culprit_in_another_project_delegates_to_a_linked_child():
+    s = Scenario(delegate_to=8)
+
+    async def go():
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            queue = f"test-{uuid.uuid4()}"
+            async with Worker(env.client, task_queue=queue, workflows=[IncidentDiagnosisWorkflow],
+                              activities=stub_activities(s)):
+                parent = await env.client.execute_workflow(
+                    IncidentDiagnosisWorkflow.run, IncidentInput(1, 1), id=f"wf-{uuid.uuid4()}",
+                    task_queue=queue,
+                )
+                child = await env.client.get_workflow_handle(s.child_workflow_ids[0]).result()
+                return parent, child
+
+    assert asyncio.run(go()) == ("delegated", "succeeded")
+    # The parent stops before triage; only the child (run 8) runs the pipeline.
+    assert s.localized == [1, 8]
+    assert s.calls.count("confirm_anomaly") == 1
+    assert ("delegated", "") in s.incident_status and ("succeeded", "") in s.incident_status
+
+
+def test_graph_refresh_counts_successes_and_skips_failures():
+    refreshed: list[str] = []
+
+    @activity.defn(name="list_graph_targets")
+    async def list_graph_targets(inp: GraphRefreshInput) -> list[GraphTarget]:
+        return [GraphTarget(1, "u.example/1"), GraphTarget(1, "u.example/2"), GraphTarget(2, "u.example/1")]
+
+    @activity.defn(name="refresh_service_graph")
+    async def refresh_service_graph(target: GraphTarget) -> bool:
+        if target.source.endswith("/2"):
+            raise ApplicationError("boom", non_retryable=True)
+        refreshed.append(f"{target.organization_id}:{target.source}")
+        return target.organization_id == 1
+
+    async def go():
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            queue = f"test-{uuid.uuid4()}"
+            async with Worker(env.client, task_queue=queue, workflows=[ServiceGraphRefreshWorkflow],
+                              activities=[list_graph_targets, refresh_service_graph]):
+                return await env.client.execute_workflow(
+                    ServiceGraphRefreshWorkflow.run, GraphRefreshInput(), id=f"wf-{uuid.uuid4()}",
+                    task_queue=queue,
+                )
+
+    assert asyncio.run(go()) == 1
+    assert refreshed == ["1:u.example/1", "2:u.example/1"]
+
+
+def run_scan(inp: ScanInput, repo_ids: list[int], findings: dict[int, list[int]], fail: set[int] = frozenset()):
+    """ActiveRemediationWorkflow with stub activities. Each finding's incident pipeline runs
+    too (the incident stubs), so the test can count them."""
+    s = Scenario()
+    log = {"in_flight": 0, "max_in_flight": 0, "created": [], "finished": []}
+
+    @activity.defn(name="create_scheduled_scan")
+    async def create_scheduled_scan(inp: ScanInput) -> int:
+        log["created"].append(inp.agent_id)
+        return 0 if inp.agent_id == 404 else 77
+
+    @activity.defn(name="list_scan_repos")
+    async def list_scan_repos(scan_run_id: int) -> list[int]:
+        return repo_ids
+
+    @activity.defn(name="scan_repository")
+    async def scan_repository(repo_id: int) -> list[ScanFinding]:
+        log["in_flight"] += 1
+        log["max_in_flight"] = max(log["max_in_flight"], log["in_flight"])
+        await asyncio.sleep(0.05)
+        log["in_flight"] -= 1
+        if repo_id in fail:
+            raise ApplicationError("sandbox broke", non_retryable=True)
+        return [ScanFinding(i, 1, f"incident-{i}-{uuid.uuid4()}") for i in findings.get(repo_id, [])]
+
+    @activity.defn(name="finish_scan")
+    async def finish_scan(scan_run_id: int) -> str:
+        log["finished"].append(scan_run_id)
+        return "partial" if fail else "succeeded"
+
+    async def go():
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            queue = f"test-{uuid.uuid4()}"
+            async with Worker(env.client, task_queue=queue,
+                              workflows=[ActiveRemediationWorkflow, IncidentDiagnosisWorkflow],
+                              activities=[create_scheduled_scan, list_scan_repos, scan_repository,
+                                          finish_scan, *stub_activities(s)]):
+                result = await env.client.execute_workflow(
+                    ActiveRemediationWorkflow.run, inp, id=f"wf-{uuid.uuid4()}", task_queue=queue)
+                # Findings' pipelines are abandoned children; let them finish before counting.
+                expected = sum(len(v) for k, v in findings.items() if k not in fail)
+                for _ in range(200):
+                    if len([x for x in s.incident_status if x[0] == "succeeded"]) >= expected:
+                        break
+                    await asyncio.sleep(0.05)
+                return result
+
+    return asyncio.run(go()), log, s
+
+
+def test_scan_runs_at_most_two_repos_at_once_and_starts_each_findings_pipeline():
+    result, log, s = run_scan(ScanInput(scan_run_id=5), [1, 2, 3, 4], {1: [11], 3: [31, 32]})
+    assert result == "succeeded" and log["finished"] == [5]
+    assert log["max_in_flight"] == 2
+    assert sorted(s.localized) == [11, 31, 32]  # one incident pipeline per finding
+
+
+def test_a_failed_repo_does_not_stop_the_others():
+    result, log, s = run_scan(ScanInput(scan_run_id=5), [1, 2], {2: [21]}, fail={1})
+    assert result == "partial"
+    assert s.localized == [21]
+
+
+def test_a_scheduled_run_creates_its_scan_run_and_skips_a_gone_agent():
+    result, log, _ = run_scan(ScanInput(agent_id=9), [], {})
+    assert (result, log["created"], log["finished"]) == ("succeeded", [9], [77])
+    result, log, _ = run_scan(ScanInput(agent_id=404), [], {})
+    assert (result, log["finished"]) == ("skipped", [])

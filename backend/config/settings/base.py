@@ -192,6 +192,16 @@ SRE_RUNBOOKS_ENABLED = env_bool("SRE_RUNBOOKS_ENABLED", default=False)
 # Fetch the alert's exception/trace from the Uptrace API before triage. Off = the LLM only
 # sees the webhook payload.
 SRE_UPTRACE_FETCH_ENABLED = env_bool("SRE_UPTRACE_FETCH_ENABLED", default=False)
+# Service mesh (docs/MESH_AND_REMEDIATION.md): an org-wide service graph from Uptrace, the
+# root-cause trace walk and linked incidents across projects. Needs the Uptrace fetch on.
+SRE_SERVICE_MESH_ENABLED = env_bool("SRE_SERVICE_MESH_ENABLED", default=False)
+# Edges (and services with no edges) not seen for this long drop out of the graph.
+SRE_SERVICE_GRAPH_TTL_DAYS = int(os.environ.get("SRE_SERVICE_GRAPH_TTL_DAYS", "7"))
+# How many mapped neighbour repos a fix agent gets read-only.
+SRE_MAX_NEIGHBOUR_REPOS = int(os.environ.get("SRE_MAX_NEIGHBOUR_REPOS", "3"))
+# Remediation agents: org-level agents that scan repos for bugs before they alert and feed
+# findings into the incident pipeline (docs/MESH_AND_REMEDIATION.md).
+SRE_REMEDIATION_AGENTS_ENABLED = env_bool("SRE_REMEDIATION_AGENTS_ENABLED", default=False)
 SRE_SANDBOX_IMAGE = os.environ.get("SRE_SANDBOX_IMAGE", "saasathon-sre-sandbox:latest")
 SRE_SANDBOX_NETWORK = os.environ.get("SRE_SANDBOX_NETWORK", "none")
 # Network used only for installing a repo's dependencies (uv sync / pip / npm ci) before

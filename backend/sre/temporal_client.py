@@ -1,11 +1,29 @@
+import logging
+from datetime import timedelta
+
 from asgiref.sync import async_to_sync
 from django.conf import settings
-from temporalio.client import Client
+from temporalio.client import (
+    Client,
+    ScheduleUpdate,
+    Schedule,
+    ScheduleActionStartWorkflow,
+    ScheduleAlreadyRunningError,
+    ScheduleIntervalSpec,
+    ScheduleOverlapPolicy,
+    SchedulePolicy,
+    ScheduleSpec,
+)
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 
-from .temporal_types import ApprovalDecision, IncidentInput
+from .temporal_types import ApprovalDecision, GraphRefreshInput, IncidentInput, ScanInput
+
+logger = logging.getLogger(__name__)
+
+GRAPH_REFRESH_SCHEDULE_ID = "sre-service-graph-refresh"
+GRAPH_REFRESH_EVERY = timedelta(minutes=15)
 
 
 # Connect per call: Django may run each request on a different event loop,
@@ -53,3 +71,117 @@ def signal_approval(workflow_id: str, decision: ApprovalDecision) -> None:
 
 def signal_pull_request_reopened(workflow_id: str) -> None:
     async_to_sync(_signal)(workflow_id, "pull_request_reopened")
+
+
+async def _start_graph_refresh(organization_id: int, source: str) -> None:
+    client = await _connect()
+    try:
+        await client.start_workflow(
+            "ServiceGraphRefreshWorkflow",
+            GraphRefreshInput(organization_id, source),
+            id=f"sre-service-graph-refresh-{organization_id}",
+            task_queue=settings.TEMPORAL_TASK_QUEUE,
+        )
+    except WorkflowAlreadyStartedError:
+        pass  # one is already running for this org; it picks up the latest state
+
+
+def start_graph_refresh(organization_id: int, source: str = "") -> None:
+    async_to_sync(_start_graph_refresh)(organization_id, source)
+
+
+async def ensure_schedules(client: Client) -> None:
+    """Worker startup: the service graph refresh schedule when the mesh is on (left in
+    place when it's turned off: the workflow then finds nothing to do), and every
+    remediation agent's schedule, in case an API-side sync was missed."""
+    if settings.SRE_REMEDIATION_AGENTS_ENABLED:
+        from asgiref.sync import sync_to_async
+
+        from .models import RemediationAgent
+
+        agents = await sync_to_async(lambda: list(RemediationAgent.objects.all()))()
+        for agent in agents:
+            await _sync_agent_schedule(client, agent.id, _agent_cron(agent))
+    if not settings.SRE_SERVICE_MESH_ENABLED:
+        return
+    try:
+        await client.create_schedule(
+            GRAPH_REFRESH_SCHEDULE_ID,
+            Schedule(
+                action=ScheduleActionStartWorkflow(
+                    "ServiceGraphRefreshWorkflow", GraphRefreshInput(),
+                    id=GRAPH_REFRESH_SCHEDULE_ID, task_queue=settings.TEMPORAL_TASK_QUEUE,
+                ),
+                spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=GRAPH_REFRESH_EVERY)]),
+                policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+            ),
+        )
+        logger.info("created schedule %s", GRAPH_REFRESH_SCHEDULE_ID)
+    except ScheduleAlreadyRunningError:
+        pass
+
+
+# ---- remediation agents --------------------------------------------------------------
+
+def agent_schedule_id(agent_id: int) -> str:
+    return f"sre-agent-{agent_id}-schedule"
+
+
+def _agent_cron(agent) -> str:
+    """The cron an agent's schedule should have, or "" for none."""
+    from .models import AgentTrigger
+
+    on = settings.SRE_REMEDIATION_AGENTS_ENABLED and agent.enabled
+    return agent.schedule_cron if on and agent.trigger == AgentTrigger.SCHEDULE else ""
+
+
+async def _sync_agent_schedule(client: Client, agent_id: int, cron: str) -> None:
+    handle = client.get_schedule_handle(agent_schedule_id(agent_id))
+    if not cron:
+        try:
+            await handle.delete()
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.NOT_FOUND:
+                raise
+        return
+    schedule = Schedule(
+        action=ScheduleActionStartWorkflow(
+            "ActiveRemediationWorkflow", ScanInput(agent_id=agent_id),
+            id=f"sre-agent-{agent_id}-scheduled", task_queue=settings.TEMPORAL_TASK_QUEUE,
+        ),
+        spec=ScheduleSpec(cron_expressions=[cron]),
+        # A scan still running when the next one is due: skip the new one.
+        policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+    )
+    try:
+        await client.create_schedule(agent_schedule_id(agent_id), schedule)
+    except ScheduleAlreadyRunningError:
+        await handle.update(lambda _: ScheduleUpdate(schedule=schedule))
+
+
+async def _sync_agent_schedule_now(agent_id: int, cron: str) -> None:
+    await _sync_agent_schedule(await _connect(), agent_id, cron)
+
+
+def sync_agent_schedule(agent) -> None:
+    """Creates, updates or deletes the agent's Temporal Schedule to match it."""
+    async_to_sync(_sync_agent_schedule_now)(agent.id, _agent_cron(agent))
+
+
+def delete_agent_schedule(agent_id: int) -> None:
+    async_to_sync(_sync_agent_schedule_now)(agent_id, "")
+
+
+async def _start_scan(workflow_id: str, inp: ScanInput) -> None:
+    client = await _connect()
+    try:
+        await client.start_workflow(
+            "ActiveRemediationWorkflow", inp, id=workflow_id, task_queue=settings.TEMPORAL_TASK_QUEUE,
+            id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+        )
+    except WorkflowAlreadyStartedError:
+        pass
+
+
+def start_scan(workflow_id: str, scan_run_id: int) -> None:
+    async_to_sync(_start_scan)(workflow_id, ScanInput(scan_run_id=scan_run_id))

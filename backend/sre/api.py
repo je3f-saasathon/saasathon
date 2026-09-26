@@ -36,6 +36,7 @@ from .models import (
     ProjectMembership,
     ProjectRole,
     Runbook,
+    ServiceGraph,
     UptraceCredential,
 )
 from .orgs import personal_org
@@ -73,6 +74,7 @@ from .schemas import (
     RunbookListOut,
     RunbookOut,
     RunbookUpdateIn,
+    ServiceGraphOut,
     StepOverrideOut,
     StepOverridesIn,
     UptraceCredentialIn,
@@ -82,7 +84,7 @@ from .schemas import (
     UptraceWebhookOut,
     WebhookSecretOut,
 )
-from .services import github_connect
+from .services import github_connect, mesh
 from .services.playbooks import clean_playbook_steps, clean_steps, visible_playbooks
 from .services.triage import CATEGORIES
 from .services.uptrace import resolve_credential
@@ -118,6 +120,22 @@ def _project_out(project: Project, role: str) -> dict:
         "github_verified": _github_verified(project),
         "platform_tokens_this_month": platform.tokens_this_month(project),
     }
+
+
+MAX_SERVICE_NAMES = 50
+
+
+def _check_service_names(names: list[str], org_id: int | None, project_id: int | None) -> list[str]:
+    """Trimmed and deduplicated. A service can only map to one project per org."""
+    cleaned = list(dict.fromkeys(n.strip() for n in names))
+    if len(cleaned) > MAX_SERVICE_NAMES or any(not n or len(n) > 255 for n in cleaned):
+        raise HttpError(400, f"service_names: up to {MAX_SERVICE_NAMES} names of 1-255 characters")
+    others = Project.objects.filter(organization_id=org_id).exclude(id=project_id)
+    for other in others.only("name", "service_names"):
+        taken = set(cleaned) & set(other.service_names or [])
+        if taken:
+            raise HttpError(409, f"{sorted(taken)[0]!r} already belongs to project {other.name!r}")
+    return cleaned
 
 
 def _target_org(user, org_id: int | None) -> Organization:
@@ -345,6 +363,7 @@ def create_project(request: HttpRequest, payload: ProjectCreateIn):
                        payload.github_repo_owner, payload.github_repo_name)
     data = payload.dict()
     data["organization_id"] = _target_org(request.auth, data.pop("organization_id")).id
+    data["service_names"] = _check_service_names(data["service_names"], data["organization_id"], None)
     with transaction.atomic():
         project = Project.objects.create(**data)
         ProjectMembership.objects.create(project=project, user=request.auth, role=ProjectRole.OWNER)
@@ -375,6 +394,12 @@ def update_project(request: HttpRequest, project_id: int, payload: ProjectUpdate
         if not UptraceCredential.objects.filter(id=changes["uptrace_credential_id"],
                                                 organization_id=org_id).exists():
             raise HttpError(400, "That Uptrace credential isn't in this project's organization")
+    if changes.get("service_names") is not None or changes.get("organization_id") is not None:
+        changes["service_names"] = _check_service_names(
+            changes.get("service_names") if changes.get("service_names") is not None
+            else project.service_names,
+            changes.get("organization_id") or project.organization_id, project.id,
+        )
     # Existing wiring is grandfathered: only a change to it has to be proven.
     repo = {f: changes.get(f) or getattr(project, f) for f in GITHUB_REPO_FIELDS}
     if any(repo[f] != getattr(project, f) for f in GITHUB_REPO_FIELDS):
@@ -636,6 +661,54 @@ def remove_org_member(request: HttpRequest, org_id: int, user_id: int):
             return 409, {"detail": "An organization must keep at least one owner"}
         membership.delete()
     return 204, None
+
+
+# ---- Service mesh --------------------------------------------------------------
+
+def _mesh_org(user, org_id: int, role: str) -> Organization:
+    if not settings.SRE_SERVICE_MESH_ENABLED:
+        raise Http404
+    return get_org_membership(user, org_id, role).organization
+
+
+@router.get("/organizations/{org_id}/service-graph", response={200: ServiceGraphOut, 400: dict})
+def get_service_graph(request: HttpRequest, org_id: int, source: str = ""):
+    org = _mesh_org(request.auth, org_id, OrgRole.MEMBER)
+    sources = mesh.org_sources(org)
+    if not source:
+        if len(sources) > 1:
+            return 400, {"detail": f"This organization's projects use several Uptrace projects; "
+                                   f"pass ?source= one of {', '.join(sources)}"}
+        source = sources[0] if sources else ""
+    graph = ServiceGraph.objects.filter(organization=org, source=source).first()
+    nodes, edges = [], []
+    if graph is not None:
+        projects = mesh.mesh_projects(org.id, source)
+        for node in graph.nodes.all():
+            project, mapped_by = (mesh.map_service(node.name, node.repo_url, projects)
+                                  if node.kind == node.Kind.SERVICE else (None, ""))
+            nodes.append({
+                **{f: getattr(node, f) for f in ("id", "name", "kind", "repo_url",
+                                                 "first_seen_at", "last_seen_at")},
+                "project_id": project.id if project else None,
+                "project_name": project.name if project else "",
+                "mapped_by": mapped_by,
+            })
+        edges = list(graph.edges.all())
+    return 200, {"organization_id": org.id, "source": source,
+                 "refreshed_at": graph.refreshed_at if graph else None,
+                 "nodes": nodes, "edges": edges}
+
+
+@router.post("/organizations/{org_id}/service-graph/refresh", response={202: dict, 503: dict})
+def refresh_service_graph(request: HttpRequest, org_id: int, source: str = ""):
+    org = _mesh_org(request.auth, org_id, OrgRole.ADMIN)
+    try:
+        temporal_client.start_graph_refresh(org.id, source)
+    except Exception:
+        logger.exception("could not start the service graph refresh for org %s", org.id)
+        return 503, {"detail": "Could not start the refresh; retry later"}
+    return 202, {"detail": "Refresh started"}
 
 
 # ---- Uptrace credentials (per organization) --------------------------------------
@@ -1109,6 +1182,19 @@ def github_webhook(request: HttpRequest):
     event = request.headers.get("X-GitHub-Event", "")
     payload = json.loads(request.body or b"{}")
     action = payload.get("action") or ""
+    # Remediation agents: merges and pushes start on_merge / branch_watch scans. A merged
+    # agent fix both approves its run (below) and triggers these.
+    scans = []
+    if settings.SRE_REMEDIATION_AGENTS_ENABLED and (
+            event == "push" or (event == "pull_request" and action == "closed")):
+        from .services import agents as agent_service
+        try:
+            scans = agent_service.on_push(payload) if event == "push" else agent_service.on_merge(payload)
+        except agent_service.ScanStartFailed:
+            return 503, {"detail": "Could not start a remediation scan; redeliver the webhook"}
+    scans_note = f"Started scan runs {', '.join(str(s.id) for s in scans)}" if scans else ""
+    if event == "push":
+        return (200, {"detail": scans_note}) if scans else (202, {"detail": "Ignored: no agent watches this push"})
     if event != "pull_request" or action not in GITHUB_PR_ACTIONS:
         return 202, {"detail": f"Ignored: {event or 'unknown'} {action}".strip()}
 
@@ -1121,6 +1207,8 @@ def github_webhook(request: HttpRequest):
         incident_run__project__github_repo_name__iexact=name,
     ).first()
     if playbook_run is None:
+        if scans:
+            return 200, {"detail": scans_note}
         return 202, {"detail": "Ignored: not a pull request the agent is waiting on"}
 
     Status = PlaybookRun.Status
@@ -1156,3 +1244,6 @@ def github_webhook(request: HttpRequest):
         # GitHub doesn't retry; redeliver from the App's "Advanced" settings.
         return 503, {"detail": "Could not reach the workflow; redeliver this webhook"}
     return 200, {"detail": done}
+
+
+from . import agents_api  # noqa: E402,F401  (registers the remediation agent routes)

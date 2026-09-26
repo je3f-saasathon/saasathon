@@ -51,8 +51,11 @@ All routes are under `/api/sre` and require `Authorization: Bearer <token>`, exc
 **Enums.**
 - `execution_mode`: `autonomous` (opens the PR itself) · `draft_only` (default; opens a GitHub **draft** PR right away, and an admin's approval marks it ready for review while rejection closes it. On repos whose plan doesn't allow drafts it opens a normal PR titled `[Awaiting approval] …` instead, and approval removes the prefix) · `advisory_only` (writes a diagnosis only, never touches the repo). An `unconfirmed` playbook never runs above `draft_only`. With runbooks on, `autonomous` needs a `confirmed` **runbook**: a run from a playbook alone (even a confirmed built-in), or from an unconfirmed runbook, is capped at `draft_only`.
 - `provider`: `anthropic` · `openai` · `self_hosted` (any OpenAI-compatible server; needs `base_url`) · `jev_cloudflare` (only for `anomaly_double_check`, `bug_classification`, `playbook_similarity_judge`).
-- `step`: `anomaly_double_check` · `bug_classification` · `playbook_similarity_judge` · `playbook_creation` · `playbook_execution`.
-- incident `status`: `running` · `no_anomaly` · `new_playbook_created` · `awaiting_approval` · `succeeded` · `failed` · `rejected` (a draft-only fix whose PR was closed unmerged; not a failure) · `advisory_complete`.
+- `step`: `anomaly_double_check` · `bug_classification` · `playbook_similarity_judge` · `playbook_creation` · `playbook_execution` · `repository_scan` (remediation agents' scanner).
+- incident `status`: `running` · `no_anomaly` · `new_playbook_created` · `awaiting_approval` · `succeeded` · `failed` · `rejected` (a draft-only fix whose PR was closed unmerged; not a failure) · `advisory_complete` · `delegated` (service mesh: the root cause is in another project's service, and a linked child incident there took over).
+- incident `source`: `alert` (an Uptrace alert or a direct `trace_id` call) · `linked` (a child created by the service mesh for the culprit's project) · `scan` (a remediation agent's finding).
+- agent `kind`: `playbook_sweep` (default) · `runbook_variant` · `find_quiet`. agent `trigger`: `on_merge` (default) · `branch_watch` · `schedule`. A manual run is `manual` on the scan run.
+- scan run `status`: `running` · `succeeded` · `partial` (some repos failed) · `failed`.
 - playbook / runbook `status`: `unconfirmed` · `confirmed` · `failing` (3 failed runs in a row; excluded from matching). A run counts toward its runbook's streak when it used one, else toward the playbook's. Built-in playbooks' status never changes from runs.
 - playbook `origin`: `builtin` · `agent` · `human`. runbook `origin`: `agent` · `human` · `migrated` (converted from an old, specific playbook).
 - playbook `category` (and the classifier's): `null_reference` · `timeout` · `database` · `dependency_failure` · `configuration` · `validation` · `resource_exhaustion` · `logic_error` · `other`.
@@ -79,7 +82,7 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | Method | Path | Role | Body / Params | Returns |
 |---|---|---|---|---|
 | GET | `/sre/projects` | member | — | `Project[]` |
-| POST | `/sre/projects` | any user | `{name, github_installation_id, github_repo_owner, github_repo_name, github_default_branch?, uptrace_source_id?, default_execution_mode?, generate_tests?, organization_id?}` | `201 Project & {webhook_secret, webhook_url, uptrace_webhook_url}` — the only time the secret is shown besides rotation. Caller becomes owner. `400` unless the caller has connected that installation (see GitHub connect) and it can reach the repo. `organization_id` defaults to the caller's personal org; another org needs the caller to be its `admin` (`403` otherwise, `404` if not a member). |
+| POST | `/sre/projects` | any user | `{name, github_installation_id, github_repo_owner, github_repo_name, github_default_branch?, uptrace_source_id?, default_execution_mode?, generate_tests?, organization_id?, service_names?}` | `201 Project & {webhook_secret, webhook_url, uptrace_webhook_url}` — the only time the secret is shown besides rotation. Caller becomes owner. `400` unless the caller has connected that installation (see GitHub connect) and it can reach the repo. `organization_id` defaults to the caller's personal org; another org needs the caller to be its `admin` (`403` otherwise, `404` if not a member). |
 | GET | `/sre/projects/{id}` | viewer | — | `Project` |
 | PATCH | `/sre/projects/{id}` | admin (owner for `github_*` / `uptrace_source_id` / `organization_id` / `uptrace_credential_id`) | any subset of the create fields, plus `default_llm_config_id: int\|null` (must be one of the caller's own configs) and `uptrace_credential_id: int\|null` (must belong to the project's org, `400` otherwise; null = pick the org's credential by host) | `Project`; `400` if the installation/repo *changes* and fails the same check as create (unchanged wiring is grandfathered). Moving to another org needs `admin` in the target org. |
 | DELETE | `/sre/projects/{id}` | owner | — | `204` |
@@ -89,7 +92,7 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | PATCH | `/sre/projects/{id}/members/{user_id}` | owner | `{role}` | `Member`, `409` if it would remove the last owner |
 | DELETE | `/sre/projects/{id}/members/{user_id}` | owner, or the member themself | — | `204`, `409` last owner. The member's LLM configs are detached from the project. |
 
-`Project`: `{id, name, role, github_installation_id, github_repo_owner, github_repo_name, github_default_branch, uptrace_source_id, default_execution_mode, default_llm_config_id, generate_tests, platform_tokens_this_month, created_at, github_verified, organization_id, organization_name, uptrace_credential_id, uptrace_fetch_ready}` (`role` is the caller's; `github_verified` is true when an owner has connected the project's installation). `uptrace_fetch_ready` is true when an Uptrace credential resolves for the project: its own `uptrace_credential_id`, else the single org credential whose `host` matches the host in `uptrace_source_id`. `generate_tests` (default `true`, admin-editable): when `false` the fix agent writes no new tests and only runs the repo's existing ones, a cheaper run. It's frozen onto each playbook run when the run starts.
+`Project`: `{id, name, role, github_installation_id, github_repo_owner, github_repo_name, github_default_branch, uptrace_source_id, default_execution_mode, default_llm_config_id, generate_tests, platform_tokens_this_month, created_at, github_verified, organization_id, organization_name, uptrace_credential_id, uptrace_fetch_ready, service_names}` (`role` is the caller's; `github_verified` is true when an owner has connected the project's installation). `uptrace_fetch_ready` is true when an Uptrace credential resolves for the project: its own `uptrace_credential_id`, else the single org credential whose `host` matches the host in `uptrace_source_id`. `generate_tests` (default `true`, admin-editable): when `false` the fix agent writes no new tests and only runs the repo's existing ones, a cheaper run. It's frozen onto each playbook run when the run starts. `service_names: string[]` (default `[]`, admin-editable; each 1–255 chars, at most 50): the Uptrace `service.name`s this repo runs, used by the service mesh when a service doesn't send `vcs.repository.url.full`. A name may belong to only one project per organization (`409` otherwise).
 
 ### Organizations
 
@@ -182,6 +185,52 @@ With runbooks off, every runbook route returns `404`.
 
 `Runbook`: `{id, project_id, playbook_id, title, description, area, keywords: string[], steps: Step[], status, origin, created_by_id, repo_owner, repo_name, service_name, consecutive_failure_count, source_playbook_run_id, created_at, updated_at}`. Steps use the `edit_file` / `run_command` shapes. `repo_owner` / `repo_name` are the project's repo when the runbook was made; `service_name` is the Uptrace `service.name` it was made for (may be `""`).
 
+### Service mesh (with `SRE_SERVICE_MESH_ENABLED=true`; otherwise these return `404`)
+
+How the org's services call each other, from Uptrace's service graph (`GET /internal/v1/service-graph/{project}`) and from each alert's trace. There's one graph per organization and pinned Uptrace project (`uptrace_source_id`). Refreshed every 15 minutes by the worker; edges not seen for `SRE_SERVICE_GRAPH_TTL_DAYS` (default 7) are dropped. See `docs/MESH_AND_REMEDIATION.md`.
+
+| Method | Path | Role | Body / Params | Returns |
+|---|---|---|---|---|
+| GET | `/sre/organizations/{id}/service-graph` | org member | `?source=<uptrace_source_id>` (optional when the org's projects use only one) | `ServiceGraph`; `400` if the org's projects use several Uptrace projects and `source` is missing |
+| POST | `/sre/organizations/{id}/service-graph/refresh` | org admin | `?source=` (optional; default: every source the org's projects use) | `202 {detail}`: the refresh runs on the worker; `503` if Temporal is unreachable |
+
+`ServiceGraph`: `{organization_id, source, refreshed_at, nodes: ServiceNode[], edges: ServiceEdge[]}`. `refreshed_at` is `null` before the first refresh.
+
+`ServiceNode`: `{id, name, kind, project_id, project_name, mapped_by, repo_url, first_seen_at, last_seen_at}`.
+- `kind`: `service` (an instrumented `service.name`) or `system` (a dependency Uptrace names by its system, e.g. `db:postgresql`, or an uninstrumented client such as `<http-client>`).
+- `project_id` / `project_name`: the project this service maps to, or `null`. Only projects in this org pinned to this `source` are considered. `mapped_by`: `vcs_attr` (the service's `vcs.repository.url.full` matches the project's GitHub repo), `service_names` (listed on the project), or `""` (unmapped). `repo_url` is the last `vcs.repository.url.full` seen, or `""`.
+
+`ServiceEdge`: `{id, client_id, server_id, type, count, error_count, error_rate, duration_avg_ms, duration_max_ms, rate_per_min, first_seen_at, last_seen_at}`. `client_id` / `server_id` are `ServiceNode.id`s; `type` is Uptrace's edge type (`http`, `db`, `messaging`, `rpc`, …). Counts and durations cover the last refresh window (1 hour).
+
+**Root cause and linked incidents.** With the mesh on, each incident whose telemetry has a `trace_id` walks that trace right after the telemetry fetch (`localize_root_cause`, no LLM). The culprit is the deepest error span with no failing children (the earliest one if several), and it's stored as `IncidentRun.root_cause`. If the culprit's service maps to **another** project in the same org with the same `uptrace_source_id`, a **linked child** incident starts in that project (`source: "linked"`, `parent_incident_run_id` set, telemetry taken from the culprit span, workflow id `sre-incident-{child project}-linked-{parent run id}`). The child runs under its own project's execution mode, playbooks, runbooks and models. The parent ends as `delegated`. Otherwise the incident carries on in its own project, and its diagnosis names the culprit. Nothing about the child is visible to people who aren't members of its project, except `root_cause.project_id` on the parent.
+
+**Neighbour repos.** When a fix runs for a service that has mapped neighbours in the graph (services that call it or that it calls, seen in the last TTL window), up to `SRE_MAX_NEIGHBOUR_REPOS` (default 3, `0` = off) of their repos are cloned **read-only** into the sandbox at `/neighbours/<owner>-<repo>` (default branch, files only, no git metadata). Only neighbours on the **same GitHub App installation** as the project being fixed are used, so the agent never reads, and can't copy into this repo's PR, code from a GitHub account this repo doesn't share. A neighbour that fails to clone is left out. Only the project's own repo is writable, and only it is committed or pushed.
+
+### Remediation agents (with `SRE_REMEDIATION_AGENTS_ENABLED=true`; otherwise these return `404`)
+
+Agents an org admin starts to look for bugs across the org's repos before they alert. Each scan run scans its repos (one activity per repo, at most 2 at once) and turns each finding into an incident with `source: "scan"` that goes through the usual pipeline. See `docs/MESH_AND_REMEDIATION.md`.
+
+| Method | Path | Role | Body / Params | Returns |
+|---|---|---|---|---|
+| GET | `/sre/organizations/{id}/agents` | org member | — | `RemediationAgent[]` |
+| POST | `/sre/organizations/{id}/agents` | org admin | `{name, kind?, trigger?, schedule_cron?, branch_pattern?, project_ids?, playbook_ids?, execution_mode?, max_findings_per_repo?, monthly_token_budget?, enabled?}` | `201 RemediationAgent`; `400` for a project outside the org, a playbook that isn't a built-in or the org's own, `schedule` without a valid 5-field `schedule_cron`, `branch_watch` without `branch_pattern`, or `execution_mode: "autonomous"`; `409` duplicate name; `503` if the agent's Temporal Schedule can't be updated (nothing is saved) |
+| GET | `/sre/agents/{id}` | org member | — | `RemediationAgent` |
+| PATCH | `/sre/agents/{id}` | org admin | any subset of the create fields | `RemediationAgent`, same `400`/`409`/`503`s. The Schedule follows `trigger`, `schedule_cron` and `enabled`. |
+| DELETE | `/sre/agents/{id}` | org admin | — | `204`; its scan runs go too, and the incidents they created stay (`scan_run_id` becomes `null`). `503` if its Schedule can't be removed |
+| POST | `/sre/agents/{id}/run` | org admin | — | `202 ScanRun` (trigger `manual`, every covered project's default branch, whole repo); `409` if the agent is disabled or already has a running scan; `503` if Temporal is unreachable (no scan run is kept) |
+| GET | `/sre/agents/{id}/scan-runs` | org member | `?page=1&page_size=20` | `{scan_runs: ScanRun[], total}` |
+| GET | `/sre/scan-runs/{id}` | org member | — | `ScanRun` |
+
+`RemediationAgent`: `{id, organization_id, name, kind, trigger, schedule_cron, branch_pattern, project_ids, playbook_ids, execution_mode, max_findings_per_repo, monthly_token_budget, tokens_this_month, enabled, created_by_id, created_at, updated_at, last_scan_run_id}`.
+- `kind` defaults to `playbook_sweep`, `trigger` to `on_merge`. `project_ids: []` means every project in the org, including ones added later. `playbook_ids: []` means every non-failing playbook each project can see (only `playbook_sweep` reads it).
+- `execution_mode`: `advisory_only` or `draft_only`, never `autonomous`. It's a ceiling: a finding's incident runs at the **lower** of this and its evidence cap. `runbook_variant` matches and trace-backed `find_quiet` findings are capped at `draft_only`, everything else at `advisory_only`. Defaults: `draft_only` for `runbook_variant` and `find_quiet`, `advisory_only` for `playbook_sweep`.
+- `max_findings_per_repo` default 3 (1–10). `monthly_token_budget` `0` = no limit. Once the scans' tokens this month reach it, new scans fail fast with an `error_message`. The incidents' own tokens still count toward each project's usual cap.
+- Triggers: `on_merge`: a PR merged into a covered project's default branch (GitHub App `pull_request` event), scanning only the merged diff. `branch_watch`: a push to a branch matching `branch_pattern` (fnmatch, e.g. `release/*`; GitHub App `push` event), scanning only the pushed diff. `schedule`: `schedule_cron` (UTC) through a Temporal Schedule, scanning the whole repo.
+
+`ScanRun`: `{id, agent_id, trigger, trigger_ref, status, repos: [{project_id, project_name, status, finding_count, incident_run_ids, error}], finding_count, usage, error_message, started_at, finished_at}`. `trigger`: `manual` · `on_merge` · `branch_watch` · `schedule`. `trigger_ref` is the merge/push SHA, the scheduled time, or `""`. `repos[].status`: `pending` · `running` · `succeeded` · `failed` · `skipped` (e.g. the diff didn't touch it). `usage` has the same shape as `IncidentRun.usage` and covers the scanner's calls only.
+
+**Findings.** Each finding becomes an `IncidentRun` with `source: "scan"`, `scan_run_id`, `scan_kind`, and `telemetry` holding the scanner's context, `{exception_type (the category), message, location, evidence, service_name, suggested_playbook_id, suggested_runbook_id, evidence_kind}`. The workflow id is `sre-incident-{project}-scan-{kind}-{sha1(category + location)[:16]}`, so a finding already raised is never raised again by any later scan. `confirm_anomaly` checks the finding and ends it as `no_anomaly` if it doesn't hold up.
+
 ### Incident runs & approvals
 
 | Method | Path | Role | Body / Params | Returns |
@@ -191,10 +240,12 @@ With runbooks off, every runbook route returns `404`.
 | GET | `/sre/playbook-runs/{id}` | viewer | — | `PlaybookRun` |
 | POST | `/sre/playbook-runs/{id}/approve` | admin | `{approve: bool}` — `true` marks the PR ready for review, `false` closes it | `PlaybookRun`; `409` if not `pending_approval` or already decided; `503` if the workflow can't be reached (decision released, retry). Fallback only: draft-only runs are normally decided on GitHub (below), and the frontend has no approve button. |
 
-`IncidentRun`: `{id, project_id, trace_id, uptrace_exception_id, temporal_workflow_id, status, classification, matched_playbook_id, created_playbook_id, playbook_run_id, diagnosis_report, error_message, created_at, updated_at, project_name, playbook, pr_url, playbook_run_status, execution_mode, generate_tests, usage, matched_runbook_id, runbook, telemetry}`. It backs the frontend `/dashboard` table.
+`IncidentRun`: `{id, project_id, trace_id, uptrace_exception_id, temporal_workflow_id, status, classification, matched_playbook_id, created_playbook_id, playbook_run_id, diagnosis_report, error_message, created_at, updated_at, project_name, playbook, pr_url, playbook_run_status, execution_mode, generate_tests, usage, matched_runbook_id, runbook, telemetry, source, parent_incident_run_id, root_cause, scan_run_id, scan_kind}`. It backs the frontend `/dashboard` table.
 - `playbook`: `{id, title, status, source}` or `null` — the matched playbook (`source: "matched"`), else the one written from this incident (`"created"`).
 - `runbook`: `{id, title, status, source}` or `null` — the matched runbook (`"matched"`), else the one saved from this incident's successful fix (`"created"`).
 - `telemetry`: what was fetched from Uptrace for the alert, `{exception_type, message, stacktrace, service_name, span_name, trace_id, group_id, attrs}` (truncated; `group_id` is Uptrace's error group), or `{}` when nothing was fetched.
+- `source`: `alert` · `linked` · `scan`. `parent_incident_run_id`: the incident this one was delegated from (`linked` only), else `null`. `scan_run_id` / `scan_kind`: the remediation agent's scan run and kind (`scan` only), else `null` / `""`.
+- `root_cause`: the service mesh's trace walk, `{service_name, span_name, span_id, exception_type, message, path: string[], system, project_id, mapped_by, linked_incident_run_id}` (`path` runs from the trace's root service to the culprit; `project_id` is the culprit's mapped project or `null`; `linked_incident_run_id` is the child incident, if one was started), or `{}` when the mesh is off or the incident has no trace.
 - `pr_url` is `""` when no PR was opened; `playbook_run_status` / `execution_mode` / `generate_tests` (the run's frozen setting) are `null` without a playbook run.
 - `usage`: `{calls, input_tokens, output_tokens, total_tokens, platform_tokens, models: string[], by_step: [{step, provider, model, billed_to, calls, input_tokens, output_tokens}]}` — one entry per LLM call the incident made (a retried activity counts again; those tokens were spent). `step` is the pipeline step, or `diagnosis_report`. Jev calls report the tokens Cloudflare returns.
 
@@ -208,6 +259,8 @@ With runbooks off, every runbook route returns `404`.
 - `reopened`, or `opened` (a new PR from the same branch), on a **`rejected`** run → back up for review: `pending_approval` / `awaiting_approval`, `approved_at` cleared. The workflow listens for this for **30 days** after a rejection, then ends for good.
 
 The PR must be in the project's repo and on the run's `branch_name`.
+
+With `SRE_REMEDIATION_AGENTS_ENABLED=true` the same endpoint also starts remediation agents (subscribe the App to the **Pull request** and **Push** events): a `pull_request` `closed` + **merged** into a project's default branch starts every enabled `on_merge` agent covering that project, and a `push` event on a branch matching an enabled `branch_watch` agent's `branch_pattern` starts that agent, each for that one repo and diff. This applies to any merge or push, not just the agent's own branches, and returns `200 {detail}` naming the scan runs started. A merge is scanned as the merge commit against its first parent (`<sha>^1`); a push as `before..after`, or against the default branch for a new branch. Branch deletions and pushes with no commits are ignored (`202`). A redelivery starts nothing new. `503 {detail}` if Temporal is unreachable: redeliver the webhook.
 
 Returns `200 {detail}` when it changed a run; `202 {detail}` for anything ignored (other events or actions, PRs the agent isn't waiting on, autonomous runs, an event that doesn't fit the run's state — so redeliveries are harmless — or a workflow that has already finished); `401 {detail}` for a bad signature; `503 {detail}` if `GITHUB_APP_WEBHOOK_SECRET` isn't set, or if the workflow can't be reached (the change is released; redeliver the webhook from the App's settings).
 

@@ -33,16 +33,28 @@ class AnomalyChecker:
         ' Reply with JSON only: {"is_anomaly": true|false, "reasoning": "<one paragraph>"}'
     )
 
+    # A remediation agent's finding: there's no alert, only the scanner's claim to check.
+    SCAN_SYSTEM = (
+        "You are an experienced SRE reviewing a possible bug that an automated code scanner "
+        "reported (it did not come from a production alert). Decide whether it is a real bug "
+        "that will cause failures in production, worth an engineer's time. Reject style "
+        "issues, speculative hardening, missing tests, and claims the evidence doesn't "
+        "support. " + UNTRUSTED_NOTICE +
+        ' Reply with JSON only: {"is_anomaly": true|false, "reasoning": "<one paragraph>"}'
+    )
+
     def __init__(self, run: IncidentRun):
         self.run = run
         self.client = client_for(get_llm_config(run.project, PipelineStep.ANOMALY_DOUBLE_CHECK))
 
     def check(self) -> AnomalyResult:
         context = incident_context(self.run)
+        scan = self.run.source == IncidentRun.Source.SCAN
         if isinstance(self.client, JevClient):
             answer = self.client.choose(
                 context,
-                "Is this a real, actionable production anomaly rather than noise?",
+                "Is this reported bug real, and would it cause failures in production?" if scan
+                else "Is this a real, actionable production anomaly rather than noise?",
                 {"yes": "Real, actionable problem", "no": "Noise or expected behavior"},
                 name="anomaly_double_check",
             )
@@ -50,7 +62,8 @@ class AnomalyChecker:
                 is_anomaly=answer.choice == "yes",
                 reasoning=f"Jev answered '{answer.choice}' (p={answer.confidence:.2f})",
             )
-        data = self.client.complete_json(self.SYSTEM, context, name="anomaly_double_check")
+        data = self.client.complete_json(self.SCAN_SYSTEM if scan else self.SYSTEM, context,
+                                         name="anomaly_double_check")
         return AnomalyResult(
             is_anomaly=bool(data.get("is_anomaly")), reasoning=str(data.get("reasoning", ""))
         )

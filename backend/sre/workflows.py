@@ -3,23 +3,30 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ApplicationError
+from temporalio.exceptions import ActivityError, ApplicationError, WorkflowAlreadyStartedError
+from temporalio.workflow import ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():
     from .temporal_types import (
         MAX_ATTEMPTS,
+        MAX_PARALLEL_REPOS,
         ApprovalDecision,
         AnomalyResult,
         AttemptInput,
         AttemptResult,
         Candidates,
         Classification,
+        GraphRefreshInput,
+        GraphTarget,
         IncidentInput,
         JudgeInput,
         JudgeResult,
         PlaybookRunInfo,
         PlaybookRunStatus,
+        RootCauseResult,
         RunInput,
+        ScanFinding,
+        ScanInput,
         SearchInput,
         StatusUpdate,
     )
@@ -35,6 +42,13 @@ IDEMPOTENT_WRITE = READ_ONLY
 AGENT_ATTEMPT = dict(
     start_to_close_timeout=timedelta(minutes=45),
     heartbeat_timeout=timedelta(minutes=10),  # > the sandbox's 5-minute command timeout
+    retry_policy=RetryPolicy(maximum_attempts=1),
+)
+
+# One repo's scan: a read-only agent loop, like a fix attempt but shorter.
+SCAN_ATTEMPT = dict(
+    start_to_close_timeout=timedelta(minutes=30),
+    heartbeat_timeout=timedelta(minutes=10),
     retry_policy=RetryPolicy(maximum_attempts=1),
 )
 
@@ -73,6 +87,13 @@ class IncidentDiagnosisWorkflow:
         # Guarded so workflows started before this activity existed still replay.
         if workflow.patched("uptrace-telemetry-v1"):
             await workflow.execute_activity("fetch_incident_telemetry", inp, **READ_ONLY)
+        if workflow.patched("service-mesh-v1"):
+            cause: RootCauseResult = await workflow.execute_activity(
+                "localize_root_cause", inp, result_type=RootCauseResult, **READ_ONLY
+            )
+            if cause.child_incident_run_id is not None:
+                await self._delegate(cause)
+                return "delegated"
         anomaly: AnomalyResult = await workflow.execute_activity(
             "confirm_anomaly", inp, result_type=AnomalyResult, **READ_ONLY
         )
@@ -133,6 +154,19 @@ class IncidentDiagnosisWorkflow:
             return "advisory_complete"
 
         return await self._execute(inp, info)
+
+    async def _delegate(self, cause: RootCauseResult) -> None:
+        """Starts the culprit project's incident. Abandoned, not awaited: it has its own
+        approvals and may wait on them for days."""
+        try:
+            await workflow.start_child_workflow(
+                IncidentDiagnosisWorkflow.run,
+                IncidentInput(cause.child_incident_run_id, cause.child_project_id),
+                id=cause.child_workflow_id,
+                parent_close_policy=ParentClosePolicy.ABANDON,
+            )
+        except WorkflowAlreadyStartedError:
+            pass  # a retried parent: the child already runs
 
     async def _execute(self, inp: IncidentInput, info: PlaybookRunInfo) -> str:
         feedback = ""
@@ -210,4 +244,71 @@ class IncidentDiagnosisWorkflow:
             "set_playbook_run_status",
             PlaybookRunStatus(info.playbook_run_id, status),
             **IDEMPOTENT_WRITE,
+        )
+
+
+@workflow.defn
+class ServiceGraphRefreshWorkflow:
+    """Copies Uptrace's service graph into every (org, Uptrace project) graph, one at a
+    time. Run every 15 minutes by a Temporal Schedule (see worker.py) and on demand."""
+
+    @workflow.run
+    async def run(self, inp: GraphRefreshInput) -> int:
+        targets: list[GraphTarget] = await workflow.execute_activity(
+            "list_graph_targets", inp, result_type=list[GraphTarget], **READ_ONLY
+        )
+        refreshed = 0
+        for target in targets:
+            try:
+                if await workflow.execute_activity(
+                    "refresh_service_graph", target, result_type=bool, **READ_ONLY
+                ):
+                    refreshed += 1
+            except ActivityError:
+                workflow.logger.warning("service graph refresh failed for %s", target)
+        return refreshed
+
+
+@workflow.defn
+class ActiveRemediationWorkflow:
+    """A remediation agent's scan run: scans each repo (at most MAX_PARALLEL_REPOS at once)
+    and starts the incident pipeline for every new finding. Findings' pipelines are
+    abandoned children: they can wait days on a draft PR's review."""
+
+    @workflow.run
+    async def run(self, inp: ScanInput) -> str:
+        scan_run_id = inp.scan_run_id
+        if not scan_run_id:
+            scan_run_id = await workflow.execute_activity(
+                "create_scheduled_scan", inp, result_type=int, **IDEMPOTENT_WRITE
+            )
+            if not scan_run_id:
+                return "skipped"
+        repo_ids: list[int] = await workflow.execute_activity(
+            "list_scan_repos", scan_run_id, result_type=list[int], **READ_ONLY
+        )
+        slots = asyncio.Semaphore(MAX_PARALLEL_REPOS)
+
+        async def scan(repo_id: int) -> None:
+            async with slots:
+                try:
+                    findings: list[ScanFinding] = await workflow.execute_activity(
+                        "scan_repository", repo_id, result_type=list[ScanFinding], **SCAN_ATTEMPT
+                    )
+                except ActivityError:
+                    return  # the activity marked the repo failed; finish_scan counts it
+            for finding in findings:
+                try:
+                    await workflow.start_child_workflow(
+                        IncidentDiagnosisWorkflow.run,
+                        IncidentInput(finding.incident_run_id, finding.project_id),
+                        id=finding.workflow_id,
+                        parent_close_policy=ParentClosePolicy.ABANDON,
+                    )
+                except WorkflowAlreadyStartedError:
+                    pass
+
+        await asyncio.gather(*(scan(repo_id) for repo_id in repo_ids))
+        return await workflow.execute_activity(
+            "finish_scan", scan_run_id, result_type=str, **IDEMPOTENT_WRITE
         )

@@ -15,7 +15,12 @@ from temporalio.client import Client  # noqa: E402
 from temporalio.worker import Worker  # noqa: E402
 
 from sre.activities import ALL_ACTIVITIES  # noqa: E402
-from sre.workflows import IncidentDiagnosisWorkflow  # noqa: E402
+from sre.temporal_client import ensure_schedules  # noqa: E402
+from sre.workflows import (  # noqa: E402
+    ActiveRemediationWorkflow,
+    IncidentDiagnosisWorkflow,
+    ServiceGraphRefreshWorkflow,
+)
 
 MAX_CONCURRENT_ACTIVITIES = 8
 
@@ -23,11 +28,13 @@ MAX_CONCURRENT_ACTIVITIES = 8
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     client = await Client.connect(settings.TEMPORAL_ADDRESS, namespace=settings.TEMPORAL_NAMESPACE)
+    await ensure_schedules(client)
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_ACTIVITIES) as executor:
         worker = Worker(
             client,
             task_queue=settings.TEMPORAL_TASK_QUEUE,
-            workflows=[IncidentDiagnosisWorkflow],
+            workflows=[IncidentDiagnosisWorkflow, ServiceGraphRefreshWorkflow,
+                       ActiveRemediationWorkflow],
             activities=ALL_ACTIVITIES,
             activity_executor=executor,
             max_concurrent_activities=MAX_CONCURRENT_ACTIVITIES,

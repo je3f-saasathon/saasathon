@@ -47,6 +47,7 @@ const steps: Record<PipelineStep, string> = {
   playbook_similarity_judge: "Playbook similarity judge",
   playbook_creation: "Playbook creation",
   playbook_execution: "Playbook execution (agent)",
+  repository_scan: "Repository scan (remediation agents)",
 };
 
 // Mirrors backend sre/llm/resolve.py: Jev only answers choice questions.

@@ -2,7 +2,10 @@ from datetime import datetime
 
 from ninja import Schema
 
-from .models import ExecutionMode, LLMProvider, OrgRole, PipelineStep, Playbook, ProjectRole, Runbook
+from .models import (
+    AgentKind, AgentTrigger, ExecutionMode, LLMProvider, OrgRole, PipelineStep, Playbook, ProjectRole,
+    Runbook, ScanTrigger,
+)
 
 
 class UptraceWebhookIn(Schema):
@@ -45,6 +48,8 @@ class ProjectOut(Schema):
     uptrace_credential_id: int | None
     # True when an Uptrace credential resolves (own, else the org's for the pinned host).
     uptrace_fetch_ready: bool
+    # Uptrace service.names this repo runs (service mesh fallback mapping).
+    service_names: list[str]
 
 
 class ProjectCreatedOut(ProjectOut):
@@ -74,6 +79,7 @@ class ProjectCreateIn(Schema):
     generate_tests: bool = True
     # Defaults to the caller's personal org.
     organization_id: int | None = None
+    service_names: list[str] = []
 
 
 class ProjectUpdateIn(Schema):
@@ -88,6 +94,7 @@ class ProjectUpdateIn(Schema):
     generate_tests: bool | None = None
     organization_id: int | None = None
     uptrace_credential_id: int | None = None
+    service_names: list[str] | None = None
 
 
 class OrganizationOut(Schema):
@@ -371,6 +378,11 @@ class IncidentRunOut(Schema):
     matched_runbook_id: int | None
     runbook: PlaybookBriefOut | None  # matched, else saved from this incident's fix
     telemetry: dict
+    source: str  # alert | linked | scan
+    parent_incident_run_id: int | None
+    root_cause: dict  # the service mesh's trace walk; {} when not run
+    scan_run_id: int | None
+    scan_kind: str
 
 
 class IncidentRunListOut(Schema):
@@ -411,3 +423,115 @@ class PlatformOut(Schema):
     triage_model: str  # "jev", or the fast chat model
     strong_model: str
     monthly_token_cap: int  # per project; 0 = unlimited
+
+
+class ServiceNodeOut(Schema):
+    id: int
+    name: str
+    kind: str  # service | system
+    project_id: int | None
+    project_name: str
+    mapped_by: str  # vcs_attr | service_names | ""
+    repo_url: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class ServiceEdgeOut(Schema):
+    id: int
+    client_id: int
+    server_id: int
+    type: str
+    count: int
+    error_count: int
+    error_rate: float
+    duration_avg_ms: float
+    duration_max_ms: float
+    rate_per_min: float
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class ServiceGraphOut(Schema):
+    organization_id: int
+    source: str
+    refreshed_at: datetime | None
+    nodes: list[ServiceNodeOut]
+    edges: list[ServiceEdgeOut]
+
+
+class AgentIn(Schema):
+    name: str
+    kind: AgentKind = AgentKind.PLAYBOOK_SWEEP
+    trigger: AgentTrigger = AgentTrigger.ON_MERGE
+    schedule_cron: str = ""
+    branch_pattern: str = ""
+    project_ids: list[int] = []  # [] = every project in the org
+    playbook_ids: list[int] = []  # playbook_sweep; [] = every visible playbook
+    execution_mode: ExecutionMode | None = None  # default depends on kind
+    max_findings_per_repo: int = 3
+    monthly_token_budget: int = 0
+    enabled: bool = True
+
+
+class AgentUpdateIn(Schema):
+    name: str | None = None
+    kind: AgentKind | None = None
+    trigger: AgentTrigger | None = None
+    schedule_cron: str | None = None
+    branch_pattern: str | None = None
+    project_ids: list[int] | None = None
+    playbook_ids: list[int] | None = None
+    execution_mode: ExecutionMode | None = None
+    max_findings_per_repo: int | None = None
+    monthly_token_budget: int | None = None
+    enabled: bool | None = None
+
+
+class AgentOut(Schema):
+    id: int
+    organization_id: int
+    name: str
+    kind: AgentKind
+    trigger: AgentTrigger
+    schedule_cron: str
+    branch_pattern: str
+    project_ids: list[int]
+    playbook_ids: list[int]
+    execution_mode: ExecutionMode
+    max_findings_per_repo: int
+    monthly_token_budget: int
+    tokens_this_month: int
+    enabled: bool
+    created_by_id: int | None
+    created_at: datetime
+    updated_at: datetime
+    last_scan_run_id: int | None
+
+
+class ScanRepoOut(Schema):
+    project_id: int
+    project_name: str
+    status: str
+    finding_count: int
+    incident_run_ids: list[int]
+    error: str
+
+
+class ScanRunOut(Schema):
+    id: int
+    agent_id: int
+    trigger: ScanTrigger
+    trigger_ref: str
+    status: str
+    repos: list[ScanRepoOut]
+    finding_count: int
+    usage: UsageOut
+    error_message: str
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class ScanRunListOut(Schema):
+    scan_runs: list[ScanRunOut]
+    total: int

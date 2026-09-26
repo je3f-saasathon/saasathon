@@ -33,8 +33,9 @@ class _Step:
 
 
 @contextmanager
-def trace_step(step: str, *, project_id: int, incident_run_id: int):
-    """One Langfuse trace per LLM-calling activity, grouped by incident run as the session."""
+def trace_step(step: str, *, project_id: int, incident_run_id: int, session_id: str = ""):
+    """One Langfuse trace per LLM-calling activity, grouped by incident run as the session
+    (or `session_id`, e.g. a remediation agent's scan run)."""
     lf = _langfuse()
     if lf is None:
         yield _Noop()
@@ -43,7 +44,7 @@ def trace_step(step: str, *, project_id: int, incident_run_id: int):
 
     with propagate_attributes(
         trace_name=f"sre.{step}",
-        session_id=f"incident-run-{incident_run_id}",
+        session_id=session_id or f"incident-run-{incident_run_id}",
         tags=["sre", step, f"project:{project_id}"],
         metadata={"project_id": str(project_id), "incident_run_id": str(incident_run_id)},
     ):
