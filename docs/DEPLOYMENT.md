@@ -19,11 +19,11 @@ on `main`. Backend and frontend deploy independently via `deploy-backend.yml` /
 3. Create a Cloudflare Tunnel dedicated to this project (Zero Trust dashboard
    → Networks → Tunnels → Create). It must live on the same Cloudflare
    account that owns the app's domain zone — a tunnel can't route to a zone
-   on a different account. Set its public hostnames: `dev.andrewplescan.com`
-   -> frontend port, `api-dev.andrewplescan.com` -> backend port (note: no
-   `api.dev...` — Cloudflare's free Universal SSL only covers one level of
-   subdomain, so a second-level subdomain like `api.dev.andrewplescan.com`
-   fails TLS; use a hyphenated single-level name instead).
+   on a different account. Set its public hostnames: `buggly.dev`
+   -> frontend port, `api.buggly.dev` -> backend port (keep hostnames one
+   level deep — Cloudflare's free Universal SSL only covers one level of
+   subdomain, so a second-level subdomain like `api.staging.buggly.dev`
+   fails TLS; use a hyphenated single-level name like `api-staging` instead).
 4. Run the connector as a systemd service on the prod host using that
    tunnel's install command from the dashboard (`cloudflared service
    install <token>`), so it survives reboot. This is a separate cloudflared
@@ -64,7 +64,7 @@ on `main`. Backend and frontend deploy independently via `deploy-backend.yml` /
    LANGFUSE_PUBLIC_KEY=
    LANGFUSE_SECRET_KEY=
    ```
-3. On the GitHub App (permissions: Contents read/write, Pull requests read/write), add the Callback URL `https://api-dev.andrewplescan.com/api/sre/github/callback` and follow the rest of `docs/AUTH.md` ("GitHub App (SRE agent)").
+3. On the GitHub App (permissions: Contents read/write, Pull requests read/write), add the Callback URL `https://api.buggly.dev/api/sre/github/callback` and follow the rest of `docs/AUTH.md` ("GitHub App (SRE agent)").
 4. Re-run the deploy (`gh workflow run deploy-backend.yml`) or push to `main`.
 
 Roll back the worker the same way as the backend, since it ships from the same image. In-flight workflows resume on the new worker. If a deploy changes the workflow's control flow, drain running workflows first, because Temporal requires deterministic replay.

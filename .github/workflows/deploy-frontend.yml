@@ -33,7 +33,7 @@ jobs:
       - name: Health check
         run: |
           url="http://localhost:${FRONTEND_PORT:-5173}/"
-          host_header="dev.andrewplescan.com"
+          host_header="buggly.dev"
           echo "checking $url with Host: $host_header"
           attempt=0
           max_attempts=15

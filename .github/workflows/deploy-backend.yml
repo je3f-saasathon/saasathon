@@ -37,7 +37,7 @@ jobs:
       - name: Health check
         run: |
           url="http://localhost:${BACKEND_PORT:-8000}/api/health"
-          host_header="api-dev.andrewplescan.com"
+          host_header="api.buggly.dev"
           echo "checking $url with Host: $host_header"
           attempt=0
           max_attempts=15
