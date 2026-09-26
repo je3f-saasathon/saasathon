@@ -480,3 +480,94 @@ def test_approve_is_released_if_signal_fails(api_for, make_user, make_project, m
 
 def test_sre_endpoints_require_auth(client):
     assert client.get("/api/sre/projects").status_code == 401
+
+
+GITHUB_SECRET = "gh-webhook-secret"
+
+
+def post_github(client, body, event="pull_request", secret=GITHUB_SECRET):
+    raw = json.dumps(body).encode()
+    signature = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    return client.post("/api/sre/github/webhook", data=raw, content_type="application/json",
+                       HTTP_X_HUB_SIGNATURE_256=signature, HTTP_X_GITHUB_EVENT=event)
+
+
+def pr_closed(playbook_run, merged, repo="acme/shop"):
+    return {"action": "closed", "repository": {"full_name": repo},
+            "pull_request": {"merged": merged, "html_url": "https://github.com/acme/shop/pull/9",
+                             "head": {"ref": playbook_run.branch_name}}}
+
+
+@pytest.fixture
+def github_secret(settings):
+    settings.GITHUB_APP_WEBHOOK_SECRET = GITHUB_SECRET
+
+
+def pending_with_branch(project, **kwargs):
+    playbook_run = make_pending_run(project, **kwargs)
+    playbook_run.branch_name = "sre/incident-1-a1"
+    playbook_run.save()
+    return playbook_run
+
+
+@pytest.mark.parametrize("merged", [True, False])
+def test_github_merge_approves_and_close_rejects(client, make_user, make_project, temporal_calls,
+                                                 github_secret, merged):
+    playbook_run = pending_with_branch(make_project(make_user()))
+    resp = post_github(client, pr_closed(playbook_run, merged))
+    assert resp.status_code == 200
+    wid, decision = temporal_calls["signal"][0]
+    assert wid == playbook_run.incident_run.temporal_workflow_id
+    assert (decision.approve, decision.via_github, decision.user_id) == (merged, True, 0)
+    playbook_run.refresh_from_db()
+    assert playbook_run.approved_at is not None and playbook_run.approved_by is None
+    assert playbook_run.pr_url == "https://github.com/acme/shop/pull/9"
+
+    # A redelivery (or a later in-app decision) doesn't decide twice.
+    assert post_github(client, pr_closed(playbook_run, merged)).status_code == 202
+    assert len(temporal_calls["signal"]) == 1
+
+
+def test_github_webhook_rejects_bad_signature_and_unconfigured(client, make_user, make_project,
+                                                               temporal_calls, settings):
+    playbook_run = pending_with_branch(make_project(make_user()))
+    settings.GITHUB_APP_WEBHOOK_SECRET = ""
+    assert post_github(client, pr_closed(playbook_run, True)).status_code == 503
+    settings.GITHUB_APP_WEBHOOK_SECRET = GITHUB_SECRET
+    assert post_github(client, pr_closed(playbook_run, True), secret="wrong").status_code == 401
+    assert temporal_calls["signal"] == []
+
+
+def test_github_webhook_ignores_other_events_and_prs(client, make_user, make_project,
+                                                    temporal_calls, github_secret):
+    project = make_project(make_user())
+    playbook_run = pending_with_branch(project)
+    body = pr_closed(playbook_run, True)
+    assert post_github(client, {"zen": "hi"}, event="ping").status_code == 202
+    assert post_github(client, {**body, "action": "opened"}).status_code == 202
+    assert post_github(client, pr_closed(playbook_run, True, repo="other/repo")).status_code == 202
+    body["pull_request"]["head"]["ref"] = "someone-elses-branch"
+    assert post_github(client, body).status_code == 202
+    # Autonomous runs don't wait for a decision.
+    PlaybookRun.objects.filter(id=playbook_run.id).update(execution_mode="autonomous")
+    assert post_github(client, pr_closed(playbook_run, True)).status_code == 202
+    assert temporal_calls["signal"] == []
+
+
+def test_github_decision_before_run_is_pending_still_counts(client, make_user, make_project,
+                                                             temporal_calls, github_secret):
+    playbook_run = pending_with_branch(make_project(make_user()), status=PlaybookRun.Status.RUNNING)
+    assert post_github(client, pr_closed(playbook_run, True)).status_code == 200
+    assert len(temporal_calls["signal"]) == 1
+
+
+def test_github_decision_is_released_if_signal_fails(client, make_user, make_project,
+                                                     monkeypatch, github_secret):
+    def down(*args):
+        raise RuntimeError("unreachable")
+
+    monkeypatch.setattr(temporal_client, "signal_approval", down)
+    playbook_run = pending_with_branch(make_project(make_user()))
+    assert post_github(client, pr_closed(playbook_run, True)).status_code == 503
+    playbook_run.refresh_from_db()
+    assert playbook_run.approved_at is None  # a redelivery can decide

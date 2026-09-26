@@ -16,8 +16,9 @@ SAFE_GIT_CONFIG = [
 
 AWAITING_APPROVAL_PREFIX = "[Awaiting approval] "
 AWAITING_APPROVAL_NOTE = (
-    "> **Awaiting approval in the SRE agent.** This repo's plan doesn't allow draft PRs, "
-    "so this PR is marked by its title instead. Don't merge until it's approved.\n\n"
+    "> **Fix proposed by the SRE agent, awaiting review.** This repo's plan doesn't allow "
+    "draft PRs, so this PR is marked by its title instead. Merging it accepts the fix; "
+    "closing it without merging rejects it.\n\n"
 )
 
 

@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import logging
 import re
 import secrets
@@ -18,6 +19,7 @@ from . import temporal_client
 from .llm import platform
 from .llm.resolve import provider_supports_step
 from .models import (
+    ExecutionMode,
     GitHubInstallation,
     IncidentRun,
     LLMProvider,
@@ -703,3 +705,58 @@ def approve_playbook_run(request: HttpRequest, playbook_run_id: int, payload: Ap
         return 503, {"detail": "Could not reach the workflow; try again"}
     playbook_run.refresh_from_db()
     return 200, _playbook_run_out(playbook_run)
+
+
+def _github_signature_valid(request: HttpRequest) -> bool:
+    secret = settings.GITHUB_APP_WEBHOOK_SECRET.encode()
+    expected = "sha256=" + hmac.new(secret, request.body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(request.headers.get("X-Hub-Signature-256", ""), expected)
+
+
+@router.post("/github/webhook", auth=None, response={200: dict, 202: dict, 401: dict, 503: dict})
+def github_webhook(request: HttpRequest):
+    """The GitHub App's webhook. A draft-only run is decided on GitHub: merging its PR
+    approves the fix, closing it unmerged rejects it. Everything else is acknowledged
+    and ignored."""
+    if not settings.GITHUB_APP_WEBHOOK_SECRET:
+        return 503, {"detail": "GitHub webhooks are not configured"}
+    if not _github_signature_valid(request):
+        return 401, {"detail": "Invalid webhook signature"}
+
+    event = request.headers.get("X-GitHub-Event", "")
+    payload = json.loads(request.body or b"{}")
+    if event != "pull_request" or payload.get("action") != "closed":
+        return 202, {"detail": f"Ignored: {event or 'unknown'} {payload.get('action') or ''}".strip()}
+
+    pr = payload.get("pull_request") or {}
+    owner, _, name = str((payload.get("repository") or {}).get("full_name", "")).partition("/")
+    playbook_run = PlaybookRun.objects.select_related("incident_run").filter(
+        branch_name=(pr.get("head") or {}).get("ref", ""),
+        execution_mode=ExecutionMode.DRAFT_ONLY,
+        incident_run__project__github_repo_owner__iexact=owner,
+        incident_run__project__github_repo_name__iexact=name,
+    ).first()
+    if playbook_run is None:
+        return 202, {"detail": "Ignored: not a pull request the agent is waiting on"}
+
+    merged = bool(pr.get("merged"))
+    # Conditional update, as in approve: a redelivery or an in-app decision can't decide twice.
+    # RUNNING too: the PR can close before the workflow has marked the run pending.
+    claimed = PlaybookRun.objects.filter(
+        id=playbook_run.id, approved_at__isnull=True,
+        status__in=[PlaybookRun.Status.RUNNING, PlaybookRun.Status.PENDING_APPROVAL],
+    ).update(approved_by=None, approved_at=timezone.now(),
+             pr_url=pr.get("html_url") or playbook_run.pr_url)
+    if not claimed:
+        return 202, {"detail": "Ignored: this run was already decided"}
+    try:
+        temporal_client.signal_approval(
+            playbook_run.incident_run.temporal_workflow_id,
+            ApprovalDecision(approve=merged, user_id=0, via_github=True),
+        )
+    except Exception:
+        logger.exception("could not signal workflow for playbook run %s", playbook_run.id)
+        PlaybookRun.objects.filter(id=playbook_run.id).update(approved_at=None)
+        # GitHub doesn't retry; redeliver from the App's "Advanced" settings.
+        return 503, {"detail": "Could not reach the workflow; redeliver this webhook"}
+    return 200, {"detail": "Approved: PR merged" if merged else "Rejected: PR closed without merging"}

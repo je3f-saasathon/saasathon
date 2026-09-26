@@ -126,14 +126,16 @@ class IncidentDiagnosisWorkflow:
             await self._status(inp, "awaiting_approval")
             await workflow.wait_condition(lambda: self._decision is not None)
             if not self._decision.approve:
-                await workflow.execute_activity(
-                    "close_pull_request", info.playbook_run_id, **IDEMPOTENT_WRITE
-                )
+                if not self._decision.via_github:
+                    await workflow.execute_activity(
+                        "close_pull_request", info.playbook_run_id, **IDEMPOTENT_WRITE
+                    )
                 await self._run_status(info, "rejected")
                 return "failed"
-            await workflow.execute_activity(
-                "open_pull_request", info.playbook_run_id, result_type=str, **IDEMPOTENT_WRITE
-            )
+            if not self._decision.via_github:
+                await workflow.execute_activity(
+                    "open_pull_request", info.playbook_run_id, result_type=str, **IDEMPOTENT_WRITE
+                )
 
         await self._run_status(info, "succeeded")
         await workflow.execute_activity(

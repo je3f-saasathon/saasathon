@@ -160,7 +160,11 @@ pick per-step defaults. The client code exists for all three, but **only OpenAI 
   secret; "Any account" for prod), set `GITHUB_APP_SLUG` / `GITHUB_APP_CLIENT_ID` /
   `GITHUB_APP_CLIENT_SECRET`, recreate the backend container and run it once over the tunnel.
   Residual risk (state not bound to a cookie) is in `docs/tradeoffs.md` §4.
-- An approve/reject UI in the frontend (approval is API-only today). `/dashboard` is wired to
+- Draft-only approval happens on GitHub: `POST /api/sre/github/webhook` (the App's webhook,
+  `GITHUB_APP_WEBHOOK_SECRET`, "Pull request" events) signals the workflow when the draft PR
+  is merged (approve) or closed unmerged (reject), with `via_github=True` so the workflow
+  doesn't touch the PR again. The dashboard links to the PR ("Review on GitHub"); the in-app
+  `/approve` endpoint remains as a fallback with no UI. Not yet live-tested against GitHub. `/dashboard` is wired to
   `/api/sre/incident-runs` (PR link, playbook, models, tokens; diagnosis behind a click).
 - LLM usage: each call writes an `LLMUsage` row (tokens, model, step) through `llm/usage.py`'s
   scope, which `activities.llm_step` opens. Runs from before that are filled from Langfuse by

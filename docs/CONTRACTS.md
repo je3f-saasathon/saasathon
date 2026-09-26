@@ -139,14 +139,20 @@ When a project hasn't picked a config for a step, it runs on our keys (server en
 | GET | `/sre/incident-runs` | member (across all your projects) | `?project_id=&status=&page=1&page_size=20` | `{runs: IncidentRun[], total}` |
 | GET | `/sre/incident-runs/{id}` | viewer | — | `IncidentRun` |
 | GET | `/sre/playbook-runs/{id}` | viewer | — | `PlaybookRun` |
-| POST | `/sre/playbook-runs/{id}/approve` | admin | `{approve: bool}` — `true` marks the PR ready for review, `false` closes it | `PlaybookRun`; `409` if not `pending_approval` or already decided; `503` if the workflow can't be reached (decision released, retry) |
+| POST | `/sre/playbook-runs/{id}/approve` | admin | `{approve: bool}` — `true` marks the PR ready for review, `false` closes it | `PlaybookRun`; `409` if not `pending_approval` or already decided; `503` if the workflow can't be reached (decision released, retry). Fallback only: draft-only runs are normally decided on GitHub (below), and the frontend has no approve button. |
 
 `IncidentRun`: `{id, project_id, trace_id, uptrace_exception_id, temporal_workflow_id, status, classification, matched_playbook_id, created_playbook_id, playbook_run_id, diagnosis_report, error_message, created_at, updated_at, project_name, playbook, pr_url, playbook_run_status, execution_mode, generate_tests, usage}`. It backs the frontend `/dashboard` table.
 - `playbook`: `{id, title, status, source}` or `null` — the matched playbook (`source: "matched"`), else the one written from this incident (`"created"`).
 - `pr_url` is `""` when no PR was opened; `playbook_run_status` / `execution_mode` / `generate_tests` (the run's frozen setting) are `null` without a playbook run.
 - `usage`: `{calls, input_tokens, output_tokens, total_tokens, platform_tokens, models: string[], by_step: [{step, provider, model, billed_to, calls, input_tokens, output_tokens}]}` — one entry per LLM call the incident made (a retried activity counts again; those tokens were spent). `step` is the pipeline step, or `diagnosis_report`. Jev calls report the tokens Cloudflare returns.
 
-`PlaybookRun`: `{id, incident_run_id, playbook_id, execution_mode, generate_tests, status, approved_by_id, approved_at, pr_url, branch_name, attempts: Attempt[]}` where `Attempt` is `{attempt_number, outcome, summary, error_output, generated_steps, branch_name, langfuse_trace_id, created_at}` (up to 3; each re-plans from the previous attempt's error). `approved_by_id` / `approved_at` record whoever decided, for approvals and rejections alike.
+`PlaybookRun`: `{id, incident_run_id, playbook_id, execution_mode, generate_tests, status, approved_by_id, approved_at, pr_url, branch_name, attempts: Attempt[]}` where `Attempt` is `{attempt_number, outcome, summary, error_output, generated_steps, branch_name, langfuse_trace_id, created_at}` (up to 3; each re-plans from the previous attempt's error). `approved_by_id` / `approved_at` record whoever decided, for approvals and rejections alike; `approved_by_id` is `null` when the decision was made on GitHub.
+
+### GitHub webhook (called by the GitHub App)
+
+`POST /sre/github/webhook` — no bearer token; GitHub signs the body with the App's webhook secret (`X-Hub-Signature-256`, `GITHUB_APP_WEBHOOK_SECRET`). This is how a **draft-only** run is approved: the agent opens a draft PR, and on `pull_request` `closed` for that PR's branch, **merged** approves the fix (the run and incident become `succeeded` and the playbook's outcome is recorded) and **closed without merging** rejects it (`rejected` / `failed`). The PR must be in the project's repo and on the run's `branch_name`.
+
+Returns `200 {detail}` when it decided a run; `202 {detail}` for anything ignored (other events or actions, PRs the agent isn't waiting on, autonomous runs, a run already decided — so redeliveries are harmless); `401 {detail}` for a bad signature; `503 {detail}` if `GITHUB_APP_WEBHOOK_SECRET` isn't set, or if the workflow can't be reached (the decision is released; redeliver the webhook from the App's settings).
 
 ## Errors
 

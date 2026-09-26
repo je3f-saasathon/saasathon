@@ -39,12 +39,19 @@ can point a project at another account's installation. In the App's settings
   Setup URL empty; GitHub ignores it when this box is ticked.
 - **Client secrets → Generate a new client secret.**
 - Prod only: **Where can this GitHub App be installed? → Any account**, so customers can install it.
+- **Webhook**: tick **Active**, set **Webhook URL** to `{backend}/api/sre/github/webhook` and
+  a **Webhook secret** (any long random string). Under **Permissions & events → Subscribe to
+  events**, tick **Pull request**. This is how draft-only runs are approved: merging the
+  agent's PR approves the fix, closing it unmerged rejects it. GitHub must be able to reach
+  the URL, so use the tunnel (or prod) rather than plain `localhost`. GitHub doesn't retry
+  failed deliveries; redeliver them from the App's **Advanced** tab.
 
 Then set these in `backend/.env` (or `.env.prod`) and recreate the backend container:
 
 - `GITHUB_APP_SLUG`: the `<slug>` in `https://github.com/apps/<slug>`
 - `GITHUB_APP_CLIENT_ID`: the App's Client ID (not the App ID)
 - `GITHUB_APP_CLIENT_SECRET`: the secret you just generated
+- `GITHUB_APP_WEBHOOK_SECRET`: the webhook secret you set above
 
 The callback asks GitHub (with the user's token, which is never stored) for
 `/user/installations` and records the ones for this App, replacing that user's previous list.
