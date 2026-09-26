@@ -10,6 +10,7 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from sre.temporal_types import (
+    UptraceSyncInput,
     AnomalyResult,
     ApprovalDecision,
     AttemptInput,
@@ -30,7 +31,9 @@ from sre.temporal_types import (
     SearchInput,
     StatusUpdate,
 )
-from sre.workflows import ActiveRemediationWorkflow, IncidentDiagnosisWorkflow, ServiceGraphRefreshWorkflow
+from sre.workflows import (
+    ActiveRemediationWorkflow, IncidentDiagnosisWorkflow, ServiceGraphRefreshWorkflow, UptraceSyncWorkflow,
+)
 
 
 @dataclass
@@ -483,3 +486,49 @@ def test_a_scheduled_run_creates_its_scan_run_and_skips_a_gone_agent():
     assert (result, log["created"], log["finished"]) == ("succeeded", [9], [77])
     result, log, _ = run_scan(ScanInput(agent_id=404), [], {})
     assert (result, log["finished"]) == ("skipped", [])
+
+
+def run_uptrace_sync(inp: UptraceSyncInput, provisioned: int, flaky: int = 0):
+    """UptraceSyncWorkflow with stub activities; sync fails `flaky` times before working."""
+    log = {"provision": [], "sync": []}
+
+    @activity.defn(name="provision_managed_uptrace")
+    async def provision_managed_uptrace(i: UptraceSyncInput) -> int:
+        log["provision"].append(i.project_id)
+        return provisioned
+
+    @activity.defn(name="sync_managed_uptrace")
+    async def sync_managed_uptrace(i: UptraceSyncInput) -> None:
+        log["sync"].append((i.base_url, list(i.uptrace_project_ids)))
+        if len(log["sync"]) <= flaky:
+            raise ApplicationError("Uptrace is unreachable")
+
+    async def go():
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            queue = f"test-{uuid.uuid4()}"
+            async with Worker(env.client, task_queue=queue, workflows=[UptraceSyncWorkflow],
+                              activities=[provision_managed_uptrace, sync_managed_uptrace]):
+                await env.client.execute_workflow(UptraceSyncWorkflow.run, inp,
+                                                  id=f"wf-{uuid.uuid4()}", task_queue=queue)
+
+    asyncio.run(go())
+    return log
+
+
+def test_uptrace_sync_provisions_then_syncs_old_and_new_uptrace_projects():
+    log = run_uptrace_sync(UptraceSyncInput("https://api.example", project_id=5,
+                                            uptrace_project_ids=[3]), provisioned=9)
+    assert log["provision"] == [5]
+    assert log["sync"] == [("https://api.example", [3, 9])]
+
+
+def test_uptrace_sync_without_a_project_only_syncs_and_retries_uptrace_outages():
+    log = run_uptrace_sync(UptraceSyncInput("https://api.example", uptrace_project_ids=[4]),
+                           provisioned=0, flaky=2)
+    assert log["provision"] == []
+    assert log["sync"] == [("https://api.example", [4])] * 3
+
+
+def test_uptrace_sync_skips_a_project_that_is_no_longer_managed():
+    log = run_uptrace_sync(UptraceSyncInput("https://api.example", project_id=5), provisioned=0)
+    assert log["provision"] == [5] and log["sync"] == []

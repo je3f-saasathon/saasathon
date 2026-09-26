@@ -111,6 +111,13 @@ class UptraceCredential(models.Model):
         return bool(self.token_encrypted)
 
 
+class UptraceStatus(models.TextChoices):
+    NONE = "", "Not managed"
+    PROVISIONING = "provisioning", "Setting up"
+    READY = "ready", "Ready"
+    ERROR = "error", "Error"
+
+
 class Project(models.Model):
     members = models.ManyToManyField(
         settings.AUTH_USER_MODEL, through="ProjectMembership", related_name="sre_projects"
@@ -145,6 +152,15 @@ class Project(models.Model):
     # Uptrace service.names this repo runs; the service mesh's fallback when a service
     # doesn't send vcs.repository.url.full.
     service_names = models.JSONField(default=list, blank=True)
+    # Managed Uptrace (services/uptrace_admin.py): the platform creates the Uptrace project,
+    # error monitor and webhook channel with its own admin token, so users never open
+    # Uptrace. Projects sharing an Uptrace project (for one trace across linked services)
+    # have the same uptrace_project_id and are told apart by service_names.
+    uptrace_managed = models.BooleanField(default=False)
+    uptrace_project_id = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    uptrace_status = models.CharField(max_length=16, choices=UptraceStatus.choices, blank=True, default="")
+    uptrace_error = models.CharField(max_length=500, blank=True, default="")
+    uptrace_dsn_encrypted = models.BinaryField(blank=True, default=b"")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

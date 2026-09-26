@@ -20,6 +20,7 @@ from sre.workflows import (  # noqa: E402
     ActiveRemediationWorkflow,
     IncidentDiagnosisWorkflow,
     ServiceGraphRefreshWorkflow,
+    UptraceSyncWorkflow,
 )
 
 MAX_CONCURRENT_ACTIVITIES = 8
@@ -34,7 +35,7 @@ async def main() -> None:
             client,
             task_queue=settings.TEMPORAL_TASK_QUEUE,
             workflows=[IncidentDiagnosisWorkflow, ServiceGraphRefreshWorkflow,
-                       ActiveRemediationWorkflow],
+                       ActiveRemediationWorkflow, UptraceSyncWorkflow],
             activities=ALL_ACTIVITIES,
             activity_executor=executor,
             max_concurrent_activities=MAX_CONCURRENT_ACTIVITIES,

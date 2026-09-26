@@ -38,6 +38,7 @@ from .models import (
     Runbook,
     ServiceGraph,
     UptraceCredential,
+    UptraceStatus,
 )
 from .orgs import personal_org
 from .permissions import get_membership, get_org_membership, get_project_for, member_project_ids
@@ -66,10 +67,12 @@ from .schemas import (
     PlaybookOut,
     PlaybookRunOut,
     PlaybookUpdateIn,
+    ManagedUptraceOut,
     ProjectCreatedOut,
     ProjectCreateIn,
     ProjectOut,
     ProjectUpdateIn,
+    UptraceSetupIn,
     RunbookCreateIn,
     RunbookListOut,
     RunbookOut,
@@ -87,8 +90,9 @@ from .schemas import (
 from .services import github_connect, mesh
 from .services.playbooks import clean_playbook_steps, clean_steps, visible_playbooks
 from .services.triage import CATEGORIES
+from .services import uptrace_admin
 from .services.uptrace import resolve_credential
-from .temporal_types import ApprovalDecision, IncidentInput
+from .temporal_types import ApprovalDecision, IncidentInput, UptraceSyncInput
 from .validators import UnsafeURLError, validate_llm_base_url, validate_uptrace_api_url
 
 logger = logging.getLogger(__name__)
@@ -113,13 +117,90 @@ def _project_out(project: Project, role: str) -> dict:
     return {
         **{f: getattr(project, f) for f in ProjectOut.model_fields
            if f not in ("role", "github_verified", "platform_tokens_this_month",
-                        "organization_name", "uptrace_fetch_ready")},
+                        "organization_name", "uptrace_fetch_ready", "uptrace_dsn",
+                        "uptrace_shared_with")},
         "role": role,
+        "uptrace_dsn": (uptrace_admin.dsn_of(project)
+                        if ROLE_RANK[role] >= ROLE_RANK[ProjectRole.ADMIN] else ""),
+        "uptrace_shared_with": [{"id": p.id, "name": p.name} for p in _uptrace_group(project)
+                                if p.id != project.id],
         "organization_name": project.organization.name if project.organization_id else "",
         "uptrace_fetch_ready": resolve_credential(project) is not None,
         "github_verified": _github_verified(project),
         "platform_tokens_this_month": platform.tokens_this_month(project),
     }
+
+
+# ---- managed Uptrace -------------------------------------------------------------
+
+def _uptrace_group(project: Project) -> list[Project]:
+    """The managed projects of the project's org that use its Uptrace project."""
+    if not project.uptrace_managed or not project.uptrace_project_id:
+        return []
+    return list(Project.objects.filter(uptrace_managed=True, organization_id=project.organization_id,
+                                       uptrace_project_id=project.uptrace_project_id).order_by("id"))
+
+
+def _share_target(user, organization_id: int | None, target_id: int, service_names: list[str]) -> Project:
+    """An existing managed project to share an Uptrace project with: same org, and the
+    caller administers it (its alerts get filtered by service once it's shared)."""
+    target = get_project_for(user, target_id, ProjectRole.ADMIN)
+    if target.organization_id != organization_id:
+        raise HttpError(400, "Only projects in the same organization can share an Uptrace project")
+    if not target.uptrace_managed or not target.uptrace_project_id:
+        raise HttpError(400, "That project's Uptrace isn't managed by the platform (or isn't set up yet)")
+    if not service_names or not target.service_names:
+        raise HttpError(400, "Projects sharing an Uptrace project are told apart by service name: "
+                             f"set service names on this project and on {target.name!r} first")
+    return target
+
+
+def _start_uptrace_sync(request: HttpRequest, project: Project | None = None,
+                        uptrace_project_ids: list[int] = ()) -> None:
+    inp = UptraceSyncInput(base_url=request.build_absolute_uri("/").rstrip("/"),
+                           project_id=project.id if project else 0,
+                           uptrace_project_ids=[i for i in uptrace_project_ids if i])
+    if not inp.project_id and not inp.uptrace_project_ids:
+        return
+    try:
+        temporal_client.start_uptrace_sync(inp)
+    except Exception:
+        logger.exception("could not start the Uptrace sync for %s", inp)
+        if project is not None:
+            uptrace_admin.mark_error([project.id], "Could not start the Uptrace setup; try again.")
+
+
+@router.get("/uptrace/managed", response=ManagedUptraceOut)
+def managed_uptrace(request: HttpRequest):
+    return {"enabled": uptrace_admin.configured(),
+            "url": settings.UPTRACE_MANAGED_URL if uptrace_admin.configured() else ""}
+
+
+@router.post("/projects/{project_id}/uptrace/setup", response=ProjectOut)
+def setup_managed_uptrace(request: HttpRequest, project_id: int, payload: UptraceSetupIn):
+    """Hands the project's Uptrace side to the platform (or retries its setup), with an
+    Uptrace project of its own or shared with another project."""
+    if not uptrace_admin.configured():
+        raise HttpError(400, "Managed Uptrace isn't configured on this server")
+    project = get_project_for(request.auth, project_id, ProjectRole.OWNER)
+    old = project.uptrace_project_id if project.uptrace_managed else None
+    if payload.share_with_project_id is not None:
+        if payload.share_with_project_id == project.id:
+            raise HttpError(400, "A project can't share with itself")
+        target = _share_target(request.auth, project.organization_id,
+                               payload.share_with_project_id, project.service_names)
+        new = target.uptrace_project_id
+    else:
+        # Leaving a shared Uptrace project means getting one of its own.
+        new = old if old and len(_uptrace_group(project)) == 1 else None
+    project.uptrace_managed = True
+    project.uptrace_project_id = new
+    project.uptrace_source_id = uptrace_admin.source_id(new) if new else ""
+    project.uptrace_status, project.uptrace_error = UptraceStatus.PROVISIONING, ""
+    project.save()
+    _start_uptrace_sync(request, project, [old] if old and old != new else [])
+    project.refresh_from_db()
+    return _project_out(project, ProjectRole.OWNER)
 
 
 MAX_SERVICE_NAMES = 50
@@ -389,9 +470,22 @@ def create_project(request: HttpRequest, payload: ProjectCreateIn):
     data = payload.dict()
     data["organization_id"] = _target_org(request.auth, data.pop("organization_id")).id
     data["service_names"] = _check_service_names(data["service_names"], data["organization_id"], None)
+    share_with = data.pop("uptrace_share_with_project_id")
+    # A project pinned to another Uptrace by hand keeps doing it the old way.
+    managed = uptrace_admin.configured() and not data["uptrace_source_id"]
+    if managed:
+        data.update(uptrace_managed=True, uptrace_status=UptraceStatus.PROVISIONING)
+        if share_with is not None:
+            target = _share_target(request.auth, data["organization_id"], share_with,
+                                   data["service_names"])
+            data.update(uptrace_project_id=target.uptrace_project_id,
+                        uptrace_source_id=target.uptrace_source_id)
     with transaction.atomic():
         project = Project.objects.create(**data)
         ProjectMembership.objects.create(project=project, user=request.auth, role=ProjectRole.OWNER)
+    if managed:
+        _start_uptrace_sync(request, project)
+        project.refresh_from_db()
     return 201, {
         **_project_out(project, ProjectRole.OWNER),
         **_webhook_urls(request, project),
@@ -430,17 +524,35 @@ def update_project(request: HttpRequest, project_id: int, payload: ProjectUpdate
     if any(repo[f] != getattr(project, f) for f in GITHUB_REPO_FIELDS):
         _check_github_repo(request.auth, repo["github_installation_id"],
                            repo["github_repo_owner"], repo["github_repo_name"])
+    group = _uptrace_group(project)
+    if project.uptrace_managed:
+        if changes.get("uptrace_source_id") not in (None, project.uptrace_source_id):
+            raise HttpError(400, "The platform manages this project's Uptrace pin")
+        moving = changes.get("organization_id") not in (None, project.organization_id)
+        if len(group) > 1 and moving:
+            raise HttpError(400, "This project shares its Uptrace project: stop sharing before moving it")
+        if len(group) > 1 and changes.get("service_names") == []:
+            raise HttpError(400, "This project shares its Uptrace project, so it needs at least one "
+                                 "service name to tell its alerts apart")
+    old_services = list(project.service_names)
     for field, value in changes.items():
         if value is None and field not in ("default_llm_config_id", "uptrace_credential_id"):
             continue
         setattr(project, field, value)
     project.save()
+    if len(group) > 1 and project.service_names != old_services:
+        _start_uptrace_sync(request, uptrace_project_ids=[project.uptrace_project_id])
     return _project_out(project, membership.role)
 
 
 @router.delete("/projects/{project_id}", response={204: None})
 def delete_project(request: HttpRequest, project_id: int):
-    get_project_for(request.auth, project_id, ProjectRole.OWNER).delete()
+    project = get_project_for(request.auth, project_id, ProjectRole.OWNER)
+    uptrace_project_id = project.uptrace_project_id if project.uptrace_managed else None
+    project.delete()
+    # Removes its monitor and channel (and unshares the rest of its Uptrace project).
+    if uptrace_project_id and uptrace_admin.configured():
+        _start_uptrace_sync(request, uptrace_project_ids=[uptrace_project_id])
     return 204, None
 
 
@@ -449,6 +561,8 @@ def rotate_webhook_secret(request: HttpRequest, project_id: int):
     project = get_project_for(request.auth, project_id, ProjectRole.OWNER)
     project.uptrace_webhook_secret = secrets.token_urlsafe(32)
     project.save(update_fields=["uptrace_webhook_secret", "updated_at"])
+    if uptrace_admin.is_managed(project) and project.uptrace_project_id:
+        _start_uptrace_sync(request, uptrace_project_ids=[project.uptrace_project_id])
     return _webhook_urls(request, project)
 
 

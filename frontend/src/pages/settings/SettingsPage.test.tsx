@@ -14,7 +14,15 @@ const project = {
   github_repo_owner: "je3f-saasathon", github_repo_name: "django-buggy-app",
   github_default_branch: "main", uptrace_source_id: "", default_execution_mode: "draft_only",
   default_llm_config_id: 1, generate_tests: true, platform_tokens_this_month: 0, created_at: "2026-09-25T00:00:00Z",
-  github_verified: false,
+  github_verified: false, service_names: [], uptrace_managed: false, uptrace_status: "",
+  uptrace_error: "", uptrace_project_id: null, uptrace_dsn: "", uptrace_shared_with: [],
+};
+
+const managedProject = {
+  ...project, id: 4, name: "sales-order", service_names: ["sales-order"], uptrace_managed: true,
+  uptrace_status: "ready", uptrace_project_id: 12, uptrace_source_id: "uptrace.buggly.dev/12",
+  uptrace_dsn: "https://ingest-token@uptrace.buggly.dev?grpc=4317",
+  uptrace_shared_with: [{ id: 5, name: "sales-cart" }],
 };
 
 const routes: Record<string, unknown> = {
@@ -56,6 +64,9 @@ describe("SettingsPage", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    routes["GET /api/sre/projects"] = [project];
+    delete routes["GET /api/sre/uptrace/managed"];
+    delete routes["POST /api/sre/projects/2/uptrace/setup"];
   });
 
   it("lists model configs without ever rendering a key, and creates one", async () => {
@@ -127,6 +138,51 @@ describe("SettingsPage", () => {
     expect(await screen.findByTestId("company-usage")).toHaveTextContent("500,000 / 2,000,000 tokens");
     expect(screen.queryByText(/No default model/)).not.toBeInTheDocument();
     routes["GET /api/sre/projects"] = [project];
+  });
+
+  it("shows a managed project's DSN and how to send telemetry, with no Uptrace setup steps", async () => {
+    routes["GET /api/sre/projects"] = [managedProject];
+    routes["GET /api/sre/projects/4/step-overrides"] = [];
+    routes["GET /api/sre/uptrace/managed"] = { enabled: true, url: "https://uptrace.buggly.dev" };
+    renderAt("/settings?tab=projects");
+    fireEvent.click(await screen.findByText("sales-order"));
+
+    expect(await screen.findByText("Ready")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("https://ingest-token@uptrace.buggly.dev?grpc=4317")).toBeInTheDocument();
+    expect(await screen.findByText("https://uptrace.buggly.dev/v1/traces")).toBeInTheDocument();
+    expect(screen.getByText(/Shares its Uptrace project with sales-cart/)).toBeInTheDocument();
+    // The platform owns the pin and the credential.
+    expect(screen.queryByLabelText(/^Uptrace project/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Uptrace credential/)).not.toBeInTheDocument();
+    expect(screen.getByText("Webhook secret")).toBeInTheDocument();
+  });
+
+  it("lets an owner hand a hand-wired project's Uptrace to the platform", async () => {
+    routes["GET /api/sre/uptrace/managed"] = { enabled: true, url: "https://uptrace.buggly.dev" };
+    routes["POST /api/sre/projects/2/uptrace/setup"] = { ...project, uptrace_managed: true, uptrace_status: "provisioning" };
+    renderAt("/settings?tab=projects");
+    fireEvent.click(await screen.findByText("django-buggy-app"));
+    fireEvent.click(await screen.findByRole("button", { name: "Let the platform manage Uptrace" }));
+    await vi.waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url, init]) =>
+        init?.method === "POST" && String(url).endsWith("/uptrace/setup"))).toBe(true),
+    );
+    const [, init] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/uptrace/setup"))!;
+    expect(JSON.parse(init.body)).toEqual({ share_with_project_id: null });
+  });
+
+  it("saves service names as a list, only when they change", async () => {
+    renderAt("/settings?tab=projects");
+    fireEvent.click(await screen.findByText("django-buggy-app"));
+    fireEvent.change(await screen.findByLabelText(/^Service names/), {
+      target: { value: "django-buggy-app, worker ," },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save project" }));
+    await vi.waitFor(() =>
+      expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true),
+    );
+    const [, init] = fetchMock.mock.calls.find(([, i]) => i?.method === "PATCH")!;
+    expect(JSON.parse(init.body)).toEqual({ service_names: ["django-buggy-app", "worker"] });
   });
 
   it("shows the connected banner and installations on the GitHub tab", async () => {

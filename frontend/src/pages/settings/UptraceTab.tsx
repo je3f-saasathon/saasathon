@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ErrorText, Field } from "./form";
+import { useManagedUptrace } from "./Monitoring";
 import { useOrganizations, useUptraceCredentials } from "./ProjectsTab";
 
 const emptyForm: UptraceCredentialRequest = { name: "", host: "", api_base_url: "", token: "" };
@@ -95,6 +96,7 @@ export function UptraceTab() {
   const org = adminOrgs.find((o) => o.id === orgId) ?? adminOrgs[0];
   const credentials = useUptraceCredentials(org);
   const [adding, setAdding] = useState(false);
+  const managed = useManagedUptrace();
   const remove = useMutation({
     mutationFn: (id: number) => api.delete(`/sre/uptrace-credentials/${id}`),
     onSuccess: () => {
@@ -111,6 +113,13 @@ export function UptraceTab() {
           <CardDescription>
             With a credential, the agent reads each alert's exception, stack trace and service
             from Uptrace instead of just the alert's name. One per organization and Uptrace host.
+            {managed.data?.enabled && (
+              <>
+                {" "}
+                Projects whose Uptrace the platform set up (see Monitoring on each project) need
+                none: this is only for an Uptrace you connected yourself.
+              </>
+            )}
           </CardDescription>
         </div>
         {org && !adding && (

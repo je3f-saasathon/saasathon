@@ -50,6 +50,31 @@ class ProjectOut(Schema):
     uptrace_fetch_ready: bool
     # Uptrace service.names this repo runs (service mesh fallback mapping).
     service_names: list[str]
+    # Managed Uptrace: the platform set up this project's Uptrace side itself.
+    uptrace_managed: bool
+    # "" (not managed) · provisioning · ready · error (see uptrace_error)
+    uptrace_status: str
+    uptrace_error: str
+    uptrace_project_id: int | None
+    # Where the project's apps send telemetry. Admins and owners only ("" otherwise).
+    uptrace_dsn: str
+    # Other projects in the same Uptrace project (one trace across linked services).
+    uptrace_shared_with: list["ProjectRefOut"]
+
+
+class ProjectRefOut(Schema):
+    id: int
+    name: str
+
+
+class UptraceSetupIn(Schema):
+    # Share this project's Uptrace project; null = one of its own.
+    share_with_project_id: int | None = None
+
+
+class ManagedUptraceOut(Schema):
+    enabled: bool
+    url: str
 
 
 class ProjectCreatedOut(ProjectOut):
@@ -80,6 +105,9 @@ class ProjectCreateIn(Schema):
     # Defaults to the caller's personal org.
     organization_id: int | None = None
     service_names: list[str] = []
+    # Managed Uptrace: share this existing project's Uptrace project instead of getting a
+    # new one (both need service_names). Ignored when managed Uptrace is off.
+    uptrace_share_with_project_id: int | None = None
 
 
 class ProjectUpdateIn(Schema):
