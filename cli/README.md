@@ -5,15 +5,13 @@ diagnoses it and opens a fix PR on your repo.
 
 ```bash
 # once: install the buggly GitHub App on your repo, then
-uvx --from "git+https://github.com/je3f-saasathon/saasathon#subdirectory=cli" buggly login
+uvx buggly login
 # every run, from the repo's checkout:
-uvx --from "git+https://github.com/je3f-saasathon/saasathon#subdirectory=cli" buggly run python app.py
+uvx buggly run python app.py
 ```
 
-With a local checkout: `uv tool install ./cli`, then `buggly login` and `buggly run …`.
-
-Not on PyPI yet, and this repo is private: the `git+https` form only works for people with access
-to it. Once `buggly` is published, it's `uvx buggly run python app.py`.
+`uvx` comes with [uv](https://docs.astral.sh/uv/). To keep `buggly` installed instead:
+`uv tool install buggly` (or `pipx install buggly`), then `buggly login` and `buggly run …`.
 
 ## Commands
 
@@ -56,3 +54,7 @@ cd cli && uv run pytest
 
 The tests run crashing scripts, in this interpreter and in a bare venv without OpenTelemetry,
 against a fake OTLP collector.
+
+To release: bump `version` in `cli/pyproject.toml`, merge it, then push a tag `cli-v<version>`
+(e.g. `git tag cli-v0.1.1 && git push origin cli-v0.1.1`). `.github/workflows/publish-cli.yml`
+tests, builds and publishes it to PyPI.

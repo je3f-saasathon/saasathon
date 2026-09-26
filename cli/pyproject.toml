@@ -4,6 +4,13 @@ version = "0.1.0"
 description = "Run your app with its errors sent to buggly, which opens an incident and a fix PR."
 readme = "README.md"
 requires-python = ">=3.10"
+keywords = ["opentelemetry", "uptrace", "sre", "incidents", "error-tracking"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Environment :: Console",
+    "Topic :: System :: Monitoring",
+    "Topic :: Software Development :: Bug Tracking",
+]
 dependencies = [
     "opentelemetry-distro>=0.66b0",
     "opentelemetry-exporter-otlp-proto-http>=1.45.0",
@@ -18,6 +25,9 @@ dependencies = [
     "opentelemetry-instrumentation-sqlite3>=0.66b0",
     "opentelemetry-instrumentation-urllib3>=0.66b0",
 ]
+
+[project.urls]
+Homepage = "https://buggly.dev"
 
 [project.scripts]
 buggly = "buggly.cli:main"
