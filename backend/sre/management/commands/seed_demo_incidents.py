@@ -140,7 +140,8 @@ class Command(BaseCommand):
                         incident_run=run, playbook=playbook, execution_mode=mode, status=pr_status,
                         branch_name=f"sre/fix-{n}",
                         pr_url=f"https://github.com/{project.github_repo_owner}/{project.github_repo_name}/pull/{100 + n}"
-                        if pr_status == "succeeded" else "",
+                        # Draft-only runs have a draft PR open while they await review.
+                        if pr_status in ("succeeded", "pending_approval") else "",
                     )
                     tries = 3 if pr_status == "failed" else 1
                     for a in range(1, tries + 1):

@@ -140,8 +140,8 @@ class PlaybookExecutor:
         repo.commit_and_push(git_dir, work_tree, self.branch, self._commit_message(summary))
         self.heartbeat("pushed")
 
-        # Draft-only still opens the PR (as a draft) so it can be reviewed on GitHub;
-        # approval in our app is what makes it ready for review.
+        # Draft-only opens the PR as a draft so it's reviewed on GitHub: merging it approves
+        # the fix and closing it rejects it (see the /github/webhook endpoint).
         draft = self.playbook_run.execution_mode == ExecutionMode.DRAFT_ONLY
         pr_url = repo.open_pull_request(
             self.branch, *pr_title_body(self.playbook_run, summary), draft=draft

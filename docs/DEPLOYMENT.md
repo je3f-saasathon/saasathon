@@ -53,6 +53,7 @@ on `main`. Backend and frontend deploy independently via `deploy-backend.yml` /
    GITHUB_APP_SLUG=            # Connect GitHub, see docs/AUTH.md
    GITHUB_APP_CLIENT_ID=
    GITHUB_APP_CLIENT_SECRET=
+   GITHUB_APP_WEBHOOK_SECRET=  # approves draft-only runs on PR merge, see docs/AUTH.md
    SRE_ALLOW_PRIVATE_LLM_URLS=false   # otherwise users can point LLM configs at internal services
    SRE_SANDBOX_NETWORK=none
    # Network for the dependency-install step only (uv sync / pip / npm ci). The worker

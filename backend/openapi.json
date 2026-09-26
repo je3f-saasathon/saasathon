@@ -2169,6 +2169,67 @@
           }
         ]
       }
+    },
+    "/api/sre/github/webhook": {
+      "post": {
+        "operationId": "sre_api_github_webhook",
+        "summary": "Github Webhook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "description": "The GitHub App's webhook. A draft-only run is decided on GitHub: merging its PR\napproves the fix, closing it unmerged rejects it. Everything else is acknowledged\nand ignored.",
+        "tags": [
+          "sre"
+        ]
+      }
     }
   },
   "components": {

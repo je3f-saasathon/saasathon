@@ -32,6 +32,8 @@ All commands below are `make` targets (thin wrappers around `scripts/*.sh`). Run
 |---|---|
 | `make infra-up` | Starts Temporal (gRPC `:7243`, UI http://localhost:8243) and self-hosted Langfuse (http://localhost:3100, login `admin@localhost.dev` / `localdev-password`) from `docker-compose.infra.yml`, and waits until they're healthy. Langfuse's project is pre-created with the keys in `backend/.env.example`. |
 | `make infra-down` | Stops the infra containers. Data volumes are kept. |
+| `make uptrace-up` | Starts saasathon's self-hosted Uptrace (`infra/uptrace/`, compose project `saasathon-uptrace`) on http://127.0.0.1:14418 (OTLP/gRPC `:14417`), served publicly as https://uptrace.buggly.dev through the Cloudflare tunnel. The first run creates `infra/uptrace/.env` with random secrets: the admin login, the API token for the SRE worker's Uptrace credential, and the project token for app DSNs. |
+| `make uptrace-down` | Stops Uptrace. Data volumes are kept. |
 | `make sandbox-image` | Builds the image the agent's sandbox containers run (`backend/sre/sandbox/Dockerfile`). Add the toolchains your monitored repos need to run their tests. |
 | `make sandbox-image-prod` | Builds the same image inside the prod `sre-docker` (dind) sidecar. |
 | `make sre-worker` | Runs just the Temporal worker in the foreground, for iterating on worker code without restarting the whole stack. |
