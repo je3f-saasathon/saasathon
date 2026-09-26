@@ -16,7 +16,7 @@ so a project nobody uses keeps existing, with no monitors or channels of ours.
 """
 
 import logging
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from django.conf import settings
@@ -68,11 +68,24 @@ def managed_credential(project: Project) -> UptraceCredential:
     return credential
 
 
+def public_dsn(dsn: str) -> str:
+    """The DSN on UPTRACE_MANAGED_URL's scheme and host. Uptrace builds DSNs from the address
+    it's reached on, which is plain http behind a TLS-terminating proxy (the Cloudflare
+    tunnel), so apps would send telemetry, and the DSN's token with it, unencrypted."""
+    if not dsn:
+        return ""
+    parts, public = urlsplit(dsn), urlsplit(settings.UPTRACE_MANAGED_URL)
+    if not parts.username or not public.hostname:
+        return dsn
+    return urlunsplit((public.scheme, f"{parts.username}@{public.netloc}", parts.path, parts.query, ""))
+
+
 def dsn_of(project: Project) -> str:
     try:
-        return decrypt(project.uptrace_dsn_encrypted) if project.uptrace_dsn_encrypted else ""
+        stored = decrypt(project.uptrace_dsn_encrypted) if project.uptrace_dsn_encrypted else ""
     except Exception:  # key rotated: the next sync stores it again
         return ""
+    return public_dsn(stored)
 
 
 def monitor_name(project_id: int) -> str:
@@ -221,7 +234,7 @@ def sync_group(uptrace_project_id: int, base_url: str) -> None:
     members = list(Project.objects.filter(uptrace_managed=True,
                                           uptrace_project_id=uptrace_project_id).order_by("id"))
     shared = len(members) > 1
-    dsn = admin.dsn(uptrace_project_id) if members else ""
+    dsn = public_dsn(admin.dsn(uptrace_project_id)) if members else ""
 
     monitors = admin.monitors(uptrace_project_id)
     for monitor in monitors:  # Uptrace's own "Notify on all errors" would only duplicate ours
