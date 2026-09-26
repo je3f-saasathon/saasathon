@@ -14,7 +14,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
-const BACKGROUND = 0x05070d;
+const BACKGROUND = 0x120a0c;
 
 // Code layout: side-by-side "files", each a column of indented lines made of tokens.
 const PANES = 5;
@@ -39,12 +39,12 @@ const PARTICLES_PER_BURST = 46;
 const PARTICLE_LIFE = 1.3;
 
 // Dim syntax colors (kept below the bloom threshold so healthy code doesn't glow).
-const SYNTAX = [0x2a3a6e, 0x40306e, 0x1d5060, 0x3a4660, 0x4a3a2a, 0x28405a].map(
+const SYNTAX = [0x5a2e2a, 0x4a2640, 0x5a3c28, 0x40283a, 0x584428, 0x4a2a30].map(
   (hex) => new THREE.Color(hex),
 );
-const INFECTED = new THREE.Color(1.4, 0.12, 0.18);
+const INFECTED = new THREE.Color(1.4, 0.15, 0.9);
 const HEALED = new THREE.Color(0.35, 1.5, 0.7);
-const SCAN = new THREE.Color(0.2, 0.9, 1.3);
+const SCAN = new THREE.Color(1.4, 0.55, 0.25);
 
 type Line = {
   pane: number;
@@ -212,7 +212,7 @@ function buildBeam() {
         float rise = pow(1.0 - vUv.y, 2.2);
         float edge = smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
         float scan = 0.75 + 0.25 * sin(vUv.y * 60.0 - uTime * 14.0);
-        vec3 color = vec3(0.25, 0.95, 1.35);
+        vec3 color = vec3(1.4, 0.6, 0.3);
         gl_FragColor = vec4(color, rise * edge * scan * 0.55);
       }
     `,
@@ -226,7 +226,7 @@ function buildBeam() {
   curtain.position.y = 1.6;
   const floorLine = new THREE.Mesh(
     new THREE.BoxGeometry(0.06, 0.03, FIELD_DEPTH + 1.5),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 1.6, 2.0), toneMapped: false }),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(2.0, 0.9, 0.5), toneMapped: false }),
   );
   curtain.position.z = floorLine.position.z = FIELD_CENTER_Z;
   const beam = new THREE.Group();
@@ -274,7 +274,7 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
 
   // Faint pane backplates so the lines read as files.
   const plateMaterial = new THREE.MeshBasicMaterial({
-    color: 0x0c1220,
+    color: 0x1c1014,
     transparent: true,
     opacity: 0.85,
   });
@@ -302,8 +302,8 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
   // --- bugs --------------------------------------------------------------------------
   const bugGeometry = buildBugGeometry();
   const bugMaterial = new THREE.MeshStandardMaterial({
-    color: 0x3a0508,
-    emissive: new THREE.Color(1.0, 0.08, 0.12),
+    color: 0x3a0528,
+    emissive: new THREE.Color(1.0, 0.1, 0.65),
     emissiveIntensity: 1.3,
     roughness: 0.4,
     metalness: 0.2,
@@ -336,7 +336,7 @@ export function mountBugSweep(container: HTMLElement, options: BugSweepOptions =
   const particles = buildParticles();
   scene.add(particles.points);
   let nextParticle = 0;
-  const burstColors = [new THREE.Color(1.3, 0.15, 0.2), new THREE.Color(0.3, 1.4, 0.8), SCAN];
+  const burstColors = [new THREE.Color(1.3, 0.15, 0.85), new THREE.Color(0.3, 1.4, 0.8), SCAN];
 
   function burst(position: THREE.Vector3, now: number) {
     const pos = particles.geometry.getAttribute("position") as THREE.BufferAttribute;
