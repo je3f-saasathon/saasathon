@@ -7,8 +7,10 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   const token = getToken();
 
   if (!token) {
-    sessionStorage.setItem("post_login_redirect", location.pathname);
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    // Keep the query too: /cli?code=... must survive the trip through login.
+    const from = location.pathname + location.search;
+    sessionStorage.setItem("post_login_redirect", from);
+    return <Navigate to="/login" state={{ from }} replace />;
   }
 
   return <>{children}</>;

@@ -5,6 +5,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { Layout } from "./components/Layout";
 import { ThemeProvider } from "./components/theme";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage";
+import { CliLoginPage } from "./pages/CliLoginPage";
 import { DashboardPage } from "./pages/dashboard/DashboardPage";
 import { LandingPage } from "./pages/landing/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -25,6 +26,14 @@ export function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/auth/callback" element={<AuthCallbackPage />} />
+              <Route
+                path="/cli"
+                element={
+                  <ProtectedRoute>
+                    <CliLoginPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route element={<Layout />}>
                 <Route
                   path="/dashboard"

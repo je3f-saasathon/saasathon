@@ -216,6 +216,11 @@ describe("SettingsPage", () => {
     expect(screen.queryByRole("button", { name: /Connect GitHub/ })).not.toBeInTheDocument();
   });
 
+  it("says how many projects connecting created", () => {
+    renderAt("/settings?tab=github&github=connected&count=1&projects=2");
+    expect(screen.getByText(/Created 2 projects, one per repo/)).toBeInTheDocument();
+  });
+
   it("explains a connect error", () => {
     renderAt("/settings?tab=github&github_error=state_expired");
     expect(screen.getByText(/connect link expired/)).toBeInTheDocument();
