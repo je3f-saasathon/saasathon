@@ -529,8 +529,9 @@ def create_project(request: HttpRequest, payload: ProjectCreateIn):
     data["organization_id"] = _target_org(request.auth, data.pop("organization_id")).id
     data["service_names"] = _check_service_names(data["service_names"], data["organization_id"], None)
     share_with = data.pop("uptrace_share_with_project_id")
-    # A project pinned to another Uptrace by hand keeps doing it the old way.
-    managed = uptrace_admin.configured() and not data["uptrace_source_id"]
+    # "Use my own Uptrace", or a project pinned to another Uptrace by hand: the old way.
+    wants_managed = data.pop("uptrace_managed")
+    managed = uptrace_admin.configured() and wants_managed and not data["uptrace_source_id"]
     if managed:
         data.update(uptrace_managed=True, uptrace_status=UptraceStatus.PROVISIONING)
         if share_with is not None:

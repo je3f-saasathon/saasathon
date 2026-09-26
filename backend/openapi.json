@@ -4554,6 +4554,11 @@
             ],
             "title": "Uptrace Share With Project Id"
           },
+          "uptrace_managed": {
+            "default": true,
+            "title": "Uptrace Managed",
+            "type": "boolean"
+          },
           "platform_preset": {
             "default": "openai_jev",
             "title": "Platform Preset",

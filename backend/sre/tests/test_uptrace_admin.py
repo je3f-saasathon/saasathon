@@ -269,6 +269,18 @@ def test_manually_pinned_project_is_not_managed(api_for, make_user, uptrace, syn
     assert not out["uptrace_managed"] and syncs == []
 
 
+def test_use_my_own_uptrace_opts_out_before_any_pin(api_for, make_user, uptrace, syncs, repo_ok):
+    out = create(api_for(make_user()), uptrace_managed=False)
+    assert (out["uptrace_managed"], out["uptrace_status"], out["uptrace_source_id"]) == (False, "", "")
+    # Nothing is set up in the platform's Uptrace: the user adds the webhook to theirs.
+    assert out["uptrace_dsn"] == "" and syncs == []
+
+
+def test_uptrace_managed_is_ignored_when_the_server_has_no_managed_uptrace(api_for, make_user, repo_ok):
+    out = create(api_for(make_user()))
+    assert out["uptrace_managed"] is False and out["uptrace_status"] == ""
+
+
 # ---- sharing -----------------------------------------------------------------------
 
 def test_sharing_filters_each_projects_alerts_by_service(api_for, make_user, uptrace, syncs, repo_ok):

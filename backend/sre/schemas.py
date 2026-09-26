@@ -120,6 +120,9 @@ class ProjectCreateIn(Schema):
     # Managed Uptrace: share this existing project's Uptrace project instead of getting a
     # new one (both need service_names). Ignored when managed Uptrace is off.
     uptrace_share_with_project_id: int | None = None
+    # False = the user's own Uptrace (they add the webhook; the first alert pins it), even
+    # when managed Uptrace is on. Ignored when managed Uptrace is off.
+    uptrace_managed: bool = True
     platform_preset: str = "openai_jev"
 
 

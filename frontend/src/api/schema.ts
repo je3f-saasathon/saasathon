@@ -1416,6 +1416,11 @@ export interface components {
             /** Uptrace Share With Project Id */
             uptrace_share_with_project_id?: number | null;
             /**
+             * Uptrace Managed
+             * @default true
+             */
+            uptrace_managed: boolean;
+            /**
              * Platform Preset
              * @default openai_jev
              */

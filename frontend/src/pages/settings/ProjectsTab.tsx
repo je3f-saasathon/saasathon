@@ -278,7 +278,8 @@ type FormState = {
   organization_id: number | null;
   uptrace_credential_id: number | null;
   service_names: string;
-  share_with: number | "";
+  // "" = its own managed Uptrace project, a project id = share that one's, "own" = the user's own Uptrace.
+  share_with: number | "" | "own";
 };
 
 function parseServiceNames(value: string): string[] {
@@ -330,8 +331,11 @@ function ProjectForm({
     queryFn: () => api.get<Project[]>("/sre/projects"),
     enabled: !project,
   });
-  // New projects get a platform-managed Uptrace; hand-pinned ones keep their own.
-  const managed = project ? project.uptrace_managed : managedUptrace.data?.enabled === true;
+  // New projects get a platform-managed Uptrace unless the user picks their own;
+  // hand-pinned ones keep their own.
+  const managed = project
+    ? project.uptrace_managed
+    : managedUptrace.data?.enabled === true && form.share_with !== "own";
   const candidates = shareCandidates(allProjects.data);
 
   const save = useMutation({
@@ -352,7 +356,8 @@ function ProjectForm({
         return api.post<ProjectCreated>("/sre/projects", {
           ...fields,
           service_names: serviceNames,
-          uptrace_share_with_project_id: managed && form.share_with ? form.share_with : null,
+          uptrace_managed: managed,
+          uptrace_share_with_project_id: managed && typeof form.share_with === "number" ? form.share_with : null,
         } as ProjectCreateRequest);
       }
       const editFields = { ...fields, uptrace_credential_id: form.uptrace_credential_id };
@@ -436,15 +441,23 @@ function ProjectForm({
             onChange={(e) => setForm({ ...form, service_names: e.target.value })}
           />
         </Field>
-        {!project && managed && candidates.length > 0 && (
+        {!project && managedUptrace.data?.enabled && (
           <Field
             label="Monitoring"
-            hint="Share an existing project's Uptrace project when their services call each other, to see one trace across both. Both need service names."
+            hint={
+              form.share_with === "own"
+                ? "After saving, add the webhook URL and secret shown to your Uptrace as a webhook channel. The first alert pins this project to that Uptrace."
+                : "Share an existing project's Uptrace project when their services call each other, to see one trace across both. Both need service names."
+            }
           >
             <Select
               value={form.share_with}
               onChange={(e) =>
-                setForm({ ...form, share_with: e.target.value ? Number(e.target.value) : "" })
+                setForm({
+                  ...form,
+                  share_with:
+                    e.target.value === "own" ? "own" : e.target.value ? Number(e.target.value) : "",
+                })
               }
             >
               <option value="">Its own Uptrace project (set up for you)</option>
@@ -453,6 +466,7 @@ function ProjectForm({
                   Share {p.name}'s Uptrace project
                 </option>
               ))}
+              <option value="own">Use my own Uptrace</option>
             </Select>
           </Field>
         )}
