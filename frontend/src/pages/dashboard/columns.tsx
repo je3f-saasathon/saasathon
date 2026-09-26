@@ -35,10 +35,26 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
-/** The one-line description of an incident: the classifier's summary, else the trace id. */
+/**
+ * The one-line description of an incident: the classifier's summary, else a scan
+ * finding's title, else the trace id.
+ */
 export function incidentSummary(run: IncidentRun): string {
   const summary = run.classification?.summary;
-  return typeof summary === "string" && summary ? summary : `Trace ${run.trace_id}`;
+  if (typeof summary === "string" && summary) return summary;
+  const title = run.telemetry?.title;
+  if (run.source === "scan" && typeof title === "string" && title) return title;
+  return `Trace ${run.trace_id}`;
+}
+
+/** Marks incidents a remediation agent found, rather than an alert. */
+export function SourceBadge({ run }: { run: IncidentRun }) {
+  if (run.source !== "scan") return null;
+  return (
+    <Badge variant="secondary" className="whitespace-nowrap" title="Found by a remediation agent">
+      scan
+    </Badge>
+  );
 }
 
 export function PrLink({ run }: { run: IncidentRun }) {
@@ -114,8 +130,11 @@ export const columns: ColumnDef<IncidentRun>[] = [
     accessorFn: incidentSummary,
     header: "Incident",
     cell: ({ row }) => (
-      <div className="min-w-[10rem] max-w-[16rem] truncate" title={row.getValue("incident")}>
-        {row.getValue("incident")}
+      <div className="flex min-w-[10rem] max-w-[16rem] items-center gap-2">
+        <SourceBadge run={row.original} />
+        <span className="truncate" title={row.getValue("incident")}>
+          {row.getValue("incident")}
+        </span>
       </div>
     ),
   },
