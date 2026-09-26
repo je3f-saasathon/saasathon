@@ -14,6 +14,7 @@ from sre.temporal_types import (
     ApprovalDecision,
     AttemptInput,
     AttemptResult,
+    Candidates,
     Classification,
     IncidentInput,
     JudgeInput,
@@ -40,6 +41,10 @@ class Scenario:
     incident_status: list[tuple[str, str]] = field(default_factory=list)
     run_status: list[str] = field(default_factory=list)
     telemetry_fetches: int = 0
+    runbook_candidates: list[int] = field(default_factory=list)
+    runbook_match: int | None = None
+    judged_runbooks: list[int] = field(default_factory=list)
+    run_inputs: list = field(default_factory=list)
 
 
 def stub_activities(s: Scenario):
@@ -60,16 +65,17 @@ def stub_activities(s: Scenario):
         s.calls.append("classify_bug")
         return Classification("timeout", "high", "stub", keywords=["timeout", "db"])
 
-    @activity.defn(name="find_candidate_playbooks")
-    async def find_candidate_playbooks(inp: SearchInput) -> list[int]:
-        s.calls.append("find_candidate_playbooks")
-        assert inp.keywords == ["timeout", "db"]
-        return s.candidates
+    @activity.defn(name="find_candidates")
+    async def find_candidates(inp: SearchInput) -> Candidates:
+        s.calls.append("find_candidates")
+        assert inp.keywords == ["timeout", "db"] and inp.category == "timeout"
+        return Candidates(playbook_ids=s.candidates, runbook_ids=s.runbook_candidates)
 
-    @activity.defn(name="judge_playbook_match")
-    async def judge_playbook_match(inp: JudgeInput) -> JudgeResult:
-        s.calls.append("judge_playbook_match")
-        return JudgeResult(s.match, 0.9, "stub")
+    @activity.defn(name="judge_match")
+    async def judge_match(inp: JudgeInput) -> JudgeResult:
+        s.calls.append("judge_match")
+        s.judged_runbooks = inp.runbook_ids
+        return JudgeResult(s.match, 0.9, "stub", matched_runbook_id=s.runbook_match)
 
     @activity.defn(name="create_playbook")
     async def create_playbook(inp: IncidentInput) -> int:
@@ -79,6 +85,7 @@ def stub_activities(s: Scenario):
     @activity.defn(name="create_playbook_run")
     async def create_playbook_run(inp: RunInput) -> PlaybookRunInfo:
         s.calls.append("create_playbook_run")
+        s.run_inputs.append(inp)
         return PlaybookRunInfo(55, s.mode)
 
     @activity.defn(name="run_playbook_attempt")
@@ -114,7 +121,7 @@ def stub_activities(s: Scenario):
     async def mark_incident_status(inp: StatusUpdate) -> None:
         s.incident_status.append((inp.status, inp.error_message))
 
-    return [fetch_incident_telemetry, confirm_anomaly, classify_bug, find_candidate_playbooks, judge_playbook_match,
+    return [fetch_incident_telemetry, confirm_anomaly, classify_bug, find_candidates, judge_match,
             create_playbook, create_playbook_run, run_playbook_attempt, write_diagnosis_report,
             open_pull_request, close_pull_request, set_playbook_run_status, record_playbook_outcome,
             mark_incident_status]
@@ -151,7 +158,7 @@ def test_no_anomaly_stops_early():
 def test_no_candidates_creates_unconfirmed_playbook_and_stops():
     s = Scenario(candidates=[])
     assert run_workflow(s) == "new_playbook_created"
-    assert "judge_playbook_match" not in s.calls
+    assert "judge_match" not in s.calls
     assert "create_playbook" in s.calls
     assert "run_playbook_attempt" not in s.calls
 
@@ -230,3 +237,30 @@ def test_non_retryable_error_marks_incident_failed_with_message():
     assert run_workflow(s) == "failed"
     assert s.calls == ["confirm_anomaly"]  # not retried
     assert s.incident_status == [("failed", "no LLM config")]
+
+
+def test_runbook_candidates_reach_the_judge_and_the_run():
+    s = Scenario(candidates=[7], runbook_candidates=[3], match=7, runbook_match=3)
+    assert run_workflow(s) == "succeeded"
+    assert s.judged_runbooks == [3]
+    assert s.run_inputs[0].playbook_id == 7 and s.run_inputs[0].runbook_id == 3
+
+
+def test_only_runbook_candidates_still_get_judged():
+    s = Scenario(candidates=[], runbook_candidates=[3], match=7, runbook_match=3)
+    assert run_workflow(s) == "succeeded"
+    assert "judge_match" in s.calls
+
+
+def test_workflow_from_before_runbooks_still_replays():
+    """Recorded with the pre-runbooks workflow (origin/main before this milestone): a
+    draft_only run paused awaiting approval, which a deploy must not break. The new
+    activities sit behind workflow.patched(), so replaying it must not raise."""
+    from pathlib import Path
+
+    from temporalio.client import WorkflowHistory
+    from temporalio.worker import Replayer
+
+    raw = (Path(__file__).parent / "fixtures" / "workflow_history_pre_runbooks.json").read_text()
+    history = WorkflowHistory.from_json("pre-runbooks-awaiting-approval", raw)
+    asyncio.run(Replayer(workflows=[IncidentDiagnosisWorkflow]).replay_workflow(history))

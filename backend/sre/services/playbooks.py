@@ -204,9 +204,10 @@ class DiagnosisReporter:
         "playbook), Verification. " + UNTRUSTED_NOTICE
     )
 
-    def __init__(self, run: IncidentRun, playbook: Playbook):
+    def __init__(self, run: IncidentRun, playbook: Playbook, runbook=None):
         self.run = run
         self.playbook = playbook
+        self.runbook = runbook
         self.client = client_for(get_llm_config(run.project, PipelineStep.PLAYBOOK_EXECUTION))
 
     def write(self) -> str:
@@ -215,6 +216,11 @@ class DiagnosisReporter:
             + "\n\nClassification:\n" + json.dumps(self.run.classification)
             + "\n\nMatched playbook:\n" + json.dumps(_playbook_card(self.playbook), indent=2)
         )
+        if self.runbook is not None:
+            prompt += ("\n\nRunbook that fixed this bug in this repo before (follow it where it "
+                       "applies):\n" + untrusted("runbook", {"title": self.runbook.title,
+                                                            "area": self.runbook.area,
+                                                            "steps": self.runbook.steps}))
         return self.client.chat(
             self.SYSTEM, [{"role": "user", "content": prompt}], name="diagnosis_report"
         )

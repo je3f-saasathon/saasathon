@@ -5,6 +5,7 @@ import functools
 from contextlib import contextmanager
 from dataclasses import asdict
 
+from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.db import close_old_connections, transaction
 from django.utils import timezone
@@ -14,10 +15,12 @@ from temporalio.exceptions import ApplicationError
 from .llm.clients import LLMError
 from .llm.resolve import NoLLMConfigError
 from .llm.usage import usage_scope
-from .models import ExecutionMode, IncidentRun, Playbook, PlaybookRun, Project
+from .models import ExecutionMode, IncidentRun, Playbook, PlaybookRun, Project, Runbook
 from .services.executor import PlaybookExecutor, pr_title_body
 from .services.github import GitHubRepo
-from .services.playbooks import DiagnosisReporter, PlaybookAuthor, PlaybookJudge, PlaybookSearch
+from .services import runbooks as runbook_outcomes
+from .services.knowledge import GenericPlaybookAuthor, KnowledgeJudge, KnowledgeSearch
+from .services.playbooks import DiagnosisReporter, PlaybookAuthor, PlaybookJudge, PlaybookSearch, visible_playbooks
 from .services.triage import AnomalyChecker, BugClassifier
 from .services.uptrace import fetch_telemetry
 from .temporal_types import (
@@ -25,6 +28,7 @@ from .temporal_types import (
     AnomalyResult,
     AttemptInput,
     AttemptResult,
+    Candidates,
     Classification,
     IncidentInput,
     JudgeInput,
@@ -117,6 +121,32 @@ def judge_playbook_match(inp: JudgeInput) -> JudgeResult:
 
 
 @django_activity
+def find_candidates(inp: SearchInput) -> Candidates:
+    """Runbooks off: the old playbook search, no runbooks. On: runbooks and playbooks."""
+    project = Project.objects.get(id=inp.project_id)
+    if not settings.SRE_RUNBOOKS_ENABLED:
+        return Candidates(playbook_ids=PlaybookSearch(project).top_k(inp.keywords))
+    run = IncidentRun.objects.filter(id=inp.incident_run_id).first()
+    service = str(((run.telemetry if run else None) or {}).get("service_name") or "")
+    return KnowledgeSearch(project).find(inp.keywords, inp.category, service)
+
+
+@django_activity
+def judge_match(inp: JudgeInput) -> JudgeResult:
+    run = _incident(inp.incident_run_id)
+    with llm_step("playbook_similarity_judge", run):
+        if settings.SRE_RUNBOOKS_ENABLED:
+            result = KnowledgeJudge(run).judge(inp.candidate_ids, inp.runbook_ids)
+        else:
+            result = PlaybookJudge(run).judge(inp.candidate_ids)
+    if result.matched_playbook_id is not None:
+        run.matched_playbook_id = result.matched_playbook_id
+        run.matched_runbook_id = result.matched_runbook_id
+        run.save(update_fields=["matched_playbook", "matched_runbook", "updated_at"])
+    return result
+
+
+@django_activity
 def create_playbook(inp: IncidentInput) -> int:
     run = _incident(inp.incident_run_id)
     data = run.classification or {}
@@ -127,22 +157,36 @@ def create_playbook(inp: IncidentInput) -> int:
         keywords=data.get("keywords", []),
         suspected_files=data.get("suspected_files", []),
     )
+    author = GenericPlaybookAuthor if settings.SRE_RUNBOOKS_ENABLED else PlaybookAuthor
     with llm_step("playbook_creation", run):
-        playbook = PlaybookAuthor(run).create(classification)
+        playbook = author(run).create(classification)
     return playbook.id
 
 
 @django_activity
 def create_playbook_run(inp: RunInput) -> PlaybookRunInfo:
     run = _incident(inp.incident_run_id)
-    playbook = Playbook.objects.get(id=inp.playbook_id, project=run.project)
+    runbook = None
+    if settings.SRE_RUNBOOKS_ENABLED:
+        playbook = visible_playbooks(run.project).get(id=inp.playbook_id)
+        if inp.runbook_id is not None:
+            runbook = Runbook.objects.get(id=inp.runbook_id, project=run.project,
+                                          playbook_id=playbook.id)
+    else:
+        playbook = Playbook.objects.get(id=inp.playbook_id, project=run.project)
     mode = playbook.execution_mode_override or run.project.default_execution_mode
+    if settings.SRE_RUNBOOKS_ENABLED:
+        # Unattended only with a runbook a person has confirmed: a playbook alone (even a
+        # confirmed built-in) means a fix this repo has never seen.
+        if mode == ExecutionMode.AUTONOMOUS and (
+                runbook is None or runbook.status != Playbook.Status.CONFIRMED):
+            mode = ExecutionMode.DRAFT_ONLY
     # A never-reviewed playbook must not run unattended, whatever the project allows.
-    if playbook.status == Playbook.Status.UNCONFIRMED and mode == ExecutionMode.AUTONOMOUS:
+    elif playbook.status == Playbook.Status.UNCONFIRMED and mode == ExecutionMode.AUTONOMOUS:
         mode = ExecutionMode.DRAFT_ONLY
     playbook_run, _ = PlaybookRun.objects.get_or_create(
         incident_run=run,
-        defaults={"playbook": playbook, "execution_mode": mode,
+        defaults={"playbook": playbook, "runbook": runbook, "execution_mode": mode,
                   "generate_tests": run.project.generate_tests},
     )
     return PlaybookRunInfo(playbook_run.id, playbook_run.execution_mode)
@@ -170,7 +214,7 @@ def run_playbook_attempt(inp: AttemptInput) -> AttemptResult:
 def write_diagnosis_report(inp: IncidentInput) -> None:
     run = _incident(inp.incident_run_id)
     with llm_step("diagnosis_report", run):
-        report = DiagnosisReporter(run, run.matched_playbook).write()
+        report = DiagnosisReporter(run, run.matched_playbook, run.matched_runbook).write()
     run.diagnosis_report = report
     run.save(update_fields=["diagnosis_report", "updated_at"])
 
@@ -212,6 +256,9 @@ def set_playbook_run_status(inp: PlaybookRunStatus) -> None:
 def record_playbook_outcome(playbook_run_id: int) -> None:
     """Recomputes the playbook's streak from run history, so a retry can't double-count."""
     playbook_run = PlaybookRun.objects.select_related("playbook").get(id=playbook_run_id)
+    if settings.SRE_RUNBOOKS_ENABLED:
+        runbook_outcomes.record_outcome(playbook_run)
+        return
     with transaction.atomic():
         playbook = Playbook.objects.select_for_update().get(id=playbook_run.playbook_id)
         finished = playbook.runs.filter(
@@ -247,6 +294,8 @@ ALL_ACTIVITIES = [
     classify_bug,
     find_candidate_playbooks,
     judge_playbook_match,
+    find_candidates,
+    judge_match,
     create_playbook,
     create_playbook_run,
     run_playbook_attempt,
