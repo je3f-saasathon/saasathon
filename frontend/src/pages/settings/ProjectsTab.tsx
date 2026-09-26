@@ -34,6 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ErrorText, Field } from "./form";
+import { Monitoring, shareCandidates, useManagedUptrace } from "./Monitoring";
 
 const executionModes: Record<ExecutionMode, string> = {
   advisory_only: "Advisory only: write a diagnosis, never touch code",
@@ -108,7 +109,42 @@ function CopyValue({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SecretPanel({ secret, onClose }: { secret: WebhookSecret; onClose: () => void }) {
+function SecretPanel({
+  secret,
+  managed,
+  onClose,
+}: {
+  secret: WebhookSecret;
+  managed?: boolean;
+  onClose: () => void;
+}) {
+  if (managed) {
+    return (
+      <div className="space-y-3 rounded-md border p-4">
+        <div className="flex items-start justify-between gap-4">
+          <p className="text-sm">
+            Uptrace is being set up for you: no need to open it. Your DSN appears under{" "}
+            <b>Monitoring</b> in the project below.
+          </p>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Dismiss">
+            <X />
+          </Button>
+        </div>
+        <details className="text-sm">
+          <summary className="cursor-pointer text-muted-foreground">
+            Calling the webhook from another tool too? (shown only once)
+          </summary>
+          <div className="mt-3 space-y-3">
+            <CopyValue label="Webhook URL" value={secret.webhook_url} />
+            <CopyValue
+              label="Secret (X-SRE-Webhook-Secret header, or HMAC via X-SRE-Signature)"
+              value={secret.webhook_secret}
+            />
+          </div>
+        </details>
+      </div>
+    );
+  }
   return (
     <div className="space-y-3 rounded-md border border-amber-500/60 bg-amber-50 dark:bg-amber-500/10 p-4">
       <div className="flex items-start justify-between gap-4">
@@ -241,7 +277,16 @@ type FormState = {
   generate_tests: boolean;
   organization_id: number | null;
   uptrace_credential_id: number | null;
+  service_names: string;
+  share_with: number | "";
 };
+
+function parseServiceNames(value: string): string[] {
+  return value
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
 
 function formFor(project?: Project): FormState {
   return {
@@ -257,6 +302,8 @@ function formFor(project?: Project): FormState {
     generate_tests: project?.generate_tests ?? true,
     organization_id: project?.organization_id ?? null,
     uptrace_credential_id: project?.uptrace_credential_id ?? null,
+    service_names: (project?.service_names ?? []).join(", "),
+    share_with: "",
   };
 }
 
@@ -277,6 +324,15 @@ function ProjectForm({
   const adminOrgs = (orgs.data ?? []).filter(isOrgAdmin);
   const org = (orgs.data ?? []).find((o) => o.id === form.organization_id);
   const credentials = useUptraceCredentials(project ? org : undefined);
+  const managedUptrace = useManagedUptrace();
+  const allProjects = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => api.get<Project[]>("/sre/projects"),
+    enabled: !project,
+  });
+  // New projects get a platform-managed Uptrace; hand-pinned ones keep their own.
+  const managed = project ? project.uptrace_managed : managedUptrace.data?.enabled === true;
+  const candidates = shareCandidates(allProjects.data);
 
   const save = useMutation({
     mutationFn: () => {
@@ -291,8 +347,13 @@ function ProjectForm({
         generate_tests: form.generate_tests,
         organization_id: form.organization_id,
       };
+      const serviceNames = parseServiceNames(form.service_names);
       if (!project) {
-        return api.post<ProjectCreated>("/sre/projects", fields as ProjectCreateRequest);
+        return api.post<ProjectCreated>("/sre/projects", {
+          ...fields,
+          service_names: serviceNames,
+          uptrace_share_with_project_id: managed && form.share_with ? form.share_with : null,
+        } as ProjectCreateRequest);
       }
       const editFields = { ...fields, uptrace_credential_id: form.uptrace_credential_id };
       // Send only what changed: admins may not touch the owner-only GitHub/Uptrace fields.
@@ -301,6 +362,11 @@ function ProjectForm({
         // A field the server didn't send counts as null, not as a change.
         if ((project[key] ?? null) !== (value ?? null)) (changes as Record<string, unknown>)[key] = value;
       }
+      if (serviceNames.join(",") !== project.service_names.join(",")) {
+        changes.service_names = serviceNames;
+      }
+      // The platform owns a managed project's pin.
+      if (project.uptrace_managed) delete changes.uptrace_source_id;
       return api.patch<Project>(`/sre/projects/${project.id}`, changes);
     },
     onSuccess: (result) => {
@@ -355,6 +421,43 @@ function ProjectForm({
           />
         </Field>
         <Field
+          label="Service names"
+          hint={
+            <>
+              The <code>service.name</code> this repo's app reports (<code>OTEL_SERVICE_NAME</code>),
+              comma-separated. Needed to share an Uptrace project, and used to link services.
+            </>
+          }
+        >
+          <Input
+            value={form.service_names}
+            disabled={readOnly}
+            placeholder={form.repo.name || "my-service"}
+            onChange={(e) => setForm({ ...form, service_names: e.target.value })}
+          />
+        </Field>
+        {!project && managed && candidates.length > 0 && (
+          <Field
+            label="Monitoring"
+            hint="Share an existing project's Uptrace project when their services call each other, to see one trace across both. Both need service names."
+          >
+            <Select
+              value={form.share_with}
+              onChange={(e) =>
+                setForm({ ...form, share_with: e.target.value ? Number(e.target.value) : "" })
+              }
+            >
+              <option value="">Its own Uptrace project (set up for you)</option>
+              {candidates.map((p) => (
+                <option key={p.id} value={p.id}>
+                  Share {p.name}'s Uptrace project
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {!managed && (
+        <Field
           label="Uptrace project"
           hint={
             form.uptrace_source_id
@@ -369,6 +472,7 @@ function ProjectForm({
             onChange={(e) => setForm({ ...form, uptrace_source_id: e.target.value })}
           />
         </Field>
+        )}
         {adminOrgs.length > 1 || (project && org) ? (
           <Field
             label="Organization"
@@ -393,7 +497,7 @@ function ProjectForm({
             </Select>
           </Field>
         ) : null}
-        {project && (
+        {project && !project.uptrace_managed && (
           <Field
             label="Uptrace credential"
             hint={
@@ -628,7 +732,16 @@ function ProjectModels({ project }: { project: Project }) {
   );
 }
 
-function ProjectDetail({ project, onClose }: { project: Project; onClose: () => void }) {
+function ProjectDetail({
+  project,
+  projects,
+  onClose,
+}: {
+  project: Project;
+  projects?: Project[];
+  onClose: () => void;
+}) {
+  const managed = useManagedUptrace();
   const [secret, setSecret] = useState<WebhookSecret | null>(null);
   const rotate = useMutation({
     mutationFn: () => api.post<WebhookSecret>(`/sre/projects/${project.id}/webhook-secret/rotate`),
@@ -657,11 +770,28 @@ function ProjectDetail({ project, onClose }: { project: Project; onClose: () => 
           <h3 className="text-sm font-semibold">Models for this project</h3>
           <ProjectModels project={project} />
         </section>
+        {(project.uptrace_managed || managed.data?.enabled) && (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Monitoring</h3>
+            <Monitoring project={project} projects={projects} />
+          </section>
+        )}
         {project.role === "owner" && (
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold">Uptrace webhook</h3>
+            <h3 className="text-sm font-semibold">
+              {project.uptrace_managed ? "Webhook secret" : "Uptrace webhook"}
+            </h3>
+            {project.uptrace_managed && !secret && (
+              <p className="text-sm text-muted-foreground">
+                Rotating it updates the Uptrace channel automatically.
+              </p>
+            )}
             {secret ? (
-              <SecretPanel secret={secret} onClose={() => setSecret(null)} />
+              <SecretPanel
+                secret={secret}
+                managed={project.uptrace_managed}
+                onClose={() => setSecret(null)}
+              />
             ) : (
               <Button
                 variant="outline"
@@ -689,6 +819,9 @@ export function ProjectsTab() {
   const { data: projects, isLoading, isError } = useQuery({
     queryKey: ["projects"],
     queryFn: () => api.get<Project[]>("/sre/projects"),
+    // Managed Uptrace is set up in the background: refresh until it's done.
+    refetchInterval: (query) =>
+      query.state.data?.some((p) => p.uptrace_status === "provisioning") ? 3000 : false,
   });
   const project = projects?.find((p) => p.id === selected);
 
@@ -707,7 +840,13 @@ export function ProjectsTab() {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {created && <SecretPanel secret={created} onClose={() => setCreated(null)} />}
+          {created && (
+            <SecretPanel
+              secret={created}
+              managed={created.uptrace_managed}
+              onClose={() => setCreated(null)}
+            />
+          )}
           {selected === "new" && (
             <div className="rounded-md border p-4">
               <ProjectForm
@@ -776,7 +915,9 @@ export function ProjectsTab() {
           )}
         </CardContent>
       </Card>
-      {project && <ProjectDetail project={project} onClose={() => setSelected(null)} />}
+      {project && (
+        <ProjectDetail project={project} projects={projects} onClose={() => setSelected(null)} />
+      )}
     </div>
   );
 }
