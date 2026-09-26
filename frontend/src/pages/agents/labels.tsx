@@ -10,7 +10,7 @@ export const kindLabels: Record<AgentKind, string> = {
 export const kindDescriptions: Record<AgentKind, string> = {
   playbook_sweep: "Bugs matching the chosen playbooks. Findings get a diagnosis only.",
   runbook_variant:
-    "New occurrences of bugs a runbook already fixed, in this repo or others. Can open draft PRs.",
+    "New occurrences of bugs a runbook already fixed, in this repo or others. Can open draft PRs. On merge, a fix merged in one of its repos also sends it after the same bug in the others.",
   find_quiet:
     "Uptrace errors and slow or failing calls between services that never raised an alert. Needs the service mesh.",
 };
@@ -32,6 +32,7 @@ export const scanTriggerLabels: Record<ScanTrigger, string> = {
   on_merge: "Merge",
   branch_watch: "Push",
   schedule: "Schedule",
+  fix_merged: "Fix merged",
 };
 
 export const modeLabels: Record<string, string> = {

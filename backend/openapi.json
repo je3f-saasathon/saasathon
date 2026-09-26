@@ -7472,7 +7472,8 @@
           "manual",
           "on_merge",
           "branch_watch",
-          "schedule"
+          "schedule",
+          "fix_merged"
         ],
         "title": "ScanTrigger",
         "type": "string"

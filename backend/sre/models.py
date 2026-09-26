@@ -581,6 +581,7 @@ class ScanTrigger(models.TextChoices):
     ON_MERGE = "on_merge", "A PR merged into the default branch"
     BRANCH_WATCH = "branch_watch", "A push to a watched branch"
     SCHEDULE = "schedule", "A cron schedule"
+    FIX_MERGED = "fix_merged", "A fix merged in another repo"
 
 
 class RemediationAgent(models.Model):
@@ -635,6 +636,10 @@ class ScanRun(models.Model):
     agent = models.ForeignKey(RemediationAgent, on_delete=models.CASCADE, related_name="scan_runs")
     trigger = models.CharField(max_length=32, choices=ScanTrigger.choices)
     trigger_ref = models.CharField(max_length=255, blank=True, default="")
+    # fix_merged: the merged fix's runbook, the only one this scan hunts for.
+    runbook = models.ForeignKey(
+        "Runbook", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.RUNNING)
     error_message = models.TextField(blank=True, default="")
     temporal_workflow_id = models.CharField(max_length=255, unique=True)

@@ -2453,7 +2453,7 @@ export interface components {
          * ScanTrigger
          * @enum {string}
          */
-        ScanTrigger: "manual" | "on_merge" | "branch_watch" | "schedule";
+        ScanTrigger: "manual" | "on_merge" | "branch_watch" | "schedule" | "fix_merged";
         /** ScanRunListOut */
         ScanRunListOut: {
             /** Scan Runs */

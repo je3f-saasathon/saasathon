@@ -129,13 +129,16 @@ def sweep_material(agent, project: Project) -> Material:
     )
 
 
-def variant_material(agent, project: Project) -> Material:
+def variant_material(agent, project: Project, runbook_id: int | None = None) -> Material:
     """Runbooks from this repo and the org's other repos on the same GitHub account
-    (whose code this repo's reviewers can see), neighbours in the service mesh first."""
+    (whose code this repo's reviewers can see), neighbours in the service mesh first. Only
+    `runbook_id` when given (a scan started by that runbook's fix merging)."""
     candidates = Runbook.objects.filter(
         project__organization_id=project.organization_id,
         project__github_installation_id=project.github_installation_id,
     ).exclude(status=Playbook.Status.FAILING).select_related("project")
+    if runbook_id is not None:
+        candidates = candidates.filter(id=runbook_id)
     neighbours = {p.id for p in mesh.neighbour_projects(
         project, (services_of(project) or [""])[0], limit=10)}
 
@@ -313,7 +316,7 @@ class RepositoryScanner:
 
     def material(self) -> Material:
         if self.agent.kind == AgentKind.RUNBOOK_VARIANT:
-            return variant_material(self.agent, self.project)
+            return variant_material(self.agent, self.project, self.scan_run.runbook_id)
         if self.agent.kind == AgentKind.FIND_QUIET:
             return quiet_material(self.project)
         return sweep_material(self.agent, self.project)
@@ -470,13 +473,14 @@ def scan_repository(scan_repo: ScanRepo, heartbeat=lambda *a: None) -> list[Inci
 
 
 def create_scan_run(agent, trigger: str, trigger_ref: str, workflow_id: str,
-                    repos: list[tuple[Project, str, str, str]] | None = None):
+                    repos: list[tuple[Project, str, str, str]] | None = None, runbook=None):
     """A scan run and its repos: `repos` is [(project, branch, base_sha, head_sha)], or
-    None for every covered project's default branch, whole repo."""
+    None for every covered project's default branch, whole repo. `runbook` limits a
+    runbook_variant scan to that one."""
     from ..models import ScanRun
 
     scan_run = ScanRun.objects.create(agent=agent, trigger=trigger, trigger_ref=trigger_ref[:255],
-                                      temporal_workflow_id=workflow_id)
+                                      temporal_workflow_id=workflow_id, runbook=runbook)
     if repos is None:
         repos = [(p, p.github_default_branch, "", "") for p in agent.covered_projects()]
     for project, branch, base, head in repos:
