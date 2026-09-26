@@ -67,7 +67,10 @@ Uptrace quirks this relies on: saving a channel POSTs a test message and fails u
 2xx; monitor/channel **lists** leave `channelIds`/`monitorIds` empty (read one monitor to see
 its links); `/users/current` lists projects (with `orgId`), not orgs; there's no API to delete a
 project. Alerts in 2.1 use `status: unresolved` and underscore event names (`state_changed`).
-A reopened alert starts a new incident once the last one finished (`uptrace-alert-{id}-r{n}`).
+A reopened alert starts a new incident once the last one finished (`uptrace-alert-{id}-r{n}`), and
+so does *any* further notification of an alert whose last incident was `rejected`: the closed PR
+never fixed the bug, so that alert never resolves and never reopens, and without this the bug
+could never be worked on again. Scan findings recur the same way (`scan-{kind}-{fingerprint}-r{n}`).
 
 ### One-step onboarding: projects on install + `buggly` CLI (branch `feat/buggly-cli`, 2026-09-26)
 

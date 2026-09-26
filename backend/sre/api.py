@@ -41,6 +41,9 @@ from .models import (
     ServiceGraph,
     UptraceCredential,
     UptraceStatus,
+    latest_incident_run,
+    next_incident_key,
+    rejected_fix_recurred,
 )
 from .orgs import personal_org
 from .permissions import get_membership, get_org_membership, get_project_for, member_project_ids
@@ -442,19 +445,22 @@ def uptrace_source(alert: dict) -> str:
 
 
 def _uptrace_incident_key(project: Project, alert_id: str, event_name: str) -> str:
-    """One incident per Uptrace alert, plus one more each time the alert reopens after its
-    last incident finished: the bug came back (or the fix didn't hold), so it's new work.
-    While an incident is still running, and for `recurring` reminders, it's the same one.
+    """One incident per Uptrace alert, plus one more each time the bug comes back after its
+    last incident finished: the fix didn't hold (or was never merged), so it's new work.
+    While an incident is still running it's the same one, and so is a `recurring` reminder of
+    an alert whose last incident ran to a decision. The exception is a *rejected* incident:
+    its fix was never merged, so the bug is still live, so Uptrace's alert never resolves and
+    never sends a reopen event - any further occurrence of it is the bug recurring.
     Keys are uptrace-alert-{id}, then uptrace-alert-{id}-r2, -r3, ..."""
     base = f"uptrace-alert-{alert_id}"
-    runs = IncidentRun.objects.filter(project=project).filter(
-        Q(trace_id=base) | Q(trace_id__startswith=f"{base}-r"))
-    latest = runs.order_by("-id").first()
+    latest, count = latest_incident_run(project, base)
     if latest is None:
         return base
+    if rejected_fix_recurred(latest):
+        return next_incident_key(base, count)
     if latest.status in _ACTIVE_INCIDENT_STATUSES or event_name not in UPTRACE_REOPEN_EVENTS:
         return latest.trace_id
-    return f"{base}-r{runs.count() + 1}"
+    return next_incident_key(base, count)
 
 
 def _pin_uptrace_source(project: Project, source: str) -> str | None:

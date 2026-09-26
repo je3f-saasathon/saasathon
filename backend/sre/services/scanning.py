@@ -25,7 +25,8 @@ from ..llm.clients import LLMError, client_for, parse_json
 from ..llm.resolve import get_llm_config
 from ..models import (
     AgentKind, ExecutionMode, IncidentRun, LLMUsage, PipelineStep, Playbook, Project, Runbook,
-    ScanRepo, ServiceGraph, ServiceNode,
+    ScanRepo, ServiceGraph, ServiceNode, latest_incident_run, next_incident_key,
+    rejected_fix_recurred,
 )
 from . import mesh
 from .context import UNTRUSTED_NOTICE, untrusted
@@ -344,11 +345,15 @@ class RepositoryScanner:
 
     def record(self, findings: list[Finding]) -> list[IncidentRun]:
         """One incident per finding never raised before (the workflow id is the finding's
-        fingerprint, so a later scan finding the same bug adds nothing)."""
+        fingerprint, so a later scan finding the same bug adds nothing) - unless the last
+        incident for it was rejected: that fix was never merged, so the bug is still in the
+        repo and finding it again is new work. Recurrences are keyed {fingerprint}-r2, -r3, ..."""
         created = []
         services = services_of(self.project)
         for finding in findings:
-            key = f"scan-{self.agent.kind}-{finding.fingerprint}"
+            base = f"scan-{self.agent.kind}-{finding.fingerprint}"
+            latest, count = latest_incident_run(self.project, base)
+            key = next_incident_key(base, count) if rejected_fix_recurred(latest) else base
             cap = lower_mode(self.agent.execution_mode, EVIDENCE_CAP[finding.evidence_kind])
             group = finding.group or {}
             run, is_new = IncidentRun.objects.get_or_create(
