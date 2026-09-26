@@ -1,5 +1,8 @@
 import json
 
+from django.conf import settings
+from django.db.models import Q
+
 from ..llm.clients import JevClient, client_for
 from ..llm.resolve import get_llm_config
 from ..models import IncidentRun, PipelineStep, Playbook, Project
@@ -8,6 +11,7 @@ from .context import UNTRUSTED_NOTICE, incident_context, untrusted
 
 MATCH_CONFIDENCE_THRESHOLD = 0.6
 ALLOWED_STEP_TYPES = {"edit_file", "run_command"}
+GENERIC_STEP_TYPES = {"investigate", "change", "verify"}
 MAX_PLAYBOOK_STEPS = 20
 
 
@@ -27,6 +31,41 @@ def clean_steps(raw_steps) -> list[dict]:
         elif step["type"] == "run_command" and step.get("command"):
             steps.append({"type": "run_command", "command": str(step["command"])[:1000]})
     return steps[:MAX_PLAYBOOK_STEPS]
+
+
+def clean_generic_steps(raw_steps) -> list[dict]:
+    """Generic playbook steps: what to do, never which file (that's a runbook's job)."""
+    steps = []
+    for step in raw_steps or []:
+        if (isinstance(step, dict) and step.get("type") in GENERIC_STEP_TYPES
+                and str(step.get("instructions", "")).strip()):
+            steps.append({"type": step["type"], "instructions": str(step["instructions"])[:4000]})
+    return steps[:MAX_PLAYBOOK_STEPS]
+
+
+def clean_playbook_steps(raw_steps) -> list[dict]:
+    """A playbook may hold generic steps and, for legacy or hand-written ones, the
+    specific step types too. Anything else (e.g. a push/PR step) is dropped."""
+    steps = []
+    for step in raw_steps or []:
+        kind = step.get("type") if isinstance(step, dict) else None
+        cleaned = (clean_generic_steps([step]) if kind in GENERIC_STEP_TYPES
+                   else clean_steps([step]))
+        steps.extend(cleaned)
+    return steps[:MAX_PLAYBOOK_STEPS]
+
+
+def visible_playbooks(project: Project):
+    """What a project can match and list. Runbooks off: its own playbooks, as always.
+    On: the built-ins, its org's generic playbooks, and its own legacy ones."""
+    if not settings.SRE_RUNBOOKS_ENABLED:
+        return Playbook.objects.filter(project=project)
+    return Playbook.objects.filter(
+        Q(organization__isnull=True, origin=Playbook.Origin.BUILTIN)
+        | Q(organization_id=project.organization_id, is_generic=True,
+            organization__isnull=False)
+        | Q(project=project, is_generic=False)
+    )
 
 
 def _playbook_card(playbook: Playbook) -> dict:
@@ -146,6 +185,7 @@ class PlaybookAuthor:
         keywords = [str(k).lower().strip() for k in data.get("keywords") or [] if str(k).strip()]
         return Playbook.objects.create(
             project=self.run.project,
+            organization_id=self.run.project.organization_id,
             source_incident_run=self.run,
             title=str(data.get("title") or classification.summary or "Untitled playbook")[:255],
             description=str(data.get("description", ""))[:5000],

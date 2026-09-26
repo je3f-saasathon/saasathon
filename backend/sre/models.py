@@ -203,7 +203,30 @@ class Playbook(models.Model):
         CONFIRMED = "confirmed", "Confirmed"
         FAILING = "failing", "Failing"
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="playbooks")
+    class Origin(models.TextChoices):
+        BUILTIN = "builtin", "Built-in"
+        AGENT = "agent", "Written by the agent"
+        HUMAN = "human", "Written by a person"
+
+    # Generic playbooks belong to an org (null = a built-in we ship, visible everywhere).
+    # `project` is where one came from; a legacy (not yet generic) playbook is only
+    # visible to that project, since it can hold its repo's file paths and code details.
+    organization = models.ForeignKey(
+        Organization, null=True, blank=True, on_delete=models.CASCADE, related_name="playbooks"
+    )
+    project = models.ForeignKey(
+        Project, null=True, blank=True, on_delete=models.SET_NULL, related_name="playbooks"
+    )
+    is_generic = models.BooleanField(default=False)
+    origin = models.CharField(max_length=16, choices=Origin.choices, default=Origin.AGENT)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    slug = models.SlugField(max_length=100, null=True, blank=True, unique=True)  # built-ins only
+    category = models.CharField(max_length=32, blank=True, default="")
+    symptoms = models.TextField(blank=True, default="")
+    # The playbook as it was before generalize_playbooks rewrote it; {} otherwise.
+    legacy_snapshot = models.JSONField(default=dict, blank=True)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     keywords = models.JSONField(default=list)

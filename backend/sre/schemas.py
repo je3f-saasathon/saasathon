@@ -201,7 +201,13 @@ class StepOverridesIn(Schema):
 
 class PlaybookOut(Schema):
     id: int
-    project_id: int
+    project_id: int | None
+    organization_id: int | None
+    origin: Playbook.Origin
+    created_by_id: int | None
+    is_generic: bool
+    category: str
+    symptoms: str
     title: str
     description: str
     keywords: list[str]
@@ -225,6 +231,8 @@ class PlaybookCreateIn(Schema):
     keywords: list[str] = []
     steps: list[dict] = []
     execution_mode_override: ExecutionMode | None = None
+    category: str = ""
+    symptoms: str = ""
 
 
 class PlaybookUpdateIn(Schema):
@@ -234,6 +242,8 @@ class PlaybookUpdateIn(Schema):
     steps: list[dict] | None = None
     status: Playbook.Status | None = None
     execution_mode_override: ExecutionMode | None = None
+    category: str | None = None
+    symptoms: str | None = None
 
 
 class AttemptOut(Schema):

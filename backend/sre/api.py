@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q
 from django.conf import settings
-from django.http import HttpRequest, HttpResponseRedirect
+from django.http import Http404, HttpRequest, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
@@ -19,6 +19,8 @@ from . import temporal_client
 from .llm import platform
 from .llm.resolve import provider_supports_step
 from .models import (
+    ORG_ROLE_RANK,
+    ROLE_RANK,
     ExecutionMode,
     GitHubInstallation,
     IncidentRun,
@@ -76,7 +78,8 @@ from .schemas import (
     WebhookSecretOut,
 )
 from .services import github_connect
-from .services.playbooks import clean_steps
+from .services.playbooks import clean_playbook_steps, visible_playbooks
+from .services.triage import CATEGORIES
 from .services.uptrace import resolve_credential
 from .temporal_types import ApprovalDecision, IncidentInput
 from .validators import UnsafeURLError, validate_llm_base_url, validate_uptrace_api_url
@@ -783,10 +786,32 @@ def set_step_overrides(request: HttpRequest, project_id: int, payload: StepOverr
 
 # ---- playbooks -------------------------------------------------------------------
 
+def _check_category(category: str | None) -> None:
+    if category and category not in CATEGORIES:
+        raise HttpError(400, f"Unknown category '{category}'")
+
+
+def _new_playbook(user, payload: PlaybookCreateIn, **scope) -> Playbook:
+    _check_category(payload.category)
+    return Playbook.objects.create(
+        **scope,
+        title=payload.title,
+        description=payload.description,
+        keywords=[k.lower().strip() for k in payload.keywords if k.strip()],
+        steps=clean_playbook_steps(payload.steps),
+        execution_mode_override=payload.execution_mode_override,
+        category=payload.category,
+        symptoms=payload.symptoms,
+        origin=Playbook.Origin.HUMAN,
+        created_by=user,
+        status=Playbook.Status.CONFIRMED,  # written by a human admin
+    )
+
+
 @router.get("/projects/{project_id}/playbooks", response=PlaybookListOut)
 def list_playbooks(request: HttpRequest, project_id: int, status: str | None = None):
     project = get_project_for(request.auth, project_id, ProjectRole.VIEWER)
-    qs = project.playbooks.all()
+    qs = visible_playbooks(project).order_by("-created_at")
     if status:
         qs = qs.filter(status=status)
     return {"playbooks": list(qs), "total": qs.count()}
@@ -795,22 +820,57 @@ def list_playbooks(request: HttpRequest, project_id: int, status: str | None = N
 @router.post("/projects/{project_id}/playbooks", response={201: PlaybookOut})
 def create_playbook(request: HttpRequest, project_id: int, payload: PlaybookCreateIn):
     project = get_project_for(request.auth, project_id, ProjectRole.ADMIN)
-    playbook = Playbook.objects.create(
-        project=project,
-        title=payload.title,
-        description=payload.description,
-        keywords=[k.lower().strip() for k in payload.keywords if k.strip()],
-        steps=clean_steps(payload.steps),
-        execution_mode_override=payload.execution_mode_override,
-        status=Playbook.Status.CONFIRMED,  # written by a human admin
-    )
-    return 201, playbook
+    # With runbooks on it's a generic playbook for the whole org; the project is only
+    # where it came from.
+    scope = dict(project=project, organization_id=project.organization_id,
+                 is_generic=settings.SRE_RUNBOOKS_ENABLED)
+    return 201, _new_playbook(request.auth, payload, **scope)
+
+
+@router.post("/organizations/{org_id}/playbooks", response={201: PlaybookOut})
+def create_org_playbook(request: HttpRequest, org_id: int, payload: PlaybookCreateIn):
+    org = get_org_membership(request.auth, org_id, OrgRole.ADMIN).organization
+    return 201, _new_playbook(request.auth, payload, organization=org, is_generic=True)
+
+
+def _can_use_playbook(user, playbook: Playbook, min_role: ProjectRole) -> bool:
+    """Legacy playbooks: a role on their project. Generic org ones: the org role (member to
+    read, admin to write), or that project role on any project in the org."""
+    if not playbook.is_generic or not settings.SRE_RUNBOOKS_ENABLED:
+        if playbook.project_id is None:
+            return False
+        try:
+            get_membership(user, playbook.project_id, min_role)
+            return True
+        except (Http404, HttpError):
+            return False
+    org_role = OrganizationMembership.objects.filter(
+        organization_id=playbook.organization_id, user=user
+    ).values_list("role", flat=True).first()
+    needed = OrgRole.MEMBER if min_role == ProjectRole.VIEWER else OrgRole.ADMIN
+    if org_role is not None and ORG_ROLE_RANK[org_role] >= ORG_ROLE_RANK[needed]:
+        return True
+    roles = ProjectMembership.objects.filter(
+        user=user, project__organization_id=playbook.organization_id
+    ).values_list("role", flat=True)
+    return any(ROLE_RANK[r] >= ROLE_RANK[min_role] for r in roles)
 
 
 def _playbook_for(user, playbook_id: int, min_role: ProjectRole) -> Playbook:
+    """Can't see it → 404; can see it but not edit → 403. Built-ins: anyone may read them
+    (with runbooks on), nobody may change them."""
     playbook = get_object_or_404(Playbook, id=playbook_id)
-    get_membership(user, playbook.project_id, min_role)
-    return playbook
+    if playbook.origin == Playbook.Origin.BUILTIN and playbook.organization_id is None:
+        if not settings.SRE_RUNBOOKS_ENABLED:
+            raise Http404("Playbook not found")
+        if min_role != ProjectRole.VIEWER:
+            raise HttpError(403, "Built-in playbooks are read-only")
+        return playbook
+    if _can_use_playbook(user, playbook, min_role):
+        return playbook
+    if min_role != ProjectRole.VIEWER and _can_use_playbook(user, playbook, ProjectRole.VIEWER):
+        raise HttpError(403, f"Requires {min_role.label.lower()} role")
+    raise Http404("Playbook not found")
 
 
 @router.get("/playbooks/{playbook_id}", response=PlaybookOut)
@@ -822,13 +882,14 @@ def get_playbook(request: HttpRequest, playbook_id: int):
 def update_playbook(request: HttpRequest, playbook_id: int, payload: PlaybookUpdateIn):
     playbook = _playbook_for(request.auth, playbook_id, ProjectRole.ADMIN)
     changes = payload.dict(exclude_unset=True)
-    for field in ("title", "description"):
+    _check_category(changes.get("category"))
+    for field in ("title", "description", "category", "symptoms"):
         if changes.get(field) is not None:
             setattr(playbook, field, changes[field])
     if changes.get("keywords") is not None:
         playbook.keywords = [k.lower().strip() for k in changes["keywords"] if k.strip()]
     if changes.get("steps") is not None:
-        playbook.steps = clean_steps(changes["steps"])
+        playbook.steps = clean_playbook_steps(changes["steps"])
     if changes.get("status") is not None:
         playbook.status = changes["status"]
         if playbook.status != Playbook.Status.FAILING:

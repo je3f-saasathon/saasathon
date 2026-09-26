@@ -601,6 +601,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sre/organizations/{org_id}/playbooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Org Playbook */
+        post: operations["sre_api_create_org_playbook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sre/playbooks/{playbook_id}": {
         parameters: {
             query?: never;
@@ -1258,6 +1275,11 @@ export interface components {
                 [key: string]: number | null;
             };
         };
+        /**
+         * Origin
+         * @enum {string}
+         */
+        Origin: "builtin" | "agent" | "human";
         /** PlaybookListOut */
         PlaybookListOut: {
             /** Playbooks */
@@ -1270,7 +1292,18 @@ export interface components {
             /** Id */
             id: number;
             /** Project Id */
-            project_id: number;
+            project_id: number | null;
+            /** Organization Id */
+            organization_id: number | null;
+            origin: components["schemas"]["Origin"];
+            /** Created By Id */
+            created_by_id: number | null;
+            /** Is Generic */
+            is_generic: boolean;
+            /** Category */
+            category: string;
+            /** Symptoms */
+            symptoms: string;
             /** Title */
             title: string;
             /** Description */
@@ -1325,6 +1358,16 @@ export interface components {
                 [key: string]: unknown;
             }[];
             execution_mode_override?: components["schemas"]["ExecutionMode"] | null;
+            /**
+             * Category
+             * @default
+             */
+            category: string;
+            /**
+             * Symptoms
+             * @default
+             */
+            symptoms: string;
         };
         /** PlaybookUpdateIn */
         PlaybookUpdateIn: {
@@ -1340,6 +1383,10 @@ export interface components {
             }[] | null;
             status?: components["schemas"]["Status"] | null;
             execution_mode_override?: components["schemas"]["ExecutionMode"] | null;
+            /** Category */
+            category?: string | null;
+            /** Symptoms */
+            symptoms?: string | null;
         };
         /** IncidentRunListOut */
         IncidentRunListOut: {
@@ -2801,6 +2848,32 @@ export interface operations {
             header?: never;
             path: {
                 project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybookCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybookOut"];
+                };
+            };
+        };
+    };
+    sre_api_create_org_playbook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
             };
             cookie?: never;
         };

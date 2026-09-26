@@ -157,7 +157,7 @@ def test_create_playbook_is_idempotent_and_cleans_steps(monkeypatch, incident):
     first = activities.create_playbook(IncidentInput(incident.id, incident.project_id))
     second = activities.create_playbook(IncidentInput(incident.id, incident.project_id))  # retry
     assert first == second
-    playbook = Playbook.objects.get()
+    playbook = Playbook.objects.get(source_incident_run=incident)
     assert playbook.status == "unconfirmed"
     assert [s["type"] for s in playbook.steps] == ["edit_file", "run_command"]
 

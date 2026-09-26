@@ -2008,6 +2008,53 @@
         ]
       }
     },
+    "/api/sre/organizations/{org_id}/playbooks": {
+      "post": {
+        "operationId": "sre_api_create_org_playbook",
+        "summary": "Create Org Playbook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybookCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/sre/playbooks/{playbook_id}": {
       "get": {
         "operationId": "sre_api_get_playbook",
@@ -3855,6 +3902,15 @@
         "title": "StepOverridesIn",
         "type": "object"
       },
+      "Origin": {
+        "enum": [
+          "builtin",
+          "agent",
+          "human"
+        ],
+        "title": "Origin",
+        "type": "string"
+      },
       "PlaybookListOut": {
         "properties": {
           "playbooks": {
@@ -3883,8 +3939,52 @@
             "type": "integer"
           },
           "project_id": {
-            "title": "Project Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "organization_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Id"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/Origin"
+          },
+          "created_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Id"
+          },
+          "is_generic": {
+            "title": "Is Generic",
+            "type": "boolean"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "symptoms": {
+            "title": "Symptoms",
+            "type": "string"
           },
           "title": {
             "title": "Title",
@@ -3951,6 +4051,12 @@
         "required": [
           "id",
           "project_id",
+          "organization_id",
+          "origin",
+          "created_by_id",
+          "is_generic",
+          "category",
+          "symptoms",
           "title",
           "description",
           "keywords",
@@ -4011,6 +4117,16 @@
                 "type": "null"
               }
             ]
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "symptoms": {
+            "default": "",
+            "title": "Symptoms",
+            "type": "string"
           }
         },
         "required": [
@@ -4091,6 +4207,28 @@
                 "type": "null"
               }
             ]
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "symptoms": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symptoms"
           }
         },
         "title": "PlaybookUpdateIn",
