@@ -169,7 +169,10 @@ export function Monitoring({ project, projects }: { project: Project; projects?:
         <p className="text-muted-foreground">
           Shares its Uptrace project with{" "}
           {project.uptrace_shared_with.map((p) => p.name).join(", ")}, so calls between them show
-          up as one trace. Alerts are told apart by service name ({project.service_names.join(", ")}).
+          up as one trace.{" "}
+          {project.service_names.length > 0
+            ? `Alerts are told apart by service name (${project.service_names.join(", ")}).`
+            : "Set this project's service names above so its alerts can be told apart."}
         </p>
       )}
 
