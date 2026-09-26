@@ -7316,6 +7316,35 @@
         "title": "AgentUpdateIn",
         "type": "object"
       },
+      "ScanFindingOut": {
+        "description": "A finding's incident and how far its fix got.",
+        "properties": {
+          "incident_run_id": {
+            "title": "Incident Run Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "pr_url": {
+            "title": "Pr Url",
+            "type": "string"
+          },
+          "mode_note": {
+            "title": "Mode Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "incident_run_id",
+          "status",
+          "pr_url",
+          "mode_note"
+        ],
+        "title": "ScanFindingOut",
+        "type": "object"
+      },
       "ScanRepoOut": {
         "properties": {
           "project_id": {
@@ -7341,6 +7370,13 @@
             "title": "Incident Run Ids",
             "type": "array"
           },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ScanFindingOut"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
           "error": {
             "title": "Error",
             "type": "string"
@@ -7352,6 +7388,7 @@
           "status",
           "finding_count",
           "incident_run_ids",
+          "findings",
           "error"
         ],
         "title": "ScanRepoOut",

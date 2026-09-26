@@ -55,11 +55,19 @@ def _agent_out(agent: RemediationAgent) -> dict:
 
 
 def _scan_run_out(scan_run: ScanRun) -> dict:
-    incidents: dict[int, list[int]] = {}
-    for run_id, project_id in IncidentRun.objects.filter(scan_run=scan_run).values_list("id", "project_id"):
-        incidents.setdefault(project_id, []).append(run_id)
+    findings: dict[int, list[dict]] = {}
+    runs = IncidentRun.objects.filter(scan_run=scan_run).select_related("playbook_run").order_by("id")
+    for run in runs:
+        playbook_run = getattr(run, "playbook_run", None)
+        findings.setdefault(run.project_id, []).append({
+            "incident_run_id": run.id, "status": run.status,
+            "pr_url": playbook_run.pr_url if playbook_run else "",
+            "mode_note": playbook_run.mode_note if playbook_run else "",
+        })
     repos = [{"project_id": r.project_id, "project_name": r.project.name, "status": r.status,
-              "finding_count": r.finding_count, "incident_run_ids": incidents.get(r.project_id, []),
+              "finding_count": r.finding_count,
+              "incident_run_ids": [f["incident_run_id"] for f in findings.get(r.project_id, [])],
+              "findings": findings.get(r.project_id, []),
               "error": r.error} for r in scan_run.repos.select_related("project")]
     return {
         **{f: getattr(scan_run, f) for f in ("id", "agent_id", "trigger", "trigger_ref", "status",

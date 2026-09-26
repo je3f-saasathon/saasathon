@@ -2392,6 +2392,20 @@ export interface components {
             /** Enabled */
             enabled?: boolean | null;
         };
+        /**
+         * ScanFindingOut
+         * @description A finding's incident and how far its fix got.
+         */
+        ScanFindingOut: {
+            /** Incident Run Id */
+            incident_run_id: number;
+            /** Status */
+            status: string;
+            /** Pr Url */
+            pr_url: string;
+            /** Mode Note */
+            mode_note: string;
+        };
         /** ScanRepoOut */
         ScanRepoOut: {
             /** Project Id */
@@ -2404,6 +2418,8 @@ export interface components {
             finding_count: number;
             /** Incident Run Ids */
             incident_run_ids: number[];
+            /** Findings */
+            findings: components["schemas"]["ScanFindingOut"][];
             /** Error */
             error: string;
         };

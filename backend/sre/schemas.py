@@ -594,12 +594,21 @@ class AgentOut(Schema):
     last_scan_run_id: int | None
 
 
+class ScanFindingOut(Schema):
+    """A finding's incident and how far its fix got."""
+    incident_run_id: int
+    status: str  # the incident's
+    pr_url: str  # "" until a PR is opened
+    mode_note: str  # why it stopped at a diagnosis although a PR was allowed; "" otherwise
+
+
 class ScanRepoOut(Schema):
     project_id: int
     project_name: str
     status: str
     finding_count: int
     incident_run_ids: list[int]
+    findings: list[ScanFindingOut]
     error: str
 
 

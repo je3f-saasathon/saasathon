@@ -222,6 +222,8 @@ def test_scan_run_shows_findings_and_usage(org, api_for, temporal):
 
     body = api.get(f"/scan-runs/{scan_id}").json()
     assert body["repos"][0]["incident_run_ids"] == [incident.id]
+    assert body["repos"][0]["findings"] == [{"incident_run_id": incident.id, "status": "running",
+                                            "pr_url": "", "mode_note": ""}]
     assert body["finding_count"] == 1 and body["usage"]["total_tokens"] == 12
     listing = api.get(f"/agents/{agent['id']}/scan-runs").json()
     assert listing["total"] == 1 and listing["scan_runs"][0]["id"] == scan_id

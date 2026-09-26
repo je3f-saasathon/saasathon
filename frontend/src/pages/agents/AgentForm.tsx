@@ -40,6 +40,7 @@ function initialForm(agent?: RemediationAgent): FormState {
       playbook_ids: [],
       execution_mode: "",
       max_findings_per_repo: 3,
+      code_findings_open_prs: false,
       monthly_token_budget: 0,
       enabled: true,
     };
@@ -54,9 +55,15 @@ function initialForm(agent?: RemediationAgent): FormState {
     playbook_ids: agent.playbook_ids,
     execution_mode: agent.execution_mode === "draft_only" ? "draft_only" : "advisory_only",
     max_findings_per_repo: agent.max_findings_per_repo,
+    code_findings_open_prs: agent.code_findings_open_prs,
     monthly_token_budget: agent.monthly_token_budget,
     enabled: agent.enabled,
   };
+}
+
+/** The mode the agent will have: the chosen one, else the server's default for the kind. */
+function effectiveMode(form: FormState): "advisory_only" | "draft_only" {
+  return form.execution_mode || (form.kind === "playbook_sweep" ? "advisory_only" : "draft_only");
 }
 
 function toggle(ids: number[], id: number, on: boolean): number[] {
@@ -152,6 +159,7 @@ export function AgentForm({
       const body = {
         ...form,
         execution_mode: form.execution_mode || null,
+        code_findings_open_prs: form.code_findings_open_prs && effectiveMode(form) === "draft_only",
         playbook_ids: form.kind === "playbook_sweep" ? form.playbook_ids : [],
       };
       return agent
@@ -229,7 +237,7 @@ export function AgentForm({
         )}
         <Field
           label="Fixes can go as far as"
-          hint="The limit for this agent. A finding without strong evidence gets a diagnosis only, and scan findings never merge on their own."
+          hint="The limit for this agent. Scan findings never merge on their own, and a repo gets at most one PR per bug."
         >
           <Select
             value={form.execution_mode}
@@ -240,6 +248,24 @@ export function AgentForm({
             <option value="draft_only">Draft PR</option>
           </Select>
         </Field>
+        {effectiveMode(form) === "draft_only" && (
+          <label className="flex items-start gap-2 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={form.code_findings_open_prs}
+              onChange={(e) => setForm({ ...form, code_findings_open_prs: e.target.checked })}
+            />
+            <span>
+              <span className="font-medium">Open draft PRs for findings from code alone</span>
+              <span className="block text-xs text-muted-foreground">
+                A playbook sweep's findings come from reading the code, with no production error
+                behind them, so they get a diagnosis unless this is on. Each PR still waits for a
+                person, and a repo gets a few open ones at most.
+              </span>
+            </span>
+          </label>
+        )}
         <Field label="Max findings per repo" hint="1 to 10, per scan.">
           <Input
             type="number"
