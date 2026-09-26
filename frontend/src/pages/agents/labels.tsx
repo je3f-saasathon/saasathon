@@ -28,7 +28,7 @@ export const triggerDescriptions: Record<AgentTrigger, string> = {
 };
 
 export const scanTriggerLabels: Record<ScanTrigger, string> = {
-  manual: "Run by hand",
+  manual: "Merge",
   on_merge: "Merge",
   branch_watch: "Push",
   schedule: "Schedule",
