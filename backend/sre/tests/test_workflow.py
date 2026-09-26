@@ -219,7 +219,7 @@ def test_draft_only_waits_for_approval_then_opens_pr():
 
 def test_draft_only_rejection_opens_no_pr():
     s = Scenario(mode="draft_only")
-    assert run_workflow(s, ApprovalDecision(approve=False, user_id=3)) == "failed"
+    assert run_workflow(s, ApprovalDecision(approve=False, user_id=3)) == "rejected"
     assert s.run_status == ["pending_approval", "rejected"]
     assert "open_pull_request" not in s.calls
     assert "close_pull_request" in s.calls
@@ -236,7 +236,7 @@ def test_draft_only_merged_on_github_touches_no_pr():
 
 def test_draft_only_closed_on_github_is_rejected_without_closing_again():
     s = Scenario(mode="draft_only")
-    assert run_workflow(s, ApprovalDecision(approve=False, user_id=0, via_github=True)) == "failed"
+    assert run_workflow(s, ApprovalDecision(approve=False, user_id=0, via_github=True)) == "rejected"
     assert s.run_status == ["pending_approval", "rejected"]
     assert "close_pull_request" not in s.calls and "open_pull_request" not in s.calls
 
@@ -247,7 +247,7 @@ def test_closed_then_reopened_then_merged_succeeds():
     assert run_review(s, steps) == "succeeded"
     assert s.run_status == [PENDING, REJECTED, PENDING, "succeeded"]
     statuses = [status for status, _ in s.incident_status]
-    assert statuses == ["awaiting_approval", "failed", "awaiting_approval", "succeeded"]
+    assert statuses == ["awaiting_approval", "rejected", "awaiting_approval", "succeeded"]
     assert s.calls.count("record_playbook_outcome") == 1
     assert "open_pull_request" not in s.calls and "close_pull_request" not in s.calls
 
@@ -255,15 +255,17 @@ def test_closed_then_reopened_then_merged_succeeds():
 def test_reopened_pr_can_be_rejected_again():
     s = Scenario(mode="draft_only")
     steps = [("close", PENDING), ("reopen", REJECTED), ("close", PENDING)]
-    assert run_review(s, steps) == "failed"
+    assert run_review(s, steps) == "rejected"
     assert s.run_status == [PENDING, REJECTED, PENDING, REJECTED]
     assert "record_playbook_outcome" not in s.calls
 
 
 def test_rejected_pr_never_reopened_ends_after_the_window():
     s = Scenario(mode="draft_only")
-    assert run_review(s, [("close", PENDING)]) == "failed"  # time-skips past REOPEN_WINDOW
+    assert run_review(s, [("close", PENDING)]) == "rejected"  # time-skips past REOPEN_WINDOW
     assert s.run_status == [PENDING, REJECTED]
+    # Rejected, not failed: the agent did produce a fix.
+    assert "failed" not in [status for status, _ in s.incident_status]
 
 
 def test_merge_after_rejection_counts_even_if_reopen_was_missed():

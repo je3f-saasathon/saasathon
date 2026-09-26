@@ -12,7 +12,7 @@ import { IncidentDetail } from "./IncidentDetail";
 
 const PAGE_SIZE = 25;
 
-const statusFilters = ["all", "running", "awaiting_approval", "succeeded", "failed"] as const;
+const statusFilters = ["all", "running", "awaiting_approval", "succeeded", "rejected", "failed"] as const;
 type StatusFilter = (typeof statusFilters)[number];
 
 export function DashboardPage() {

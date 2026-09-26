@@ -54,6 +54,9 @@ INCIDENTS = [
     (1, "succeeded", "logic_error", "medium",
      "Timezone offset applied twice when rendering order dates.",
      "succeeded", ExecutionMode.AUTONOMOUS, 96),
+    (0, "rejected", "validation", "medium",
+     "Coupon codes are compared case-sensitively, so 'SAVE10' and 'save10' differ.",
+     "rejected", ExecutionMode.DRAFT_ONLY, 30),
 ]
 
 LONG_DIAGNOSIS = "\n\n".join(
@@ -138,8 +141,10 @@ class Command(BaseCommand):
                         incident_run=run, playbook=playbook, execution_mode=mode, status=pr_status,
                         branch_name=f"sre/fix-{n}",
                         pr_url=f"https://github.com/{project.github_repo_owner}/{project.github_repo_name}/pull/{100 + n}"
-                        # Draft-only runs have a draft PR open while they await review.
-                        if pr_status in ("succeeded", "pending_approval") else "",
+                        # Draft-only runs keep their PR link while awaiting review or once rejected.
+                        if pr_status in ("succeeded", "pending_approval", "rejected") else "",
+                        # A rejection records when the PR was closed (the reopen window starts then).
+                        approved_at=now - timedelta(hours=hours - 1) if pr_status == "rejected" else None,
                     )
                     tries = 3 if pr_status == "failed" else 1
                     for a in range(1, tries + 1):

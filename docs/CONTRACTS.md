@@ -48,7 +48,7 @@ All routes are under `/api/sre` and require `Authorization: Bearer <token>`, exc
 - `execution_mode`: `autonomous` (opens the PR itself) · `draft_only` (default; opens a GitHub **draft** PR right away, and an admin's approval marks it ready for review while rejection closes it. On repos whose plan doesn't allow drafts it opens a normal PR titled `[Awaiting approval] …` instead, and approval removes the prefix) · `advisory_only` (writes a diagnosis only, never touches the repo). An `unconfirmed` playbook never runs above `draft_only`.
 - `provider`: `anthropic` · `openai` · `self_hosted` (any OpenAI-compatible server; needs `base_url`) · `jev_cloudflare` (only for `anomaly_double_check`, `bug_classification`, `playbook_similarity_judge`).
 - `step`: `anomaly_double_check` · `bug_classification` · `playbook_similarity_judge` · `playbook_creation` · `playbook_execution`.
-- incident `status`: `running` · `no_anomaly` · `new_playbook_created` · `awaiting_approval` · `succeeded` · `failed` · `advisory_complete`.
+- incident `status`: `running` · `no_anomaly` · `new_playbook_created` · `awaiting_approval` · `succeeded` · `failed` · `rejected` (a draft-only fix whose PR was closed unmerged; not a failure) · `advisory_complete`.
 - playbook `status`: `unconfirmed` · `confirmed` · `failing` (3 failed runs in a row; excluded from matching).
 - playbook run `status`: `running` · `pending_approval` · `rejected` · `succeeded` · `failed`.
 
@@ -152,7 +152,7 @@ When a project hasn't picked a config for a step, it runs on our keys (server en
 
 `POST /sre/github/webhook` — no bearer token; GitHub signs the body with the App's webhook secret (`X-Hub-Signature-256`, `GITHUB_APP_WEBHOOK_SECRET`). This is how a **draft-only** run is approved: the agent opens a draft PR, and for `pull_request` events on that PR's branch:
 - `closed`, **merged** → approves the fix: the run and incident become `succeeded` and the playbook's outcome is recorded. Also accepted from `rejected`, in case the reopen delivery was lost.
-- `closed`, **not merged** → rejects it: the run becomes `rejected` and the incident `failed`.
+- `closed`, **not merged** → rejects it: the run and the incident become `rejected`. This is distinct from `failed` (the agent couldn't produce a fix, or the pipeline errored): the fix exists, a person declined it.
 - `reopened`, or `opened` (a new PR from the same branch), on a **`rejected`** run → back up for review: `pending_approval` / `awaiting_approval`, `approved_at` cleared. The workflow listens for this for **30 days** after a rejection, then ends for good.
 
 The PR must be in the project's repo and on the run's `branch_name`.

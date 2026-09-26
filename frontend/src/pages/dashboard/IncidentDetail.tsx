@@ -197,6 +197,26 @@ function UsageTable({ run }: { run: IncidentRun }) {
   );
 }
 
+// Must match REOPEN_WINDOW in backend/sre/workflows.py.
+const REOPEN_WINDOW_DAYS = 30;
+
+function RejectedNote({ rejectedAt, hasPr }: { rejectedAt: string | null; hasPr: boolean }) {
+  const closed = rejectedAt ? new Date(rejectedAt) : null;
+  const deadline = closed ? new Date(closed.getTime() + REOPEN_WINDOW_DAYS * 86_400_000) : null;
+  const day = (d: Date) => d.toLocaleDateString(undefined, { dateStyle: "medium" });
+  const open = deadline != null && deadline.getTime() > Date.now();
+  return (
+    <p className="rounded-md border p-3 text-sm text-muted-foreground">
+      The fix was rejected{closed ? ` on ${day(closed)}` : ""}: its PR was closed without merging.{" "}
+      {!hasPr || !deadline
+        ? null
+        : open
+          ? `Reopen the PR on GitHub by ${day(deadline)} to put it back up for review.`
+          : "It can no longer be reopened for review."}
+    </p>
+  );
+}
+
 export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: () => void }) {
   const [showDiagnosis, setShowDiagnosis] = useState(false);
   const playbookId = run.playbook?.id;
@@ -253,11 +273,8 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
             when you do.
           </p>
         )}
-        {run.playbook_run_status === "rejected" && run.pr_url && (
-          <p className="rounded-md border p-3 text-sm text-muted-foreground">
-            The fix was rejected. Reopen the PR on GitHub within 30 days of closing it to put it
-            back up for review.
-          </p>
+        {run.playbook_run_status === "rejected" && (
+          <RejectedNote rejectedAt={playbookRun.data?.approved_at ?? null} hasPr={!!run.pr_url} />
         )}
         {run.error_message && (
           <p className="whitespace-pre-wrap text-sm text-destructive">{run.error_message}</p>

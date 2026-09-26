@@ -22,9 +22,9 @@ Uptrace ─POST /api/sre/webhooks/uptrace/{project_id}─▶ Django (HMAC or sha
             advisory_only ─▶ write_diagnosis_report ─▶ advisory_complete
             else up to 3 attempts of run_playbook_attempt (agent loop in sandbox; each re-plans from the last error)
               autonomous ─▶ ready PR opened ─▶ succeeded
-              draft_only ─▶ GitHub *draft* PR ─▶ wait for approval signal
-                              approve ─▶ open_pull_request (marks ready) ─▶ succeeded
-                              reject  ─▶ close_pull_request ─▶ failed
+              draft_only ─▶ GitHub *draft* PR ─▶ wait for a decision (GitHub webhook, or /approve)
+                              PR merged      ─▶ succeeded
+                              PR closed      ─▶ rejected ─(reopened within 30 days)─▶ back to waiting
             3 failures ─▶ failed; playbook FAILING after 3 failed runs in a row
 ```
 

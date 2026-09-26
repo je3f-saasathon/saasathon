@@ -133,7 +133,7 @@ class IncidentDiagnosisWorkflow:
 
         if info.execution_mode == "draft_only":
             if not await self._await_review(inp, info):
-                return "failed"
+                return "rejected"
 
         await self._run_status(info, "succeeded")
         await workflow.execute_activity(
@@ -161,7 +161,7 @@ class IncidentDiagnosisWorkflow:
                     "close_pull_request", info.playbook_run_id, **IDEMPOTENT_WRITE
                 )
             await self._run_status(info, "rejected")
-            await self._status(inp, "failed")
+            await self._status(inp, "rejected")
             self._reopened = False
             try:
                 # A merge can also arrive directly if the reopen delivery was lost.
