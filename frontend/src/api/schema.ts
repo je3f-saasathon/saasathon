@@ -229,6 +229,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sre/projects/{project_id}/uptrace/resolve-alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Managed Alerts
+         * @description Resolves the project's open Uptrace alerts: the next occurrence of the error then
+         *     reopens its alert and starts a new incident. Lets testing tools re-run a bug without
+         *     Uptrace access.
+         */
+        post: operations["sre_api_resolve_managed_alerts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sre/projects/{project_id}/uptrace/setup": {
         parameters: {
             query?: never;
@@ -2533,6 +2555,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ManagedUptraceOut"];
+                };
+            };
+        };
+    };
+    sre_api_resolve_managed_alerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

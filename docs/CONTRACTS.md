@@ -89,6 +89,7 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | DELETE | `/sre/projects/{id}` | owner | — | `204` |
 | POST | `/sre/projects/{id}/webhook-secret/rotate` | owner | — | `{webhook_secret, webhook_url, uptrace_webhook_url}`; a managed project's Uptrace channel is updated to the new URL automatically |
 | POST | `/sre/projects/{id}/uptrace/setup` | owner | `{share_with_project_id?: int\|null}` | `Project`. Hands the project's Uptrace to the platform (managed Uptrace), moves it between its own Uptrace project and a shared one, or retries a failed setup. `400` when managed Uptrace is off, or for an invalid share (see below) |
+| POST | `/sre/projects/{id}/uptrace/resolve-alerts` | admin | — | `{resolved: n}`: resolves the project's open alerts in its managed Uptrace project (only its own monitor's), so the next occurrence reopens them and starts a new incident. For testing tools. `400` if not managed, `502` if Uptrace fails |
 | GET | `/sre/uptrace/managed` | any user | — | `{enabled, url}`: whether this server sets up Uptrace for projects, and the Uptrace URL apps export to |
 | GET | `/sre/projects/{id}/members` | viewer | — | `{user_id, email, name, role}[]` |
 | POST | `/sre/projects/{id}/members` | owner | `{email, role}` (user must already have an account) | `201 Member`, `404` unknown email, `409` already a member |
