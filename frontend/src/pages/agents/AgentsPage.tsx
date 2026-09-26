@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pause, Pencil, Play, Plus, Power, Trash2 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -111,6 +111,26 @@ export function AgentsPage() {
       invalidate(agent.id);
     },
   });
+  // Enter runs the top agent, like its Run button. Not while typing, editing an agent, with
+  // a dialog open, or with a button or link focused (Enter already presses those).
+  const topAgent = list[0];
+  const runTop = admin && editing === null && topAgent?.enabled && !run.isPending ? topAgent : null;
+  const { mutate: runAgent } = run;
+  useEffect(() => {
+    if (!runTop) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Enter" || event.repeat || event.defaultPrevented) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("input, textarea, select, button, a, [contenteditable]")) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      runAgent(runTop!);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [runTop, runAgent]);
+
   const actionError = run.error ?? setEnabled.error ?? remove.error;
   const editingAgent = typeof editing === "number" ? list.find((a) => a.id === editing) : undefined;
 
@@ -251,7 +271,7 @@ export function AgentsPage() {
                               variant="ghost"
                               size="icon"
                               aria-label={`Run ${agent.name} now`}
-                              title="Run now"
+                              title={agent.id === topAgent?.id ? "Run now (Enter)" : "Run now"}
                               disabled={!agent.enabled || run.isPending}
                               onClick={() => run.mutate(agent)}
                             >

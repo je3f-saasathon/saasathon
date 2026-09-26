@@ -171,6 +171,20 @@ describe("AgentsPage", () => {
     await vi.waitFor(() => expect(sent("POST")?.path).toBe("/api/sre/agents/4/run"));
   });
 
+  it("runs the top agent on Enter, but not while typing", async () => {
+    renderAt("/agents");
+    expect(await screen.findByRole("button", { name: "Run Nightly sweep now" })).toHaveAttribute(
+      "title", "Run now (Enter)",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /New agent/ }));
+    fireEvent.keyDown(screen.getByLabelText("Name"), { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(sent("POST")).toBeUndefined();
+
+    fireEvent.keyDown(document.body, { key: "Enter" });
+    await vi.waitFor(() => expect(sent("POST")?.path).toBe("/api/sre/agents/4/run"));
+  });
+
   it("creates an agent for chosen repos and org playbooks only", async () => {
     renderAt("/agents");
     fireEvent.click(await screen.findByRole("button", { name: /New agent/ }));
