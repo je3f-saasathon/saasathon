@@ -163,7 +163,9 @@ pick per-step defaults. The client code exists for all three, but **only OpenAI 
 - Draft-only approval happens on GitHub: `POST /api/sre/github/webhook` (the App's webhook,
   `GITHUB_APP_WEBHOOK_SECRET`, "Pull request" events) signals the workflow when the draft PR
   is merged (approve) or closed unmerged (reject), with `via_github=True` so the workflow
-  doesn't touch the PR again. The dashboard links to the PR ("Review on GitHub"); the in-app
+  doesn't touch the PR again. After a rejection the workflow keeps listening for
+  `REOPEN_WINDOW` (30 days): a `reopened`/`opened` PR event sends `pull_request_reopened`,
+  which puts the run back to pending; signalling a finished workflow gives `WorkflowFinished`. The dashboard links to the PR ("Review on GitHub"); the in-app
   `/approve` endpoint remains as a fallback with no UI. Not yet live-tested against GitHub. `/dashboard` is wired to
   `/api/sre/incident-runs` (PR link, playbook, models, tokens; diagnosis behind a click).
 - LLM usage: each call writes an `LLMUsage` row (tokens, model, step) through `llm/usage.py`'s

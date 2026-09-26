@@ -150,9 +150,14 @@ When a project hasn't picked a config for a step, it runs on our keys (server en
 
 ### GitHub webhook (called by the GitHub App)
 
-`POST /sre/github/webhook` — no bearer token; GitHub signs the body with the App's webhook secret (`X-Hub-Signature-256`, `GITHUB_APP_WEBHOOK_SECRET`). This is how a **draft-only** run is approved: the agent opens a draft PR, and on `pull_request` `closed` for that PR's branch, **merged** approves the fix (the run and incident become `succeeded` and the playbook's outcome is recorded) and **closed without merging** rejects it (`rejected` / `failed`). The PR must be in the project's repo and on the run's `branch_name`.
+`POST /sre/github/webhook` — no bearer token; GitHub signs the body with the App's webhook secret (`X-Hub-Signature-256`, `GITHUB_APP_WEBHOOK_SECRET`). This is how a **draft-only** run is approved: the agent opens a draft PR, and for `pull_request` events on that PR's branch:
+- `closed`, **merged** → approves the fix: the run and incident become `succeeded` and the playbook's outcome is recorded. Also accepted from `rejected`, in case the reopen delivery was lost.
+- `closed`, **not merged** → rejects it: the run becomes `rejected` and the incident `failed`.
+- `reopened`, or `opened` (a new PR from the same branch), on a **`rejected`** run → back up for review: `pending_approval` / `awaiting_approval`, `approved_at` cleared. The workflow listens for this for **30 days** after a rejection, then ends for good.
 
-Returns `200 {detail}` when it decided a run; `202 {detail}` for anything ignored (other events or actions, PRs the agent isn't waiting on, autonomous runs, a run already decided — so redeliveries are harmless); `401 {detail}` for a bad signature; `503 {detail}` if `GITHUB_APP_WEBHOOK_SECRET` isn't set, or if the workflow can't be reached (the decision is released; redeliver the webhook from the App's settings).
+The PR must be in the project's repo and on the run's `branch_name`.
+
+Returns `200 {detail}` when it changed a run; `202 {detail}` for anything ignored (other events or actions, PRs the agent isn't waiting on, autonomous runs, an event that doesn't fit the run's state — so redeliveries are harmless — or a workflow that has already finished); `401 {detail}` for a bad signature; `503 {detail}` if `GITHUB_APP_WEBHOOK_SECRET` isn't set, or if the workflow can't be reached (the change is released; redeliver the webhook from the App's settings).
 
 ## Errors
 

@@ -592,8 +592,9 @@ export interface paths {
         /**
          * Github Webhook
          * @description The GitHub App's webhook. A draft-only run is decided on GitHub: merging its PR
-         *     approves the fix, closing it unmerged rejects it. Everything else is acknowledged
-         *     and ignored.
+         *     approves the fix, closing it unmerged rejects it, and reopening a rejected PR (or opening
+         *     a new one from the same branch) puts the run back up for review. Everything else is
+         *     acknowledged and ignored.
          */
         post: operations["sre_api_github_webhook"];
         delete?: never;

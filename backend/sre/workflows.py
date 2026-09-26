@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta
 
 from temporalio import workflow
@@ -36,15 +37,24 @@ AGENT_ATTEMPT = dict(
     retry_policy=RetryPolicy(maximum_attempts=1),
 )
 
+# After a rejection, how long a draft-only run keeps listening for its PR to be reopened
+# (or re-opened from the same branch) on GitHub before the workflow ends for good.
+REOPEN_WINDOW = timedelta(days=30)
+
 
 @workflow.defn
 class IncidentDiagnosisWorkflow:
     def __init__(self) -> None:
         self._decision: ApprovalDecision | None = None
+        self._reopened = False
 
     @workflow.signal
     def approval_decision(self, decision: ApprovalDecision) -> None:
         self._decision = decision
+
+    @workflow.signal
+    def pull_request_reopened(self) -> None:
+        self._reopened = True
 
     @workflow.run
     async def run(self, inp: IncidentInput) -> str:
@@ -122,26 +132,51 @@ class IncidentDiagnosisWorkflow:
             return "failed"
 
         if info.execution_mode == "draft_only":
-            await self._run_status(info, "pending_approval")
-            await self._status(inp, "awaiting_approval")
-            await workflow.wait_condition(lambda: self._decision is not None)
-            if not self._decision.approve:
-                if not self._decision.via_github:
-                    await workflow.execute_activity(
-                        "close_pull_request", info.playbook_run_id, **IDEMPOTENT_WRITE
-                    )
-                await self._run_status(info, "rejected")
+            if not await self._await_review(inp, info):
                 return "failed"
-            if not self._decision.via_github:
-                await workflow.execute_activity(
-                    "open_pull_request", info.playbook_run_id, result_type=str, **IDEMPOTENT_WRITE
-                )
 
         await self._run_status(info, "succeeded")
         await workflow.execute_activity(
             "record_playbook_outcome", info.playbook_run_id, **IDEMPOTENT_WRITE
         )
         return "succeeded"
+
+    async def _await_review(self, inp: IncidentInput, info: PlaybookRunInfo) -> bool:
+        """Draft-only: wait for the PR to be approved (merged) or rejected (closed). A rejected
+        PR that's reopened within REOPEN_WINDOW goes back up for review. True once approved."""
+        await self._run_status(info, "pending_approval")
+        await self._status(inp, "awaiting_approval")
+        while True:
+            await workflow.wait_condition(lambda: self._decision is not None)
+            decision = self._decision
+            if decision.approve:
+                if not decision.via_github:
+                    await workflow.execute_activity(
+                        "open_pull_request", info.playbook_run_id, result_type=str, **IDEMPOTENT_WRITE
+                    )
+                return True
+
+            if not decision.via_github:
+                await workflow.execute_activity(
+                    "close_pull_request", info.playbook_run_id, **IDEMPOTENT_WRITE
+                )
+            await self._run_status(info, "rejected")
+            await self._status(inp, "failed")
+            self._reopened = False
+            try:
+                # A merge can also arrive directly if the reopen delivery was lost.
+                await workflow.wait_condition(
+                    lambda: self._reopened or (self._decision is not None and self._decision.approve),
+                    timeout=REOPEN_WINDOW,
+                )
+            except asyncio.TimeoutError:
+                return False
+            if self._decision is not None and self._decision.approve:
+                continue  # merged (even if the reopen arrived too): the approve branch handles it
+            # Reopened: forget the rejection and wait for a fresh decision.
+            self._decision = None
+            await self._run_status(info, "pending_approval")
+            await self._status(inp, "awaiting_approval")
 
     async def _status(self, inp: IncidentInput, status: str, error: str = "") -> None:
         await workflow.execute_activity(

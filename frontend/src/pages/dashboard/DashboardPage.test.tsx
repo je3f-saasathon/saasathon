@@ -117,4 +117,16 @@ describe("DashboardPage", () => {
     expect(screen.getByText(/waiting for review on GitHub/)).toBeInTheDocument();
     responses["/api/sre/incident-runs"] = { runs: [run], total: 1 };
   });
+
+  it("tells you a rejected fix can be reopened on GitHub", async () => {
+    responses["/api/sre/incident-runs"] = {
+      runs: [{ ...run, status: "failed", playbook_run_status: "rejected" }],
+      total: 1,
+    };
+    renderPage();
+    fireEvent.click(await screen.findByText("ZeroDivisionError in checkout"));
+    expect(screen.getByText(/Reopen the PR on GitHub/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open PR" })).toHaveAttribute("href", run.pr_url);
+    responses["/api/sre/incident-runs"] = { runs: [run], total: 1 };
+  });
 });

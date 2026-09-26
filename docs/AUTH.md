@@ -42,7 +42,8 @@ can point a project at another account's installation. In the App's settings
 - **Webhook**: tick **Active**, set **Webhook URL** to `{backend}/api/sre/github/webhook` and
   a **Webhook secret** (any long random string). Under **Permissions & events → Subscribe to
   events**, tick **Pull request**. This is how draft-only runs are approved: merging the
-  agent's PR approves the fix, closing it unmerged rejects it. GitHub must be able to reach
+  agent's PR approves the fix, closing it unmerged rejects it, and reopening it (within 30
+  days) puts it back up for review. GitHub must be able to reach
   the URL, so use the tunnel (or prod) rather than plain `localhost`. GitHub doesn't retry
   failed deliveries; redeliver them from the App's **Advanced** tab.
 

@@ -253,6 +253,12 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
             when you do.
           </p>
         )}
+        {run.playbook_run_status === "rejected" && run.pr_url && (
+          <p className="rounded-md border p-3 text-sm text-muted-foreground">
+            The fix was rejected. Reopen the PR on GitHub within 30 days of closing it to put it
+            back up for review.
+          </p>
+        )}
         {run.error_message && (
           <p className="whitespace-pre-wrap text-sm text-destructive">{run.error_message}</p>
         )}
