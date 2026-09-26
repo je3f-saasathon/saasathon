@@ -103,6 +103,27 @@ class ApprovalDecision:
 
 
 @dataclass
+class RootCauseResult:
+    """localize_root_cause: the linked child incident to start, if the culprit is elsewhere."""
+    child_incident_run_id: int | None = None
+    child_project_id: int = 0
+    child_workflow_id: str = ""
+
+
+@dataclass
+class GraphTarget:
+    """One service graph: an org and a pinned Uptrace project ("host/project id")."""
+    organization_id: int
+    source: str
+
+
+@dataclass
+class GraphRefreshInput:
+    organization_id: int = 0  # 0 = every org
+    source: str = ""  # "" = every source the org's projects use
+
+
+@dataclass
 class StatusUpdate:
     incident_run_id: int
     status: str

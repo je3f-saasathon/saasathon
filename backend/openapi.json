@@ -1479,6 +1479,126 @@
         ]
       }
     },
+    "/api/sre/organizations/{org_id}/service-graph": {
+      "get": {
+        "operationId": "sre_api_get_service_graph",
+        "summary": "Get Service Graph",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "default": "",
+              "title": "Source",
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceGraphOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/sre/organizations/{org_id}/service-graph/refresh": {
+      "post": {
+        "operationId": "sre_api_refresh_service_graph",
+        "summary": "Refresh Service Graph",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "default": "",
+              "title": "Source",
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/sre/organizations/{org_id}/uptrace-credentials": {
       "get": {
         "operationId": "sre_api_list_uptrace_credentials",
@@ -3115,6 +3235,13 @@
           "uptrace_fetch_ready": {
             "title": "Uptrace Fetch Ready",
             "type": "boolean"
+          },
+          "service_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Service Names",
+            "type": "array"
           }
         },
         "required": [
@@ -3135,7 +3262,8 @@
           "organization_id",
           "organization_name",
           "uptrace_credential_id",
-          "uptrace_fetch_ready"
+          "uptrace_fetch_ready",
+          "service_names"
         ],
         "title": "ProjectOut",
         "type": "object"
@@ -3243,6 +3371,13 @@
             "title": "Uptrace Fetch Ready",
             "type": "boolean"
           },
+          "service_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Service Names",
+            "type": "array"
+          },
           "webhook_secret": {
             "title": "Webhook Secret",
             "type": "string"
@@ -3275,6 +3410,7 @@
           "organization_name",
           "uptrace_credential_id",
           "uptrace_fetch_ready",
+          "service_names",
           "webhook_secret",
           "webhook_url",
           "uptrace_webhook_url"
@@ -3333,6 +3469,14 @@
               }
             ],
             "title": "Organization Id"
+          },
+          "service_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Service Names",
+            "type": "array"
           }
         },
         "required": [
@@ -3465,6 +3609,20 @@
               }
             ],
             "title": "Uptrace Credential Id"
+          },
+          "service_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Names"
           }
         },
         "title": "ProjectUpdateIn",
@@ -3750,6 +3908,185 @@
           "role"
         ],
         "title": "OrgMemberUpdateIn",
+        "type": "object"
+      },
+      "ServiceEdgeOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "client_id": {
+            "title": "Client Id",
+            "type": "integer"
+          },
+          "server_id": {
+            "title": "Server Id",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "error_rate": {
+            "title": "Error Rate",
+            "type": "number"
+          },
+          "duration_avg_ms": {
+            "title": "Duration Avg Ms",
+            "type": "number"
+          },
+          "duration_max_ms": {
+            "title": "Duration Max Ms",
+            "type": "number"
+          },
+          "rate_per_min": {
+            "title": "Rate Per Min",
+            "type": "number"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "client_id",
+          "server_id",
+          "type",
+          "count",
+          "error_count",
+          "error_rate",
+          "duration_avg_ms",
+          "duration_max_ms",
+          "rate_per_min",
+          "first_seen_at",
+          "last_seen_at"
+        ],
+        "title": "ServiceEdgeOut",
+        "type": "object"
+      },
+      "ServiceGraphOut": {
+        "properties": {
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "refreshed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refreshed At"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceNodeOut"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceEdgeOut"
+            },
+            "title": "Edges",
+            "type": "array"
+          }
+        },
+        "required": [
+          "organization_id",
+          "source",
+          "refreshed_at",
+          "nodes",
+          "edges"
+        ],
+        "title": "ServiceGraphOut",
+        "type": "object"
+      },
+      "ServiceNodeOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "mapped_by": {
+            "title": "Mapped By",
+            "type": "string"
+          },
+          "repo_url": {
+            "title": "Repo Url",
+            "type": "string"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "project_id",
+          "project_name",
+          "mapped_by",
+          "repo_url",
+          "first_seen_at",
+          "last_seen_at"
+        ],
+        "title": "ServiceNodeOut",
         "type": "object"
       },
       "UptraceCredentialOut": {
@@ -4957,6 +5294,26 @@
             "additionalProperties": true,
             "title": "Telemetry",
             "type": "object"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "parent_incident_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Incident Run Id"
+          },
+          "root_cause": {
+            "additionalProperties": true,
+            "title": "Root Cause",
+            "type": "object"
           }
         },
         "required": [
@@ -4983,7 +5340,10 @@
           "usage",
           "matched_runbook_id",
           "runbook",
-          "telemetry"
+          "telemetry",
+          "source",
+          "parent_incident_run_id",
+          "root_cause"
         ],
         "title": "IncidentRunOut",
         "type": "object"

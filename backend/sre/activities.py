@@ -18,6 +18,7 @@ from .llm.usage import usage_scope
 from .models import ExecutionMode, IncidentRun, Playbook, PlaybookRun, Project, Runbook
 from .services.executor import PlaybookExecutor, pr_title_body
 from .services.github import GitHubRepo
+from .services import mesh
 from .services import runbooks as runbook_outcomes
 from .services.knowledge import GenericPlaybookAuthor, KnowledgeJudge, KnowledgeSearch
 from .services.playbooks import DiagnosisReporter, PlaybookAuthor, PlaybookJudge, PlaybookSearch, visible_playbooks
@@ -30,11 +31,14 @@ from .temporal_types import (
     AttemptResult,
     Candidates,
     Classification,
+    GraphRefreshInput,
+    GraphTarget,
     IncidentInput,
     JudgeInput,
     JudgeResult,
     PlaybookRunInfo,
     PlaybookRunStatus,
+    RootCauseResult,
     RunInput,
     SearchInput,
     StatusUpdate,
@@ -80,8 +84,39 @@ def fetch_incident_telemetry(inp: IncidentInput) -> None:
     """Stores the alert's exception from Uptrace on the run (or {}); never raises for a
     failed fetch, so it can't fail the incident."""
     run = _incident(inp.incident_run_id)
+    if run.source != IncidentRun.Source.ALERT:
+        return  # linked/scan incidents are created with their telemetry; there's no alert
     run.telemetry = fetch_telemetry(run)
     run.save(update_fields=["telemetry", "updated_at"])
+
+
+def mesh_enabled() -> bool:
+    return settings.SRE_SERVICE_MESH_ENABLED and settings.SRE_UPTRACE_FETCH_ENABLED
+
+
+@django_activity
+def localize_root_cause(inp: IncidentInput) -> RootCauseResult:
+    """Service mesh: walks the incident's trace (no LLM). Never fails the incident: with
+    the mesh off, no trace or an Uptrace error, the incident just carries on here."""
+    if not mesh_enabled():
+        return RootCauseResult()
+    child = mesh.localize(_incident(inp.incident_run_id))
+    if child is None:
+        return RootCauseResult()
+    return RootCauseResult(child.id, child.project_id, child.temporal_workflow_id)
+
+
+@django_activity
+def list_graph_targets(inp: GraphRefreshInput) -> list[GraphTarget]:
+    if not mesh_enabled():
+        return []
+    targets = mesh.refresh_targets(inp.organization_id or None)
+    return [GraphTarget(org, source) for org, source in targets if not inp.source or source == inp.source]
+
+
+@django_activity
+def refresh_service_graph(target: GraphTarget) -> bool:
+    return mesh.refresh_graph(target.organization_id, target.source)
 
 
 @django_activity
@@ -290,6 +325,9 @@ def mark_incident_status(inp: StatusUpdate) -> None:
 
 ALL_ACTIVITIES = [
     fetch_incident_telemetry,
+    localize_root_cause,
+    list_graph_targets,
+    refresh_service_graph,
     confirm_anomaly,
     classify_bug,
     find_candidate_playbooks,

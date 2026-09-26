@@ -476,6 +476,40 @@ export interface paths {
         patch: operations["sre_api_update_org_member"];
         trace?: never;
     };
+    "/api/sre/organizations/{org_id}/service-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Service Graph */
+        get: operations["sre_api_get_service_graph"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/organizations/{org_id}/service-graph/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Service Graph */
+        post: operations["sre_api_refresh_service_graph"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sre/organizations/{org_id}/uptrace-credentials": {
         parameters: {
             query?: never;
@@ -946,6 +980,8 @@ export interface components {
             uptrace_credential_id: number | null;
             /** Uptrace Fetch Ready */
             uptrace_fetch_ready: boolean;
+            /** Service Names */
+            service_names: string[];
         };
         /**
          * ProjectRole
@@ -991,6 +1027,8 @@ export interface components {
             uptrace_credential_id: number | null;
             /** Uptrace Fetch Ready */
             uptrace_fetch_ready: boolean;
+            /** Service Names */
+            service_names: string[];
             /** Webhook Secret */
             webhook_secret: string;
             /** Webhook Url */
@@ -1027,6 +1065,11 @@ export interface components {
             generate_tests: boolean;
             /** Organization Id */
             organization_id?: number | null;
+            /**
+             * Service Names
+             * @default []
+             */
+            service_names: string[];
         };
         /** ProjectUpdateIn */
         ProjectUpdateIn: {
@@ -1051,6 +1094,8 @@ export interface components {
             organization_id?: number | null;
             /** Uptrace Credential Id */
             uptrace_credential_id?: number | null;
+            /** Service Names */
+            service_names?: string[] | null;
         };
         /** WebhookSecretOut */
         WebhookSecretOut: {
@@ -1161,6 +1206,79 @@ export interface components {
         /** OrgMemberUpdateIn */
         OrgMemberUpdateIn: {
             role: components["schemas"]["OrgRole"];
+        };
+        /** ServiceEdgeOut */
+        ServiceEdgeOut: {
+            /** Id */
+            id: number;
+            /** Client Id */
+            client_id: number;
+            /** Server Id */
+            server_id: number;
+            /** Type */
+            type: string;
+            /** Count */
+            count: number;
+            /** Error Count */
+            error_count: number;
+            /** Error Rate */
+            error_rate: number;
+            /** Duration Avg Ms */
+            duration_avg_ms: number;
+            /** Duration Max Ms */
+            duration_max_ms: number;
+            /** Rate Per Min */
+            rate_per_min: number;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+        };
+        /** ServiceGraphOut */
+        ServiceGraphOut: {
+            /** Organization Id */
+            organization_id: number;
+            /** Source */
+            source: string;
+            /** Refreshed At */
+            refreshed_at: string | null;
+            /** Nodes */
+            nodes: components["schemas"]["ServiceNodeOut"][];
+            /** Edges */
+            edges: components["schemas"]["ServiceEdgeOut"][];
+        };
+        /** ServiceNodeOut */
+        ServiceNodeOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Project Id */
+            project_id: number | null;
+            /** Project Name */
+            project_name: string;
+            /** Mapped By */
+            mapped_by: string;
+            /** Repo Url */
+            repo_url: string;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
         };
         /** UptraceCredentialOut */
         UptraceCredentialOut: {
@@ -1598,6 +1716,14 @@ export interface components {
             runbook: components["schemas"]["PlaybookBriefOut"] | null;
             /** Telemetry */
             telemetry: {
+                [key: string]: unknown;
+            };
+            /** Source */
+            source: string;
+            /** Parent Incident Run Id */
+            parent_incident_run_id: number | null;
+            /** Root Cause */
+            root_cause: {
                 [key: string]: unknown;
             };
         };
@@ -2702,6 +2828,78 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_get_service_graph: {
+        parameters: {
+            query?: {
+                source?: string;
+            };
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceGraphOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_refresh_service_graph: {
+        parameters: {
+            query?: {
+                source?: string;
+            };
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

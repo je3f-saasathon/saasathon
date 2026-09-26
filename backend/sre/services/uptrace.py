@@ -8,11 +8,22 @@ Two calls, checked against Uptrace 2.1 (self-hosted, infra/uptrace/):
   GET /internal/v1/traces/{uptrace_project_id}/{trace_id}/{span_id}
       -> span.attrs (exception_type::str, exception_stacktrace::str, service_name::str, ...),
          span.displayName ("Type: message") and span.name (the operation, e.g. "POST /orders").
-Both take the user-scoped API token as `Authorization: Bearer <token>`.
+The service mesh (services/mesh.py) also uses:
+  GET /internal/v1/traces/{uptrace_project_id}/{trace_id}
+      -> spans: flat, each {id, parentId, kind, system, name, statusCode, statusMessage, time,
+         attrs, logs}; exceptions are logs with eventName "exception".
+  GET /internal/v1/service-graph/{uptrace_project_id}?time_gte&time_lt
+      -> edges: {type, clientAttr, clientName, serverAttr, serverName, count, errorCount,
+         durationAvg, durationMax, rate}; the attr is "service_name" or "_system".
+  GET /internal/v1/spans/{uptrace_project_id}/groups?query=group by ...
+      -> groups keyed by the grouped attributes ("service_name::str", ...).
+All take the user-scoped API token as `Authorization: Bearer <token>`. An unknown /internal/
+route answers 200 with the UI's HTML, which _get reports as invalid JSON.
 """
 
 import json
 import logging
+from datetime import datetime, timezone
 
 import requests
 from django.conf import settings
@@ -76,14 +87,15 @@ class UptraceClient:
         self.token = decrypt(credential.token_encrypted)
         self.project_id = uptrace_project_id
 
-    def _get(self, path: str) -> dict:
+    def _get(self, path: str, params: dict | None = None) -> dict:
         try:
             validate_uptrace_api_url(self.base)
         except UnsafeURLError as exc:
             raise UptraceError(str(exc)) from exc
         try:
             resp = requests.get(
-                f"{self.base}{path}", headers={"Authorization": f"Bearer {self.token}"},
+                f"{self.base}{path}", params=params,
+                headers={"Authorization": f"Bearer {self.token}"},
                 timeout=TIMEOUT_SECONDS, stream=True, allow_redirects=False,
             )
             with resp:
@@ -98,6 +110,29 @@ class UptraceClient:
             return json.loads(body)
         except ValueError as exc:
             raise UptraceError("Uptrace returned invalid JSON") from exc
+
+    def trace(self, trace_id: str) -> list[dict]:
+        """Every span of a trace, flat, each with `parentId` (absent on the root)."""
+        if not trace_id.isalnum():
+            raise UptraceError(f"not a trace id: {trace_id!r}")
+        return self._get(f"/internal/v1/traces/{self.project_id}/{trace_id}").get("spans") or []
+
+    def service_graph(self, since: datetime, until: datetime) -> list[dict]:
+        """Uptrace's own service graph (what its service map shows) over [since, until)."""
+        return self._get(f"/internal/v1/service-graph/{self.project_id}",
+                         _window(since, until)).get("edges") or []
+
+    def service_repos(self, since: datetime, until: datetime) -> dict[str, str]:
+        """service.name -> the vcs.repository.url.full its spans carry ("" if none)."""
+        params = {**_window(since, until),
+                  "query": "group by service_name | group by vcs_repository_url_full"}
+        groups = self._get(f"/internal/v1/spans/{self.project_id}/groups", params).get("groups") or []
+        repos: dict[str, str] = {}
+        for group in groups:
+            name = str(group.get("service_name::str") or "")
+            if name:
+                repos[name] = str(group.get("vcs_repository_url_full::str") or "") or repos.get(name, "")
+        return repos
 
     def alert_telemetry(self, alert_id: str) -> dict:
         if not alert_id.isdigit():
@@ -122,6 +157,20 @@ class UptraceClient:
             "group_id": str(alert_attrs.get("_group_id", "")),
             "attrs": {k: _truncate(v, 500) for k, v in attrs.items()},
         }
+
+
+def _window(since: datetime, until: datetime) -> dict:
+    fmt = "%Y-%m-%dT%H:%M:%SZ"
+    return {"time_gte": since.astimezone(timezone.utc).strftime(fmt),
+            "time_lt": until.astimezone(timezone.utc).strftime(fmt)}
+
+
+def client_for(project: Project) -> UptraceClient | None:
+    """A client for the project's pinned Uptrace project, or None without a pin/credential."""
+    source, credential = pinned_source(project), resolve_credential(project)
+    if source is None or credential is None:
+        return None
+    return UptraceClient(credential, source[1])
 
 
 def fetch_telemetry(run: IncidentRun) -> dict:

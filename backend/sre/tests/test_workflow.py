@@ -21,11 +21,14 @@ from sre.temporal_types import (
     JudgeResult,
     PlaybookRunInfo,
     PlaybookRunStatus,
+    RootCauseResult,
     RunInput,
+    GraphRefreshInput,
+    GraphTarget,
     SearchInput,
     StatusUpdate,
 )
-from sre.workflows import IncidentDiagnosisWorkflow
+from sre.workflows import IncidentDiagnosisWorkflow, ServiceGraphRefreshWorkflow
 
 
 @dataclass
@@ -45,6 +48,10 @@ class Scenario:
     runbook_match: int | None = None
     judged_runbooks: list[int] = field(default_factory=list)
     run_inputs: list = field(default_factory=list)
+    # Service mesh: the linked child incident localize_root_cause hands back, if any.
+    delegate_to: int | None = None
+    localized: list[int] = field(default_factory=list)
+    child_workflow_ids: list[str] = field(default_factory=list)
 
 
 def stub_activities(s: Scenario):
@@ -52,6 +59,14 @@ def stub_activities(s: Scenario):
     async def fetch_incident_telemetry(inp: IncidentInput) -> None:
         # Not in s.calls, so the call-order assertions stay about the pipeline itself.
         s.telemetry_fetches += 1
+
+    @activity.defn(name="localize_root_cause")
+    async def localize_root_cause(inp: IncidentInput) -> RootCauseResult:
+        s.localized.append(inp.incident_run_id)
+        if s.delegate_to is None or inp.incident_run_id == s.delegate_to:
+            return RootCauseResult()  # the child finds the culprit is its own service
+        s.child_workflow_ids.append(f"child-{uuid.uuid4()}")
+        return RootCauseResult(s.delegate_to, 2, s.child_workflow_ids[-1])
 
     @activity.defn(name="confirm_anomaly")
     async def confirm_anomaly(inp: IncidentInput) -> AnomalyResult:
@@ -121,7 +136,7 @@ def stub_activities(s: Scenario):
     async def mark_incident_status(inp: StatusUpdate) -> None:
         s.incident_status.append((inp.status, inp.error_message))
 
-    return [fetch_incident_telemetry, confirm_anomaly, classify_bug, find_candidates, judge_match,
+    return [fetch_incident_telemetry, localize_root_cause, confirm_anomaly, classify_bug, find_candidates, judge_match,
             create_playbook, create_playbook_run, run_playbook_attempt, write_diagnosis_report,
             open_pull_request, close_pull_request, set_playbook_run_status, record_playbook_outcome,
             mark_incident_status]
@@ -346,3 +361,53 @@ def test_workflow_from_before_runbooks_still_replays(fixture, workflow_id):
     raw = (Path(__file__).parent / "fixtures" / fixture).read_text()
     history = WorkflowHistory.from_json(workflow_id, raw)
     asyncio.run(Replayer(workflows=[IncidentDiagnosisWorkflow]).replay_workflow(history))
+
+
+def test_culprit_in_another_project_delegates_to_a_linked_child():
+    s = Scenario(delegate_to=8)
+
+    async def go():
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            queue = f"test-{uuid.uuid4()}"
+            async with Worker(env.client, task_queue=queue, workflows=[IncidentDiagnosisWorkflow],
+                              activities=stub_activities(s)):
+                parent = await env.client.execute_workflow(
+                    IncidentDiagnosisWorkflow.run, IncidentInput(1, 1), id=f"wf-{uuid.uuid4()}",
+                    task_queue=queue,
+                )
+                child = await env.client.get_workflow_handle(s.child_workflow_ids[0]).result()
+                return parent, child
+
+    assert asyncio.run(go()) == ("delegated", "succeeded")
+    # The parent stops before triage; only the child (run 8) runs the pipeline.
+    assert s.localized == [1, 8]
+    assert s.calls.count("confirm_anomaly") == 1
+    assert ("delegated", "") in s.incident_status and ("succeeded", "") in s.incident_status
+
+
+def test_graph_refresh_counts_successes_and_skips_failures():
+    refreshed: list[str] = []
+
+    @activity.defn(name="list_graph_targets")
+    async def list_graph_targets(inp: GraphRefreshInput) -> list[GraphTarget]:
+        return [GraphTarget(1, "u.example/1"), GraphTarget(1, "u.example/2"), GraphTarget(2, "u.example/1")]
+
+    @activity.defn(name="refresh_service_graph")
+    async def refresh_service_graph(target: GraphTarget) -> bool:
+        if target.source.endswith("/2"):
+            raise ApplicationError("boom", non_retryable=True)
+        refreshed.append(f"{target.organization_id}:{target.source}")
+        return target.organization_id == 1
+
+    async def go():
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            queue = f"test-{uuid.uuid4()}"
+            async with Worker(env.client, task_queue=queue, workflows=[ServiceGraphRefreshWorkflow],
+                              activities=[list_graph_targets, refresh_service_graph]):
+                return await env.client.execute_workflow(
+                    ServiceGraphRefreshWorkflow.run, GraphRefreshInput(), id=f"wf-{uuid.uuid4()}",
+                    task_queue=queue,
+                )
+
+    assert asyncio.run(go()) == 1
+    assert refreshed == ["1:u.example/1", "2:u.example/1"]

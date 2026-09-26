@@ -45,6 +45,8 @@ class ProjectOut(Schema):
     uptrace_credential_id: int | None
     # True when an Uptrace credential resolves (own, else the org's for the pinned host).
     uptrace_fetch_ready: bool
+    # Uptrace service.names this repo runs (service mesh fallback mapping).
+    service_names: list[str]
 
 
 class ProjectCreatedOut(ProjectOut):
@@ -74,6 +76,7 @@ class ProjectCreateIn(Schema):
     generate_tests: bool = True
     # Defaults to the caller's personal org.
     organization_id: int | None = None
+    service_names: list[str] = []
 
 
 class ProjectUpdateIn(Schema):
@@ -88,6 +91,7 @@ class ProjectUpdateIn(Schema):
     generate_tests: bool | None = None
     organization_id: int | None = None
     uptrace_credential_id: int | None = None
+    service_names: list[str] | None = None
 
 
 class OrganizationOut(Schema):
@@ -371,6 +375,9 @@ class IncidentRunOut(Schema):
     matched_runbook_id: int | None
     runbook: PlaybookBriefOut | None  # matched, else saved from this incident's fix
     telemetry: dict
+    source: str  # alert | linked | scan
+    parent_incident_run_id: int | None
+    root_cause: dict  # the service mesh's trace walk; {} when not run
 
 
 class IncidentRunListOut(Schema):
@@ -411,3 +418,38 @@ class PlatformOut(Schema):
     triage_model: str  # "jev", or the fast chat model
     strong_model: str
     monthly_token_cap: int  # per project; 0 = unlimited
+
+
+class ServiceNodeOut(Schema):
+    id: int
+    name: str
+    kind: str  # service | system
+    project_id: int | None
+    project_name: str
+    mapped_by: str  # vcs_attr | service_names | ""
+    repo_url: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class ServiceEdgeOut(Schema):
+    id: int
+    client_id: int
+    server_id: int
+    type: str
+    count: int
+    error_count: int
+    error_rate: float
+    duration_avg_ms: float
+    duration_max_ms: float
+    rate_per_min: float
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class ServiceGraphOut(Schema):
+    organization_id: int
+    source: str
+    refreshed_at: datetime | None
+    nodes: list[ServiceNodeOut]
+    edges: list[ServiceEdgeOut]

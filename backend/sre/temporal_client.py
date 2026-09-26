@@ -1,11 +1,28 @@
+import logging
+from datetime import timedelta
+
 from asgiref.sync import async_to_sync
 from django.conf import settings
-from temporalio.client import Client
+from temporalio.client import (
+    Client,
+    Schedule,
+    ScheduleActionStartWorkflow,
+    ScheduleAlreadyRunningError,
+    ScheduleIntervalSpec,
+    ScheduleOverlapPolicy,
+    SchedulePolicy,
+    ScheduleSpec,
+)
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError, RPCStatusCode
 
-from .temporal_types import ApprovalDecision, IncidentInput
+from .temporal_types import ApprovalDecision, GraphRefreshInput, IncidentInput
+
+logger = logging.getLogger(__name__)
+
+GRAPH_REFRESH_SCHEDULE_ID = "sre-service-graph-refresh"
+GRAPH_REFRESH_EVERY = timedelta(minutes=15)
 
 
 # Connect per call: Django may run each request on a different event loop,
@@ -53,3 +70,42 @@ def signal_approval(workflow_id: str, decision: ApprovalDecision) -> None:
 
 def signal_pull_request_reopened(workflow_id: str) -> None:
     async_to_sync(_signal)(workflow_id, "pull_request_reopened")
+
+
+async def _start_graph_refresh(organization_id: int, source: str) -> None:
+    client = await _connect()
+    try:
+        await client.start_workflow(
+            "ServiceGraphRefreshWorkflow",
+            GraphRefreshInput(organization_id, source),
+            id=f"sre-service-graph-refresh-{organization_id}",
+            task_queue=settings.TEMPORAL_TASK_QUEUE,
+        )
+    except WorkflowAlreadyStartedError:
+        pass  # one is already running for this org; it picks up the latest state
+
+
+def start_graph_refresh(organization_id: int, source: str = "") -> None:
+    async_to_sync(_start_graph_refresh)(organization_id, source)
+
+
+async def ensure_schedules(client: Client) -> None:
+    """Creates the service graph refresh schedule when the mesh is on (idempotent). It's
+    left in place when the mesh is turned off: the workflow then finds nothing to do."""
+    if not settings.SRE_SERVICE_MESH_ENABLED:
+        return
+    try:
+        await client.create_schedule(
+            GRAPH_REFRESH_SCHEDULE_ID,
+            Schedule(
+                action=ScheduleActionStartWorkflow(
+                    "ServiceGraphRefreshWorkflow", GraphRefreshInput(),
+                    id=GRAPH_REFRESH_SCHEDULE_ID, task_queue=settings.TEMPORAL_TASK_QUEUE,
+                ),
+                spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=GRAPH_REFRESH_EVERY)]),
+                policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+            ),
+        )
+        logger.info("created schedule %s", GRAPH_REFRESH_SCHEDULE_ID)
+    except ScheduleAlreadyRunningError:
+        pass

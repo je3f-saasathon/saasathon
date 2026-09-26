@@ -141,6 +141,9 @@ class Project(models.Model):
     )
     # Off = the fix agent runs the repo's existing tests but writes none (cheaper runs).
     generate_tests = models.BooleanField(default=True)
+    # Uptrace service.names this repo runs; the service mesh's fallback when a service
+    # doesn't send vcs.repository.url.full.
+    service_names = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -319,6 +322,14 @@ class IncidentRun(models.Model):
         # agent produced a fix; it can go back up for review if the PR is reopened.
         REJECTED = "rejected", "Rejected (PR not merged)"
         ADVISORY_COMPLETE = "advisory_complete", "Advisory complete"
+        # Service mesh: the root cause is in another project's service; a linked child
+        # incident there took over.
+        DELEGATED = "delegated", "Delegated to another project"
+
+    class Source(models.TextChoices):
+        ALERT = "alert", "Uptrace alert"
+        LINKED = "linked", "Linked from another project's incident"
+        SCAN = "scan", "Remediation agent finding"
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="incident_runs")
     trace_id = models.CharField(max_length=255, db_index=True)
@@ -335,6 +346,12 @@ class IncidentRun(models.Model):
     matched_runbook = models.ForeignKey(
         Runbook, null=True, blank=True, on_delete=models.SET_NULL, related_name="incident_runs"
     )
+    source = models.CharField(max_length=16, choices=Source.choices, default=Source.ALERT)
+    parent_incident_run = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="linked_incident_runs"
+    )
+    # The service mesh's trace walk (services/mesh.py); {} when not run.
+    root_cause = models.JSONField(default=dict, blank=True)
     diagnosis_report = models.TextField(blank=True, default="")
     error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -343,6 +360,65 @@ class IncidentRun(models.Model):
     class Meta:
         db_table = "sre_incident_run"
         ordering = ["-created_at"]
+
+
+class ServiceGraph(models.Model):
+    """An org's view of one Uptrace project's services (source = uptrace_source_id, e.g.
+    "uptrace.buggly.dev/1"). Filled from Uptrace's service graph and from alert traces."""
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="service_graphs"
+    )
+    source = models.CharField(max_length=128)
+    refreshed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "sre_service_graph"
+        unique_together = [("organization", "source")]
+
+
+class ServiceNode(models.Model):
+    class Kind(models.TextChoices):
+        SERVICE = "service", "Instrumented service"
+        SYSTEM = "system", "Dependency or uninstrumented client"
+
+    graph = models.ForeignKey(ServiceGraph, on_delete=models.CASCADE, related_name="nodes")
+    name = models.CharField(max_length=255)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.SERVICE)
+    # The last vcs.repository.url.full seen on this service's spans; "" if none. Which
+    # project it maps to is worked out on read (services/mesh.py), so it's never stale.
+    repo_url = models.CharField(max_length=500, blank=True, default="")
+    first_seen_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "sre_service_node"
+        unique_together = [("graph", "name")]
+        ordering = ["name"]
+
+
+class ServiceEdge(models.Model):
+    graph = models.ForeignKey(ServiceGraph, on_delete=models.CASCADE, related_name="edges")
+    client = models.ForeignKey(ServiceNode, on_delete=models.CASCADE, related_name="outgoing")
+    server = models.ForeignKey(ServiceNode, on_delete=models.CASCADE, related_name="incoming")
+    type = models.CharField(max_length=32, blank=True, default="")
+    # From the last refresh window; an edge seen only in a trace keeps its old numbers.
+    count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    duration_avg_ms = models.FloatField(default=0)
+    duration_max_ms = models.FloatField(default=0)
+    rate_per_min = models.FloatField(default=0)
+    first_seen_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "sre_service_edge"
+        unique_together = [("client", "server", "type")]
+
+    @property
+    def error_rate(self) -> float:
+        return self.error_count / self.count if self.count else 0.0
 
 
 class PlaybookRun(models.Model):
