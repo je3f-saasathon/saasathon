@@ -25,7 +25,7 @@ export function AuthShell({
       <header className="relative z-10 flex items-center justify-between px-6 py-5">
         <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <Bug className="h-5 w-5 text-primary" />
-          SRE Agent
+          buggly
         </Link>
         <ThemeToggle />
       </header>
