@@ -1,0 +1,3 @@
+[submodule "flask-inventory"]
+	path = flask-inventory
+	url = https://github.com/je3f-saasathon/flask-inventory.git
