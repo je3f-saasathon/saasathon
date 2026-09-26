@@ -1,0 +1,73 @@
+# Self-hosted Uptrace for saasathon: stores traces, logs and metrics, and sends the
+# alerts that start the SRE agent. Its own compose project (saasathon-uptrace) so it
+# keeps running across `make dev` / `make stop` and `make infra-down`.
+#
+# Start/stop with `make uptrace-up` / `make uptrace-down` (scripts/uptrace.sh). Secrets
+# come from infra/uptrace/.env (gitignored; the script creates it from .env.example with
+# random values). Published on localhost only; the Cloudflare tunnel serves it as
+# https://uptrace.buggly.dev.
+#   14418  UI + API + OTLP/HTTP
+#   14417  OTLP/gRPC (local senders only; the tunnel carries HTTP)
+name: saasathon-uptrace
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: uptrace
+      CLICKHOUSE_PASSWORD: ${UPTRACE_CH_PASSWORD:?set in infra/uptrace/.env}
+      CLICKHOUSE_DB: uptrace
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - ch_data:/var/lib/clickhouse
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: uptrace
+      POSTGRES_PASSWORD: ${UPTRACE_PG_PASSWORD:?set in infra/uptrace/.env}
+      POSTGRES_DB: uptrace
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uptrace -d uptrace"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - pg_data:/var/lib/postgresql/data/pgdata
+
+  redis:
+    image: redis:6.2.2-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  uptrace:
+    image: uptrace/uptrace:2.1.0-beta.5
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./uptrace.yml:/etc/uptrace/config.yml:ro
+    ports:
+      - "127.0.0.1:${UPTRACE_HTTP_PORT:-14418}:80"
+      - "127.0.0.1:${UPTRACE_GRPC_PORT:-14417}:4317"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  ch_data:
+  pg_data:
