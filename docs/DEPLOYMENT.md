@@ -63,7 +63,18 @@ on `main`. Backend and frontend deploy independently via `deploy-backend.yml` /
    LANGFUSE_HOST=
    LANGFUSE_PUBLIC_KEY=
    LANGFUSE_SECRET_KEY=
+   # Managed Uptrace: the platform creates each project's Uptrace project, error monitor and
+   # webhook channel, so users never open Uptrace. The token is an Uptrace user API token of
+   # an org admin (UPTRACE_API_TOKEN in infra/uptrace/.env on the Uptrace host). Blank = users
+   # connect their own Uptrace by hand, as before.
+   UPTRACE_MANAGED_URL=https://uptrace.buggly.dev
+   UPTRACE_MANAGED_TOKEN=
+   # Read each alert's stack trace from Uptrace before triage (managed projects use the
+   # token above; others need a credential in Settings → Uptrace). The service mesh needs it.
+   SRE_UPTRACE_FETCH_ENABLED=true
    ```
+   Both `backend` and `sre-worker` read this file; the backend starts the Uptrace setup and
+   the worker runs it (`UptraceSyncWorkflow`), so recreate both after changing it.
 3. On the GitHub App (permissions: Contents read/write, Pull requests read/write), add the Callback URL `https://api.buggly.dev/api/sre/github/callback` and follow the rest of `docs/AUTH.md` ("GitHub App (SRE agent)").
 4. Re-run the deploy (`gh workflow run deploy-backend.yml`) or push to `main`.
 

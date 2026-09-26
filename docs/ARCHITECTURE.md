@@ -28,6 +28,8 @@ sre worker --Docker API--> sandbox container (repo work tree only: no secrets, n
 sre worker --HTTPS (GitHub App installation token)--> GitHub (clone, push branch, open PR)
 ```
 
+With managed Uptrace (`UPTRACE_MANAGED_TOKEN` set), the platform creates that webhook itself: each project gets an Uptrace project (or shares one, split by service name), an error monitor on exception events and a webhook channel, set up by `UptraceSyncWorkflow` through Uptrace's internal API (`backend/sre/services/uptrace_admin.py`). Users only get a DSN to export telemetry to, over OTLP/HTTP.
+
 The sandbox is where LLM-chosen commands run. The worker holds every secret (DB, GitHub App key, users' LLM keys), so it never runs agent tool calls itself, keeps git metadata outside the sandbox's mount, and runs git with hooks/fsmonitor disabled.
 
 Auth tokens are opaque bearer tokens issued by the backend regardless of login method (email/password, GitHub OAuth, Google OAuth). No cookies, no CSRF handling needed on the API.
