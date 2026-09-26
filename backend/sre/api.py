@@ -81,6 +81,7 @@ from .schemas import (
     UptraceWebhookIn,
     UptraceWebhookOut,
     WebhookSecretOut,
+    OTelTokenOut,
 )
 from .services import github_connect
 from .services.playbooks import clean_playbook_steps, clean_steps, visible_playbooks
@@ -345,12 +346,15 @@ def create_project(request: HttpRequest, payload: ProjectCreateIn):
                        payload.github_repo_owner, payload.github_repo_name)
     data = payload.dict()
     data["organization_id"] = _target_org(request.auth, data.pop("organization_id")).id
+    otel_token = secrets.token_urlsafe(32)
+    data["otel_token_hash"] = hashlib.sha256(otel_token.encode()).hexdigest()
     with transaction.atomic():
         project = Project.objects.create(**data)
         ProjectMembership.objects.create(project=project, user=request.auth, role=ProjectRole.OWNER)
     return 201, {
         **_project_out(project, ProjectRole.OWNER),
         **_webhook_urls(request, project),
+        "otel_token": otel_token,
     }
 
 
@@ -400,6 +404,15 @@ def rotate_webhook_secret(request: HttpRequest, project_id: int):
     project.uptrace_webhook_secret = secrets.token_urlsafe(32)
     project.save(update_fields=["uptrace_webhook_secret", "updated_at"])
     return _webhook_urls(request, project)
+
+
+@router.post("/projects/{project_id}/otel-token/rotate", response=OTelTokenOut)
+def rotate_otel_token(request: HttpRequest, project_id: int):
+    project = get_project_for(request.auth, project_id, ProjectRole.OWNER)
+    token = secrets.token_urlsafe(32)
+    project.otel_token_hash = hashlib.sha256(token.encode()).hexdigest()
+    project.save(update_fields=["otel_token_hash", "updated_at"])
+    return {"otel_token": token}
 
 
 # ---- GitHub connect --------------------------------------------------------------

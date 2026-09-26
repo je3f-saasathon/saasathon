@@ -648,6 +648,43 @@
         ]
       }
     },
+    "/api/sre/projects/{project_id}/otel-token/rotate": {
+      "post": {
+        "operationId": "sre_api_rotate_otel_token",
+        "summary": "Rotate Otel Token",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OTelTokenOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "sre"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/sre/github/status": {
       "get": {
         "operationId": "sre_api_github_status",
@@ -2686,6 +2723,51 @@
           "sre"
         ]
       }
+    },
+    "/api/sre/otel/v1/traces": {
+      "post": {
+        "operationId": "sre_otel_ingest_ingest_traces",
+        "summary": "Ingest Traces",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "otlp"
+        ]
+      }
+    },
+    "/api/sre/otel/v1/logs": {
+      "post": {
+        "operationId": "sre_otel_ingest_ingest_logs",
+        "summary": "Ingest Logs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "otlp"
+        ]
+      }
+    },
+    "/api/sre/otel/v1/metrics": {
+      "post": {
+        "operationId": "sre_otel_ingest_ingest_metrics",
+        "summary": "Ingest Metrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "otlp"
+        ]
+      }
     }
   },
   "components": {
@@ -3254,6 +3336,10 @@
           "uptrace_webhook_url": {
             "title": "Uptrace Webhook Url",
             "type": "string"
+          },
+          "otel_token": {
+            "title": "Otel Token",
+            "type": "string"
           }
         },
         "required": [
@@ -3277,7 +3363,8 @@
           "uptrace_fetch_ready",
           "webhook_secret",
           "webhook_url",
-          "uptrace_webhook_url"
+          "uptrace_webhook_url",
+          "otel_token"
         ],
         "title": "ProjectCreatedOut",
         "type": "object"
@@ -3491,6 +3578,19 @@
           "uptrace_webhook_url"
         ],
         "title": "WebhookSecretOut",
+        "type": "object"
+      },
+      "OTelTokenOut": {
+        "properties": {
+          "otel_token": {
+            "title": "Otel Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "otel_token"
+        ],
+        "title": "OTelTokenOut",
         "type": "object"
       },
       "GitHubStatusOut": {

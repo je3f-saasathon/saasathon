@@ -21,6 +21,7 @@ from ..crypto import decrypt
 from ..models import IncidentRun, Project, UptraceCredential
 from ..validators import UnsafeURLError, validate_uptrace_api_url
 from .context import MAX_UNTRUSTED_CHARS
+from .otel_context import fetch_trace_context
 
 logger = logging.getLogger(__name__)
 
@@ -127,15 +128,20 @@ class UptraceClient:
 def fetch_telemetry(run: IncidentRun) -> dict:
     """{} whenever there's nothing to fetch or the fetch fails: telemetry only ever adds
     context, it never fails an incident."""
-    if not settings.SRE_UPTRACE_FETCH_ENABLED:
-        return {}
     project = run.project
-    source, alert_id = pinned_source(project), alert_id_of(run)
-    credential = resolve_credential(project)
-    if source is None or not alert_id or credential is None:
-        return {}
-    try:
-        return UptraceClient(credential, source[1]).alert_telemetry(alert_id)
-    except Exception as exc:  # includes a token that no longer decrypts
-        logger.warning("Uptrace fetch failed for incident %s: %s", run.id, exc)
-        return {}
+    telemetry = {}
+    if settings.SRE_UPTRACE_FETCH_ENABLED:
+        source, alert_id = pinned_source(project), alert_id_of(run)
+        credential = resolve_credential(project)
+        if source is not None and alert_id and credential is not None:
+            try:
+                telemetry = UptraceClient(credential, source[1]).alert_telemetry(alert_id)
+            except Exception as exc:  # includes a token that no longer decrypts
+                logger.warning("Uptrace fetch failed for incident %s: %s", run.id, exc)
+    # A direct OTLP trace ID works without Uptrace credentials. For an Uptrace alert,
+    # use the trace ID discovered by the optional Uptrace fetch above.
+    trace_id = telemetry.get("trace_id") or run.trace_id
+    context = fetch_trace_context(project, trace_id)
+    if context:
+        telemetry["otel_context"] = context
+    return telemetry

@@ -7,6 +7,7 @@
 #   7243  Temporal gRPC (backend TEMPORAL_ADDRESS); 7233 is left free for other projects
 #   8243  Temporal UI
 #   3100  Langfuse UI + API (backend LANGFUSE_HOST)
+#   8124  Dedicated OpenTelemetry data store (backend OTEL_CLICKHOUSE_URL)
 # Langfuse's own Postgres/ClickHouse/Redis/MinIO stay on the internal network.
 #
 # Credentials below are LOCAL DEV DEFAULTS. For any shared or prod host,
@@ -53,6 +54,25 @@ x-langfuse-depends: &langfuse-depends
     condition: service_healthy
 
 services:
+  telemetry-clickhouse:
+    image: clickhouse/clickhouse-server:25.12
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: ${OTEL_CLICKHOUSE_USER:-otel_ingest}
+      CLICKHOUSE_PASSWORD: ${OTEL_CLICKHOUSE_PASSWORD:-local-otel-password}
+    ports:
+      - "${OTEL_CLICKHOUSE_PORT:-8124}:8123"
+    volumes:
+      - telemetry_clickhouse_data:/var/lib/clickhouse
+      - telemetry_clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   temporal:
     image: temporalio/temporal:latest
     restart: unless-stopped
@@ -170,3 +190,5 @@ volumes:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
   langfuse_redis_data:
+  telemetry_clickhouse_data:
+  telemetry_clickhouse_logs:

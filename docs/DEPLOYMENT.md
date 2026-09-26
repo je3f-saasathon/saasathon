@@ -63,6 +63,10 @@ on `main`. Backend and frontend deploy independently via `deploy-backend.yml` /
    LANGFUSE_HOST=
    LANGFUSE_PUBLIC_KEY=
    LANGFUSE_SECRET_KEY=
+   # Collector ingestion uses a separate, unexposed ClickHouse container.
+   # Keep these values aligned with the ClickHouse compose credentials.
+   OTEL_CLICKHOUSE_USER=otel_ingest
+   OTEL_CLICKHOUSE_PASSWORD=  # set a strong random secret
    ```
 3. On the GitHub App (permissions: Contents read/write, Pull requests read/write), add the Callback URL `https://api-dev.andrewplescan.com/api/sre/github/callback` and follow the rest of `docs/AUTH.md` ("GitHub App (SRE agent)").
 4. Re-run the deploy (`gh workflow run deploy-backend.yml`) or push to `main`.

@@ -124,6 +124,8 @@ class Project(models.Model):
     github_repo_name = models.CharField(max_length=255)
     github_default_branch = models.CharField(max_length=100, default="main")
     uptrace_webhook_secret = models.CharField(max_length=128, default=_new_webhook_secret)
+    # Only the SHA-256 digest is stored. The bearer token is shown on creation/rotation.
+    otel_token_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
     uptrace_source_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
     # Null = use the org's credential whose host matches uptrace_source_id's.
     uptrace_credential = models.ForeignKey(

@@ -53,6 +53,11 @@ class ProjectCreatedOut(ProjectOut):
     # webhook_url with the secret as ?token=: what to paste into Uptrace, whose
     # webhook channel can only take a URL (no headers).
     uptrace_webhook_url: str
+    otel_token: str
+
+
+class OTelTokenOut(Schema):
+    otel_token: str
 
 
 class WebhookSecretOut(Schema):

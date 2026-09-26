@@ -24,6 +24,8 @@ services:
     restart: unless-stopped
     env_file:
       - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/backend/.env.prod
+    environment:
+      OTEL_CLICKHOUSE_URL: http://telemetry-clickhouse:8123
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -31,7 +33,10 @@ services:
       # backend lists an installation's repos when a project is created.
       - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/secrets:/secrets:ro
     depends_on:
-      - postgres
+      postgres:
+        condition: service_started
+      telemetry-clickhouse:
+        condition: service_healthy
     command: sh -c "uv run python manage.py migrate --noinput && uv run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
 
   # Temporal for the SRE agent's workflows: a single-node dev server persisted
@@ -75,6 +80,25 @@ services:
       temporal:
         condition: service_healthy
     command: uv run python -m sre.worker
+
+  telemetry-clickhouse:
+    image: clickhouse/clickhouse-server:25.12
+    restart: unless-stopped
+    user: "101:101"
+    env_file:
+      - ${ENV_FILE_DIR:-/home/nobody/prod-saasathon}/backend/.env.prod
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: ${OTEL_CLICKHOUSE_USER:-otel_ingest}
+      CLICKHOUSE_PASSWORD: ${OTEL_CLICKHOUSE_PASSWORD:-}
+    volumes:
+      - telemetry_clickhouse_data_prod:/var/lib/clickhouse
+      - telemetry_clickhouse_logs_prod:/var/log/clickhouse-server
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # Docker daemon the worker runs sandboxes on, so a sandbox escape lands in
   # this container, not on the host. Plain TCP is fine: it's only reachable on
@@ -129,4 +153,6 @@ volumes:
   postgres_data_prod:
   sre_work:
   sre_docker_data:
+  telemetry_clickhouse_data_prod:
+  telemetry_clickhouse_logs_prod:
   temporal_data_prod:

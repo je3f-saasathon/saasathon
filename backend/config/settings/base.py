@@ -88,6 +88,11 @@ DATABASES = {
     "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600),
 }
 
+# Optional dedicated ClickHouse store for incoming customer OTLP data.
+OTEL_CLICKHOUSE_URL = os.environ.get("OTEL_CLICKHOUSE_URL", "")
+OTEL_CLICKHOUSE_USER = os.environ.get("OTEL_CLICKHOUSE_USER", "default")
+OTEL_CLICKHOUSE_PASSWORD = os.environ.get("OTEL_CLICKHOUSE_PASSWORD", "")
+
 AUTH_USER_MODEL = "accounts.User"
 
 AUTH_PASSWORD_VALIDATORS = [

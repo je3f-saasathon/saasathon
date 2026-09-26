@@ -38,6 +38,7 @@ export type ProjectCreated = Schemas["ProjectCreatedOut"];
 export type ProjectCreateRequest = Schemas["ProjectCreateIn"];
 export type ProjectUpdateRequest = Schemas["ProjectUpdateIn"];
 export type WebhookSecret = Schemas["WebhookSecretOut"];
+export type OTelToken = Schemas["OTelTokenOut"];
 export type ExecutionMode = Schemas["ExecutionMode"];
 export type LLMConfig = Schemas["LLMConfigOut"];
 export type LLMConfigRequest = Schemas["LLMConfigIn"];

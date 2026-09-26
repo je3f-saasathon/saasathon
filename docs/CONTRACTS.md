@@ -79,7 +79,7 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | Method | Path | Role | Body / Params | Returns |
 |---|---|---|---|---|
 | GET | `/sre/projects` | member | — | `Project[]` |
-| POST | `/sre/projects` | any user | `{name, github_installation_id, github_repo_owner, github_repo_name, github_default_branch?, uptrace_source_id?, default_execution_mode?, generate_tests?, organization_id?}` | `201 Project & {webhook_secret, webhook_url, uptrace_webhook_url}` — the only time the secret is shown besides rotation. Caller becomes owner. `400` unless the caller has connected that installation (see GitHub connect) and it can reach the repo. `organization_id` defaults to the caller's personal org; another org needs the caller to be its `admin` (`403` otherwise, `404` if not a member). |
+| POST | `/sre/projects` | any user | `{name, github_installation_id, github_repo_owner, github_repo_name, github_default_branch?, uptrace_source_id?, default_execution_mode?, generate_tests?, organization_id?}` | `201 Project & {webhook_secret, webhook_url, uptrace_webhook_url, otel_token}` — secrets are shown only here and on rotation. Caller becomes owner. `400` unless the caller has connected that installation (see GitHub connect) and it can reach the repo. `organization_id` defaults to the caller's personal org; another org needs the caller to be its `admin` (`403` otherwise, `404` if not a member). |
 | GET | `/sre/projects/{id}` | viewer | — | `Project` |
 | PATCH | `/sre/projects/{id}` | admin (owner for `github_*` / `uptrace_source_id` / `organization_id` / `uptrace_credential_id`) | any subset of the create fields, plus `default_llm_config_id: int\|null` (must be one of the caller's own configs) and `uptrace_credential_id: int\|null` (must belong to the project's org, `400` otherwise; null = pick the org's credential by host) | `Project`; `400` if the installation/repo *changes* and fails the same check as create (unchanged wiring is grandfathered). Moving to another org needs `admin` in the target org. |
 | DELETE | `/sre/projects/{id}` | owner | — | `204` |
@@ -90,6 +90,19 @@ Returns `200 {incident_run_id, temporal_workflow_id, status}`. Idempotent per `(
 | DELETE | `/sre/projects/{id}/members/{user_id}` | owner, or the member themself | — | `204`, `409` last owner. The member's LLM configs are detached from the project. |
 
 `Project`: `{id, name, role, github_installation_id, github_repo_owner, github_repo_name, github_default_branch, uptrace_source_id, default_execution_mode, default_llm_config_id, generate_tests, platform_tokens_this_month, created_at, github_verified, organization_id, organization_name, uptrace_credential_id, uptrace_fetch_ready}` (`role` is the caller's; `github_verified` is true when an owner has connected the project's installation). `uptrace_fetch_ready` is true when an Uptrace credential resolves for the project: its own `uptrace_credential_id`, else the single org credential whose `host` matches the host in `uptrace_source_id`. `generate_tests` (default `true`, admin-editable): when `false` the fix agent writes no new tests and only runs the repo's existing ones, a cheaper run. It's frozen onto each playbook run when the run starts.
+
+### OpenTelemetry Collector ingestion
+
+The customer runs the `je3f-saasathon/otel-collector` binary in their network. It exports OTLP/HTTP protobuf over HTTPS to the Django API. Each project has one bearer token; it is generated with the project and shown only once, or shown again when an owner rotates it. The database stores only its SHA-256 digest. Configure the collector with `SAASATHON_OTLP_ENDPOINT=https://<api-host>/api/sre/otel` and `SAASATHON_OTLP_TOKEN=<project token>`.
+
+| Method | Path | Auth | Body | Returns |
+|---|---|---|---|---|
+| POST | `/sre/otel/v1/traces` | project bearer token | OTLP `ExportTraceServiceRequest` protobuf (`application/x-protobuf`, optional gzip) | empty OTLP protobuf response; `401` invalid token; `413` oversized payload; `503` storage unavailable |
+| POST | `/sre/otel/v1/logs` | project bearer token | OTLP `ExportLogsServiceRequest` protobuf (`application/x-protobuf`, optional gzip) | same |
+| POST | `/sre/otel/v1/metrics` | project bearer token | OTLP `ExportMetricsServiceRequest` protobuf (`application/x-protobuf`, optional gzip) | same |
+| POST | `/sre/projects/{id}/otel-token/rotate` | project owner | — | `{otel_token}` (shown once) |
+
+The backend assigns `organization_id` and `project_id` from the token; resource attributes cannot override tenant identity. Telemetry is written to the dedicated ClickHouse `sre_telemetry` table, partitioned by event time and expired 30 days after event time. Each row retains the signal and normalized OTLP record JSON for downstream incident context filtering. Maximum decompressed request size is 16 MiB. Exact repeated exports are collapsed by a stable content key during ClickHouse merges and context reads use `FINAL` for immediate deduplication. At incident time, context selection takes only spans matching the incident trace and warning-or-higher correlated logs, with a 3,000 character cap. Metrics and unrelated or low severity logs remain archived but are omitted from the initial LLM context.
 
 ### Organizations
 

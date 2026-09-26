@@ -31,6 +31,7 @@ services:
       # SRE infra (docker-compose.infra.yml) is published on the host.
       TEMPORAL_ADDRESS: host.docker.internal:${TEMPORAL_PORT:-7243}
       LANGFUSE_HOST: http://host.docker.internal:${LANGFUSE_PORT:-3100}
+      OTEL_CLICKHOUSE_URL: http://host.docker.internal:${OTEL_CLICKHOUSE_PORT:-8124}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

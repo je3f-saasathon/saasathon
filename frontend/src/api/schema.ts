@@ -262,6 +262,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sre/projects/{project_id}/otel-token/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate Otel Token */
+        post: operations["sre_api_rotate_otel_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sre/github/status": {
         parameters: {
             query?: never;
@@ -765,6 +782,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sre/otel/v1/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ingest Traces */
+        post: operations["sre_otel_ingest_ingest_traces"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/otel/v1/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ingest Logs */
+        post: operations["sre_otel_ingest_ingest_logs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/otel/v1/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ingest Metrics */
+        post: operations["sre_otel_ingest_ingest_metrics"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -997,6 +1065,8 @@ export interface components {
             webhook_url: string;
             /** Uptrace Webhook Url */
             uptrace_webhook_url: string;
+            /** Otel Token */
+            otel_token: string;
         };
         /** ProjectCreateIn */
         ProjectCreateIn: {
@@ -1060,6 +1130,11 @@ export interface components {
             webhook_url: string;
             /** Uptrace Webhook Url */
             uptrace_webhook_url: string;
+        };
+        /** OTelTokenOut */
+        OTelTokenOut: {
+            /** Otel Token */
+            otel_token: string;
         };
         /** GitHubStatusOut */
         GitHubStatusOut: {
@@ -2181,6 +2256,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookSecretOut"];
+                };
+            };
+        };
+    };
+    sre_api_rotate_otel_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OTelTokenOut"];
                 };
             };
         };
@@ -3419,6 +3516,60 @@ export interface operations {
                         [key: string]: unknown;
                     };
                 };
+            };
+        };
+    };
+    sre_otel_ingest_ingest_traces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_otel_ingest_ingest_logs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_otel_ingest_ingest_metrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -7,11 +7,12 @@ usage() {
 Usage: scripts/infra.sh up|down|status
 
 Manages the SRE agent's local infra (docker-compose.infra.yml, compose
-project "saasathon-infra"): Temporal and self-hosted Langfuse. It's kept
+project "saasathon-infra"): Temporal, self-hosted Langfuse and telemetry
+ClickHouse. It's kept
 separate from the app stack so `make dev` / `make stop` don't restart it
 (Langfuse takes a while to boot).
 
-  up      start (or keep) the infra and wait until Temporal and Langfuse are healthy
+  up      start (or keep) the infra and wait until Temporal, Langfuse and telemetry ClickHouse are healthy
   down    stop the infra containers (data volumes are kept)
   status  show infra containers
 EOF
@@ -19,6 +20,9 @@ EOF
 
 INFRA=(docker compose -p saasathon-infra -f "$REPO_ROOT/docker-compose.infra.yml")
 LANGFUSE_URL=$(env_get "$REPO_ROOT/backend/.env" LANGFUSE_HOST "http://localhost:3100")
+OTEL_CLICKHOUSE_USER=$(env_get "$REPO_ROOT/backend/.env" OTEL_CLICKHOUSE_USER "otel_ingest")
+OTEL_CLICKHOUSE_PASSWORD=$(env_get "$REPO_ROOT/backend/.env" OTEL_CLICKHOUSE_PASSWORD "local-otel-password")
+export OTEL_CLICKHOUSE_USER OTEL_CLICKHOUSE_PASSWORD
 TEMPORAL_UI_PORT=${TEMPORAL_UI_PORT:-8243}
 
 require_docker() {
@@ -54,6 +58,7 @@ case "${1:-}" in
     "${INFRA[@]}" up -d
     if wait_healthy temporal 90; then log_ok "temporal healthy"; else log_warn "temporal not healthy yet (docker compose -p saasathon-infra logs temporal)"; fi
     if wait_healthy langfuse-web 240; then log_ok "langfuse healthy"; else log_warn "langfuse not healthy yet (docker compose -p saasathon-infra logs langfuse-web)"; fi
+    if wait_healthy telemetry-clickhouse 90; then log_ok "telemetry ClickHouse healthy"; else log_warn "telemetry ClickHouse not healthy yet (docker compose -p saasathon-infra logs telemetry-clickhouse)"; fi
     printf '  %-12s %s\n' "temporal ui" "http://localhost:$TEMPORAL_UI_PORT"
     printf '  %-12s %s\n' "langfuse" "$LANGFUSE_URL  (admin@localhost.dev / localdev-password)"
     ;;

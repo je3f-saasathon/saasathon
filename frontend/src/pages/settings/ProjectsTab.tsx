@@ -10,6 +10,7 @@ import type {
   GitHubRepo,
   LLMConfig,
   Organization,
+  OTelToken,
   PipelineStep,
   Platform,
   Project,
@@ -141,6 +142,29 @@ function SecretPanel({ secret, onClose }: { secret: WebhookSecret; onClose: () =
           />
         </div>
       </details>
+    </div>
+  );
+}
+
+function CollectorTokenPanel({ token, onClose }: { token: string; onClose: () => void }) {
+  const endpoint = `${import.meta.env.VITE_API_URL ?? "http://localhost:8000"}/api/sre/otel`;
+  return (
+    <div className="space-y-3 rounded-md border border-amber-500/60 bg-amber-50 dark:bg-amber-500/10 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium">Configure the customer-side OpenTelemetry Collector.</p>
+          <p className="text-sm text-muted-foreground">Copy this token now. It is shown only once.</p>
+        </div>
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Dismiss collector token">
+          <X />
+        </Button>
+      </div>
+      <CopyValue label="OTLP endpoint" value={endpoint} />
+      <CopyValue label="Project bearer token" value={token} />
+      <p className="text-xs text-muted-foreground">
+        Set these as <code>SAASATHON_OTLP_ENDPOINT</code> and <code>SAASATHON_PROJECT_TOKEN</code>
+        in the collector environment. Rotating this token immediately revokes the old one.
+      </p>
     </div>
   );
 }
@@ -629,9 +653,14 @@ function ProjectModels({ project }: { project: Project }) {
 
 function ProjectDetail({ project, onClose }: { project: Project; onClose: () => void }) {
   const [secret, setSecret] = useState<WebhookSecret | null>(null);
+  const [otelToken, setOtelToken] = useState<string | null>(null);
   const rotate = useMutation({
     mutationFn: () => api.post<WebhookSecret>(`/sre/projects/${project.id}/webhook-secret/rotate`),
     onSuccess: setSecret,
+  });
+  const rotateOtel = useMutation({
+    mutationFn: () => api.post<OTelToken>(`/sre/projects/${project.id}/otel-token/rotate`),
+    onSuccess: (result) => setOtelToken(result.otel_token),
   });
 
   return (
@@ -656,6 +685,27 @@ function ProjectDetail({ project, onClose }: { project: Project; onClose: () => 
           <h3 className="text-sm font-semibold">Models for this project</h3>
           <ProjectModels project={project} />
         </section>
+        {project.role === "owner" && (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">OpenTelemetry Collector</h3>
+            {otelToken ? (
+              <CollectorTokenPanel token={otelToken} onClose={() => setOtelToken(null)} />
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (window.confirm("Rotate the collector token? The old token will stop working.")) {
+                    rotateOtel.mutate();
+                  }
+                }}
+                disabled={rotateOtel.isPending}
+              >
+                <RefreshCw /> Rotate collector token
+              </Button>
+            )}
+            <ErrorText error={rotateOtel.error} />
+          </section>
+        )}
         {project.role === "owner" && (
           <section className="space-y-3">
             <h3 className="text-sm font-semibold">Uptrace webhook</h3>
@@ -706,7 +756,12 @@ export function ProjectsTab() {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {created && <SecretPanel secret={created} onClose={() => setCreated(null)} />}
+          {created && (
+            <>
+              <SecretPanel secret={created} onClose={() => setCreated(null)} />
+              <CollectorTokenPanel token={created.otel_token} onClose={() => setCreated(null)} />
+            </>
+          )}
           {selected === "new" && (
             <div className="rounded-md border p-4">
               <ProjectForm
