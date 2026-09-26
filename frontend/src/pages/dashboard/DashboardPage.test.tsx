@@ -106,6 +106,20 @@ describe("DashboardPage", () => {
     expect(screen.queryByText(/waiting for review on GitHub/)).not.toBeInTheDocument();
   });
 
+  it("opens details in a dialog that closes with the close button or Escape", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByText("ZeroDivisionError in checkout"));
+    const dialog = await screen.findByRole("dialog", { name: /ZeroDivisionError/ });
+    expect(await within(dialog).findByText("Attempt 1")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close details" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("ZeroDivisionError in checkout"));
+    fireEvent.keyDown(await screen.findByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
   it("sends a draft-only run awaiting approval to GitHub for review", async () => {
     responses["/api/sre/incident-runs"] = {
       runs: [{ ...run, status: "awaiting_approval", playbook_run_status: "pending_approval" }],

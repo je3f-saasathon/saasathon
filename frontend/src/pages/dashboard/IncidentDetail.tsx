@@ -7,6 +7,7 @@ import type { IncidentRun, Playbook, PlaybookRun, Runbook } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DialogTitle } from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -304,7 +305,9 @@ export function IncidentDetail({ run, onClose }: { run: IncidentRun; onClose: ()
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
         <div className="space-y-1">
-          <CardTitle className="text-base">{incidentSummary(run)}</CardTitle>
+          <DialogTitle asChild>
+            <CardTitle className="text-base">{incidentSummary(run)}</CardTitle>
+          </DialogTitle>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <StatusBadge status={run.status} />
             <span>{run.project_name}</span>
