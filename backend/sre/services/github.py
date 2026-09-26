@@ -94,6 +94,10 @@ class GitHubRepo:
             raise GitError(f"git clone failed: {result.stderr.strip()[-2000:]}")
         shutil.rmtree(dest / ".git", ignore_errors=True)
 
+    def head_sha(self, branch: str) -> str:
+        """The commit a branch points at now."""
+        return self._repo().get_branch(branch).commit.sha
+
     def compare(self, base: str, head: str, max_files: int = 100) -> list[dict]:
         """The files a push or merge changed, with their patches (GitHub's compare API)."""
         comparison = self._repo().compare(base, head)

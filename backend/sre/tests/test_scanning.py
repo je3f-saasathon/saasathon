@@ -28,9 +28,13 @@ SOURCE = "uptrace.buggly.dev/1"
 class FakeRepo:
     files = {"src/orders.py": "def total(order):\n    return order.customer.tier\n"}
     compared = []
+    head = "c0ffee"
 
     def __init__(self, project):
         self.project = project
+
+    def head_sha(self, branch):
+        return FakeRepo.head
 
     def clone_snapshot(self, dest, branch=""):
         for path, content in self.files.items():
@@ -48,6 +52,7 @@ def fake_infra(monkeypatch, settings, tmp_path):
     settings.SRE_RUNBOOKS_ENABLED = True
     FakeSandbox.instances = []
     FakeRepo.compared = []
+    FakeRepo.head = "c0ffee"
     monkeypatch.setattr(scanning, "GitHubRepo", FakeRepo)
     monkeypatch.setattr(scanning, "Sandbox", FakeSandbox)
 
@@ -74,8 +79,8 @@ def _agent(owner, kind=AgentKind.PLAYBOOK_SWEEP, mode=ExecutionMode.DRAFT_ONLY, 
                                            kind=kind, execution_mode=mode, **kwargs)
 
 
-def _scan_repo(agent, project, base="", head=""):
-    scan_run = ScanRun.objects.create(agent=agent, trigger="manual",
+def _scan_repo(agent, project, base="", head="", trigger="manual"):
+    scan_run = ScanRun.objects.create(agent=agent, trigger=trigger,
                                       temporal_workflow_id=f"scan-{ScanRun.objects.count()}")
     return ScanRepo.objects.create(scan_run=scan_run, project=project, branch="main",
                                    base_sha=base, head_sha=head)
@@ -121,14 +126,16 @@ def test_evidence_kind_depends_on_the_agent_kind(tmp_path):
     assert kinds == {"playbook_sweep": "code", "runbook_variant": "runbook", "find_quiet": "trace"}
 
 
-@pytest.mark.parametrize("agent_mode,evidence,expected", [
-    ("draft_only", "code", "advisory_only"),
-    ("draft_only", "runbook", "draft_only"),
-    ("advisory_only", "trace", "advisory_only"),
+@pytest.mark.parametrize("agent_mode,evidence,code_prs,expected", [
+    ("draft_only", "code", False, "advisory_only"),
+    ("draft_only", "code", True, "draft_only"),  # the agent lets code-only findings open PRs
+    ("advisory_only", "code", True, "advisory_only"),  # ...but never past its own mode
+    ("draft_only", "runbook", False, "draft_only"),
+    ("advisory_only", "trace", False, "advisory_only"),
 ])
-def test_mode_cap_is_the_lower_of_agent_and_evidence(owner, agent_mode, evidence, expected):
+def test_mode_cap_is_the_lower_of_agent_and_evidence(owner, agent_mode, evidence, code_prs, expected):
     project = _project(owner)
-    scan_repo = _scan_repo(_agent(owner, mode=agent_mode), project)
+    scan_repo = _scan_repo(_agent(owner, mode=agent_mode, code_findings_open_prs=code_prs), project)
     finding = scanning.Finding("null_reference", "t", "m", "src/a.py:1", "e", evidence)
     [run] = scanning.RepositoryScanner(scan_repo).record([finding])
     assert run.execution_mode_cap == expected
@@ -142,6 +149,61 @@ def test_a_finding_is_only_ever_raised_once(owner):
     assert len(scanning.RepositoryScanner(_scan_repo(agent, project)).record([finding])) == 1
     assert scanning.RepositoryScanner(_scan_repo(agent, project)).record([finding]) == []
     assert IncidentRun.objects.count() == 1
+
+
+SERVICES = """import os
+
+
+class Members:
+    def add(self, project_id):
+        project = Project.objects.get(pk=project_id)
+        return project.members.create()
+
+    def remove(self, project_id):
+        return None
+
+
+def invite(email):
+    send_mail(email)
+"""
+
+
+def test_enclosing_symbol_is_the_innermost_function_or_class(tmp_path):
+    path = tmp_path / "services.py"
+    path.write_text(SERVICES)
+    assert scanning.enclosing_symbol(path, "services.py:7") == "Members.add"
+    assert scanning.enclosing_symbol(path, "services.py:6-8") == "Members.add"
+    assert scanning.enclosing_symbol(path, "services.py:14") == "invite"
+    assert scanning.enclosing_symbol(path, "services.py:1") == ""  # module level
+    assert scanning.enclosing_symbol(path, "services.py") == ""  # no line
+    (tmp_path / "broken.py").write_text("def (:")
+    assert scanning.enclosing_symbol(tmp_path / "broken.py", "broken.py:1") == ""
+    (tmp_path / "app.js").write_text("function f() {}")
+    assert scanning.enclosing_symbol(tmp_path / "app.js", "app.js:1") == ""
+
+
+def test_the_same_bug_keeps_its_fingerprint_when_the_line_moves(tmp_path):
+    (tmp_path / "services.py").write_text(SERVICES)
+    material = scanning.Material("playbooks", "", [1], playbook_ids={7})
+
+    def fingerprint(location, category="validation", playbook_id=7):
+        raw = [{**FINDING, "location": location, "category": category, "playbook_id": playbook_id}]
+        [finding] = scanning.clean_findings(raw, material, AgentKind.PLAYBOOK_SWEEP, tmp_path, 3)
+        return finding.fingerprint
+
+    same = fingerprint("services.py:6")
+    assert fingerprint("services.py:7") == same
+    assert fingerprint("services.py:7", category="database") == same  # the playbook anchors it
+    assert fingerprint("services.py:11") != same  # another method
+    assert fingerprint("services.py:7", playbook_id=None) != same
+
+
+def test_one_reply_reporting_a_bug_twice_raises_it_once(tmp_path):
+    (tmp_path / "services.py").write_text(SERVICES)
+    material = scanning.Material("playbooks", "", [1], playbook_ids={7})
+    raw = [{**FINDING, "location": loc, "playbook_id": 7} for loc in ("services.py:6", "services.py:7", "services.py:14")]
+    findings = scanning.clean_findings(raw, material, AgentKind.PLAYBOOK_SWEEP, tmp_path, 3)
+    assert [f.location for f in findings] == ["services.py:6", "services.py:14"]
 
 
 # ---- material per kind --------------------------------------------------------------
@@ -237,6 +299,31 @@ def test_diff_scans_look_at_the_change_and_skip_empty_ones(owner, fake_infra, mo
     FakeSandbox.instances = []
     assert scanning.scan_repository(_scan_repo(_agent(owner, name="x"), project, "a", "b")) == []
     assert FakeSandbox.instances == []  # nothing changed: no sandbox, no tokens
+
+
+def test_a_scheduled_scan_skips_a_commit_the_agent_already_scanned(owner, fake_infra, monkeypatch):
+    project = _project(owner)
+    _builtin()
+    FakeLLM(monkeypatch, *[{"action": "finish", "findings": []}] * 3)
+    agent = _agent(owner)
+    first = _scan_repo(agent, project, trigger="schedule")
+    scanning.scan_repository(first)
+    first.refresh_from_db()
+    assert (first.status, first.head_sha) == ("succeeded", "c0ffee")
+
+    again = _scan_repo(agent, project, trigger="schedule")
+    FakeSandbox.instances = []
+    assert scanning.scan_repository(again) == []
+    again.refresh_from_db()
+    assert again.status == "skipped" and f"since scan run {first.scan_run_id}" in again.error
+    assert FakeSandbox.instances == []  # no clone, no tokens
+
+    scanning.scan_repository(manual := _scan_repo(agent, project))  # asked for by hand: scans
+    FakeRepo.head = "beef"
+    scanning.scan_repository(moved := _scan_repo(agent, project, trigger="schedule"))  # new commits
+    manual.refresh_from_db(), moved.refresh_from_db()
+    assert (manual.status, moved.status) == ("succeeded", "succeeded")
+    assert scanning.finish_scan_run(again.scan_run) == "succeeded"
 
 
 def test_nothing_to_hunt_for_spends_nothing(owner, fake_infra):

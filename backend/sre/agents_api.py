@@ -162,10 +162,14 @@ def update_agent(request: HttpRequest, agent_id: int, payload: AgentUpdateIn):
 @router.delete("/agents/{agent_id}", response={204: None, 503: dict})
 def delete_agent(request: HttpRequest, agent_id: int):
     agent = _agent_for(request.auth, agent_id, OrgRole.ADMIN)
+    # Deleting the agent deletes its scan runs: stop the running ones first, or their
+    # workflows fail looking for them.
+    running = list(agent.scan_runs.filter(status=ScanRun.Status.RUNNING)
+                   .values_list("temporal_workflow_id", flat=True))
     try:
-        temporal_client.delete_agent_schedule(agent.id)
+        temporal_client.stop_project_work(running, [agent.id], f"remediation agent {agent.id} deleted")
     except Exception:
-        return 503, {"detail": "Could not remove the agent's schedule in Temporal; try again"}
+        return 503, {"detail": "Could not stop the agent's scans in Temporal; try again"}
     agent.delete()
     return 204, None
 
