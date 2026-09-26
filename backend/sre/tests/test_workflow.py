@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import pytest
 from temporalio import activity
 from temporalio.client import WorkflowFailureError
-from temporalio.exceptions import ApplicationError
+from temporalio.exceptions import ApplicationError, CancelledError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -57,6 +57,8 @@ class Scenario:
     delegate_to: int | None = None
     localized: list[int] = field(default_factory=list)
     child_workflow_ids: list[str] = field(default_factory=list)
+    # The fix attempt runs until it's cancelled (project deletion tests).
+    block_attempt: bool = False
 
 
 def stub_activities(s: Scenario):
@@ -112,6 +114,9 @@ def stub_activities(s: Scenario):
     async def run_playbook_attempt(inp: AttemptInput) -> AttemptResult:
         s.calls.append("run_playbook_attempt")
         s.feedback_seen.append(inp.previous_feedback)
+        while s.block_attempt:
+            activity.heartbeat()
+            await asyncio.sleep(0.05)
         outcome = s.attempt_outcomes[inp.attempt_number - 1]
         error = "" if outcome == "succeeded" else f"attempt {inp.attempt_number} broke"
         return AttemptResult(outcome, error, f"branch-{inp.attempt_number}")
@@ -532,3 +537,84 @@ def test_uptrace_sync_without_a_project_only_syncs_and_retries_uptrace_outages()
 def test_uptrace_sync_skips_a_project_that_is_no_longer_managed():
     log = run_uptrace_sync(UptraceSyncInput("https://api.example", project_id=5), provisioned=0)
     assert log["provision"] == [5] and log["sync"] == []
+
+
+# ---- cancellation (project deletion) --------------------------------------------------
+
+def run_and_cancel(scenario: Scenario, ready):
+    """Starts an incident workflow, cancels it through temporal_client.cancel_workflows once
+    ready(scenario) holds, and returns the cause of its failure. Then cancels it again (now
+    finished) along with a workflow that never started: neither may raise."""
+    from sre.temporal_client import cancel_workflows
+
+    async def go():
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            queue = f"test-{uuid.uuid4()}"
+            async with Worker(env.client, task_queue=queue, workflows=[IncidentDiagnosisWorkflow],
+                              activities=stub_activities(scenario)):
+                wid = f"wf-{uuid.uuid4()}"
+                handle = await env.client.start_workflow(
+                    IncidentDiagnosisWorkflow.run, IncidentInput(1, 1), id=wid, task_queue=queue)
+                while not ready(scenario):
+                    await asyncio.sleep(0.05)
+                await cancel_workflows(env.client, [wid], "test")
+                with pytest.raises(WorkflowFailureError) as failure:
+                    await handle.result()
+                await cancel_workflows(env.client, [wid, f"missing-{uuid.uuid4()}"], "test")
+                return failure.value.cause
+
+    return asyncio.run(go())
+
+
+def test_cancelling_a_run_awaiting_review_ends_it_without_marking_it_failed():
+    s = Scenario(mode="draft_only")
+    cause = run_and_cancel(s, lambda s: ("awaiting_approval", "") in s.incident_status)
+    assert isinstance(cause, CancelledError)
+    assert [status for status, _ in s.incident_status] == ["awaiting_approval"]
+
+
+def test_cancelling_during_a_fix_attempt_does_not_mark_it_failed():
+    s = Scenario(block_attempt=True)
+    cause = run_and_cancel(s, lambda s: "run_playbook_attempt" in s.calls)
+    assert isinstance(cause, CancelledError)
+    assert s.incident_status == [] and s.run_status == []
+
+
+def test_cancelling_a_scan_run_skips_finish_scan():
+    from sre.temporal_client import cancel_workflows
+
+    log = []
+
+    @activity.defn(name="list_scan_repos")
+    async def list_scan_repos(scan_run_id: int) -> list[int]:
+        return [1]
+
+    @activity.defn(name="scan_repository")
+    async def scan_repository(repo_id: int) -> list[ScanFinding]:
+        log.append("scanning")
+        while True:
+            activity.heartbeat()
+            await asyncio.sleep(0.05)
+
+    @activity.defn(name="finish_scan")
+    async def finish_scan(scan_run_id: int) -> str:
+        log.append("finish_scan")
+        return "succeeded"
+
+    async def go():
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            queue = f"test-{uuid.uuid4()}"
+            async with Worker(env.client, task_queue=queue, workflows=[ActiveRemediationWorkflow],
+                              activities=[list_scan_repos, scan_repository, finish_scan]):
+                wid = f"wf-{uuid.uuid4()}"
+                handle = await env.client.start_workflow(
+                    ActiveRemediationWorkflow.run, ScanInput(scan_run_id=5), id=wid, task_queue=queue)
+                while not log:
+                    await asyncio.sleep(0.05)
+                await cancel_workflows(env.client, [wid], "test")
+                with pytest.raises(WorkflowFailureError) as failure:
+                    await handle.result()
+                return failure.value.cause
+
+    assert isinstance(asyncio.run(go()), CancelledError)
+    assert log == ["scanning"]

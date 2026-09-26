@@ -201,3 +201,38 @@ async def _start_scan(workflow_id: str, inp: ScanInput) -> None:
 
 def start_scan(workflow_id: str, scan_run_id: int) -> None:
     async_to_sync(_start_scan)(workflow_id, ScanInput(scan_run_id=scan_run_id))
+
+
+# ---- project deletion -----------------------------------------------------------------
+
+async def cancel_workflows(client: Client, workflow_ids: list[str], reason: str) -> None:
+    """Requests cancellation of each workflow, and terminates it if the cancel request
+    itself fails. A workflow that has already finished (or never started) is fine. Any
+    other error is raised, so the caller can stop before deleting what the workflows use."""
+    for workflow_id in workflow_ids:
+        handle = client.get_workflow_handle(workflow_id)
+        try:
+            await handle.cancel()
+            continue
+        except RPCError as exc:
+            if exc.status == RPCStatusCode.NOT_FOUND:  # Temporal's answer for a finished workflow
+                continue
+            logger.warning("cancelling %s failed (%s); terminating it", workflow_id, exc)
+        try:
+            await handle.terminate(reason=reason)
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.NOT_FOUND:
+                raise
+
+
+async def _stop_project_work(workflow_ids: list[str], agent_ids: list[int], reason: str) -> None:
+    client = await _connect()
+    await cancel_workflows(client, workflow_ids, reason)
+    for agent_id in agent_ids:
+        await _sync_agent_schedule(client, agent_id, "")
+
+
+def stop_project_work(workflow_ids: list[str], agent_ids: list[int], reason: str) -> None:
+    """Cancels the workflows and deletes the agents' schedules; raises if Temporal can't be
+    reached or refuses."""
+    async_to_sync(_stop_project_work)(workflow_ids, agent_ids, reason)

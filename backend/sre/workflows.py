@@ -3,7 +3,9 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ApplicationError, WorkflowAlreadyStartedError
+from temporalio.exceptions import (
+    ActivityError, ApplicationError, WorkflowAlreadyStartedError, is_cancelled_exception,
+)
 from temporalio.workflow import ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():
@@ -77,6 +79,8 @@ class IncidentDiagnosisWorkflow:
         try:
             status = await self._run(inp)
         except ActivityError as exc:
+            if is_cancelled_exception(exc):
+                raise  # cancelled (the project was deleted): nothing left to mark
             cause = exc.cause
             message = cause.message if isinstance(cause, ApplicationError) else str(cause or exc)
             await self._status(inp, "failed", message)
@@ -325,7 +329,9 @@ class ActiveRemediationWorkflow:
                     findings: list[ScanFinding] = await workflow.execute_activity(
                         "scan_repository", repo_id, result_type=list[ScanFinding], **SCAN_ATTEMPT
                     )
-                except ActivityError:
+                except ActivityError as exc:
+                    if is_cancelled_exception(exc):
+                        raise  # the whole run was cancelled: don't finish it as if it ran
                     return  # the activity marked the repo failed; finish_scan counts it
             for finding in findings:
                 try:
