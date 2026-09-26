@@ -130,6 +130,19 @@ Two flags, both **off** by default (off = exactly the flow above):
 - Docker's `put_archive` extracts files as root → the sandbox stamps the worker's uid on each tar entry.
 - Verify claims against the running system (Langfuse, Temporal, GitHub) before reporting them.
 
+## IN PROGRESS: service mesh + active remediation (branch `feat/mesh-active-remediation`)
+
+Read `docs/MESH_AND_REMEDIATION.md` first: what the two features do, the design decisions and why,
+and the build checklist. Contracts are in `docs/CONTRACTS.md` ("Service mesh", "Remediation
+agents"), trade-offs in `docs/tradeoffs.md` §7–§9. Mesh first (flag `SRE_SERVICE_MESH_ENABLED`),
+then agents (`SRE_REMEDIATION_AGENTS_ENABLED`).
+- Uptrace 2.1 routes used, checked against the local instance (`infra/uptrace/`, port 14418, the
+  token is `UPTRACE_API_TOKEN` in `infra/uptrace/.env`): `/internal/v1/service-graph/{project}`
+  (edges with counts/errors/durations; `serverAttr` `service_name` or `_system`) and
+  `/internal/v1/traces/{project}/{trace}` (flat `spans` with `parentId`, `kind`, `statusCode`,
+  `attrs["service_name::str"]`, and `logs` holding exceptions). Unknown `/internal/` routes return
+  the SPA's HTML with a 200, not a 404.
+
 ## NEXT STEP: more model providers (Jev, Anthropic, open weights)
 
 Goal: run every pipeline step on each provider family, compare quality/cost/latency in Langfuse, and

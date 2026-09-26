@@ -91,6 +91,63 @@ A runbook is only saved when an agent's fix succeeds (from what the agent propos
 - That would cost an LLM call per incident, and the agent would still explore the repo from scratch
   every time. Reusing a proven runbook shortens the agent loop, which is where the tokens go.
 
+## 7. The service graph comes from Uptrace's internal service-graph route
+
+With `SRE_SERVICE_MESH_ENABLED`, the worker copies Uptrace's own service graph
+(`GET /internal/v1/service-graph/{project}`, the route its UI's service map uses, checked against
+Uptrace 2.1) into `ServiceNode` / `ServiceEdge` every 15 minutes. Each alert's whole trace
+(`GET /internal/v1/traces/{project}/{trace}`) adds its edges in between. Edges expire after
+`SRE_SERVICE_GRAPH_TTL_DAYS` without being seen.
+
+**What's given up**
+- Like §5, these are `/internal/` routes, so an Uptrace upgrade can change them. A changed shape
+  means an empty or stale graph, never a failed incident.
+- The graph is only as good as the instrumentation. A hop that drops `traceparent`, or a manual
+  span left as `internal`, has no edge, and we can't tell a missing edge from an absent one.
+- Expiry is a guess. A path used once a week can drop out of a 7-day window and come back.
+
+**Why not compute edges ourselves**
+- Uptrace already aggregates every span at ingestion. Sampling traces through its API would cost
+  far more calls and still see less.
+
+## 8. Root cause by a deterministic trace walk; the fix moves to the culprit's project
+
+`localize_root_cause` picks the deepest error span with no failing children, with no LLM call. If
+that service maps to another project in the same org and Uptrace project, a linked child incident
+runs there and the original ends `delegated`.
+
+**What's given up**
+- A caller that times out *before* its callee fails looks like the culprit. So does an error that
+  one service swallows and re-raises as a different one. The LLM still reads the whole path during
+  triage, and can say so in the diagnosis, but it doesn't move the incident.
+- The child runs under the other project's settings. An alert that arrived at an `autonomous`
+  project can end up as an advisory diagnosis in an `advisory_only` one, which is intended.
+- Service → repo mapping trusts `vcs.repository.url.full` from telemetry. A service could claim
+  someone else's repo. That only matters inside one org and Uptrace project, whose services are
+  already trusted to send alerts, and it only routes to projects in the same org.
+
+**Why not ask the LLM, or move the incident**
+- The walk is cheap, testable and gives the same answer on replay. Moving the incident would
+  lose the alert's history in the project that received it. A linked child keeps both.
+
+## 9. Remediation agents feed the incident pipeline instead of having their own
+
+A scan's findings become incidents (`source: "scan"`) and run through `IncidentDiagnosisWorkflow`,
+with `confirm_anomaly` acting as the finding's second opinion. There's no separate findings
+table.
+
+**What's given up**
+- The dashboard mixes production alerts with scan findings. `source` is there to filter on.
+- A finding is keyed by category + location. A real second bug at the same location in the same
+  category, found after the first was raised, is never raised again. The same was accepted for
+  Uptrace alerts in §3.
+- Every finding costs a full pipeline's worth of triage calls, which is why each agent has
+  `max_findings_per_repo` and a token budget.
+
+**Why not a separate pipeline**
+- Verification, matching, execution modes, draft PRs, approvals, runbook saving, dedup and usage
+  tracking all exist already. The scanner only has to produce the context.
+
 ## Future improvements the schema doesn't block
 
 - **Own incident grouping** (if Uptrace's proves wrong): add an `IncidentFingerprint` model (a hash of the normalized stack trace) with a foreign key from `IncidentRun`, and check for a recent open run before starting a workflow. The workflow id can switch from the raw trace id to the fingerprint without touching other models.
