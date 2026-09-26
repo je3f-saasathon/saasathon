@@ -174,4 +174,21 @@ describe("DashboardPage", () => {
     responses["/api/sre/incident-runs"] = { runs: [run], total: 1 };
     vi.useRealTimers();
   });
+
+  it("prompts to connect GitHub only when configured and nothing is connected", async () => {
+    responses["/api/sre/github/status"] = { configured: true };
+    responses["/api/sre/github/installations"] = [];
+    const { unmount } = renderPage();
+    expect(await screen.findByRole("button", { name: /Connect GitHub/ })).toBeInTheDocument();
+    unmount();
+
+    responses["/api/sre/github/installations"] = [
+      { id: 1, installation_id: "42", account_login: "acme", account_type: "Organization" },
+    ];
+    renderPage();
+    expect(await screen.findByText("ZeroDivisionError in checkout")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Connect GitHub/ })).not.toBeInTheDocument();
+    delete responses["/api/sre/github/status"];
+    delete responses["/api/sre/github/installations"];
+  });
 });
