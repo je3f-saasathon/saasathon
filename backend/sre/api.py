@@ -752,7 +752,7 @@ def github_webhook(request: HttpRequest):
     try:
         temporal_client.signal_approval(
             playbook_run.incident_run.temporal_workflow_id,
-            ApprovalDecision(approve=merged, user_id=None, via_github=True),
+            ApprovalDecision(approve=merged, user_id=0, via_github=True),
         )
     except Exception:
         logger.exception("could not signal workflow for playbook run %s", playbook_run.id)

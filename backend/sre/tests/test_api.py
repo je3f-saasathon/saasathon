@@ -518,7 +518,7 @@ def test_github_merge_approves_and_close_rejects(client, make_user, make_project
     assert resp.status_code == 200
     wid, decision = temporal_calls["signal"][0]
     assert wid == playbook_run.incident_run.temporal_workflow_id
-    assert (decision.approve, decision.via_github, decision.user_id) == (merged, True, None)
+    assert (decision.approve, decision.via_github, decision.user_id) == (merged, True, 0)
     playbook_run.refresh_from_db()
     assert playbook_run.approved_at is not None and playbook_run.approved_by is None
     assert playbook_run.pr_url == "https://github.com/acme/shop/pull/9"

@@ -83,7 +83,7 @@ class AttemptResult:
 @dataclass
 class ApprovalDecision:
     approve: bool
-    user_id: int | None
+    user_id: int  # 0 when decided on GitHub (kept an int so older workers can still decode it)
     # True when the PR was merged/closed on GitHub: the PR is already in its final state,
     # so the workflow mustn't mark it ready or close it again.
     via_github: bool = False
