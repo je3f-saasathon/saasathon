@@ -42,6 +42,9 @@ class ProjectOut(Schema):
     github_verified: bool
     organization_id: int | None
     organization_name: str
+    uptrace_credential_id: int | None
+    # True when an Uptrace credential resolves (own, else the org's for the pinned host).
+    uptrace_fetch_ready: bool
 
 
 class ProjectCreatedOut(ProjectOut):
@@ -84,6 +87,7 @@ class ProjectUpdateIn(Schema):
     default_llm_config_id: int | None = None
     generate_tests: bool | None = None
     organization_id: int | None = None
+    uptrace_credential_id: int | None = None
 
 
 class OrganizationOut(Schema):
@@ -112,6 +116,32 @@ class OrgMemberAddIn(Schema):
 
 class OrgMemberUpdateIn(Schema):
     role: OrgRole
+
+
+class UptraceCredentialOut(Schema):
+    id: int
+    organization_id: int
+    name: str
+    host: str
+    api_base_url: str
+    has_token: bool
+    created_by_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class UptraceCredentialIn(Schema):
+    name: str
+    host: str
+    api_base_url: str
+    token: str
+
+
+class UptraceCredentialUpdateIn(Schema):
+    name: str | None = None
+    host: str | None = None
+    api_base_url: str | None = None
+    token: str | None = None  # a new value rotates it
 
 
 class MemberOut(Schema):

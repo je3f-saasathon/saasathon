@@ -80,6 +80,36 @@ class PipelineStep(models.TextChoices):
     PLAYBOOK_EXECUTION = "playbook_execution", "Playbook execution"
 
 
+class UptraceCredential(models.Model):
+    """An Uptrace API token, shared by an org's projects. Uptrace tokens are user-scoped
+    (they reach every Uptrace project that user can see), so the worker only ever uses one
+    for the project's pinned Uptrace project, and only when `host` matches its pin."""
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="uptrace_credentials"
+    )
+    name = models.CharField(max_length=100)
+    # The host in alert links / uptrace_source_id, e.g. "uptrace.buggly.dev".
+    host = models.CharField(max_length=255)
+    # Where the API lives; the same host for self-hosted, a separate one on Uptrace Cloud.
+    api_base_url = models.URLField()
+    token_encrypted = models.BinaryField(blank=True, default=b"")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "sre_uptrace_credential"
+        unique_together = [("organization", "name")]
+        ordering = ["created_at"]
+
+    @property
+    def has_token(self) -> bool:
+        return bool(self.token_encrypted)
+
+
 class Project(models.Model):
     members = models.ManyToManyField(
         settings.AUTH_USER_MODEL, through="ProjectMembership", related_name="sre_projects"
@@ -95,6 +125,10 @@ class Project(models.Model):
     github_default_branch = models.CharField(max_length=100, default="main")
     uptrace_webhook_secret = models.CharField(max_length=128, default=_new_webhook_secret)
     uptrace_source_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    # Null = use the org's credential whose host matches uptrace_source_id's.
+    uptrace_credential = models.ForeignKey(
+        UptraceCredential, null=True, blank=True, on_delete=models.SET_NULL, related_name="projects"
+    )
     default_llm_config = models.ForeignKey(
         "LLMProviderConfig",
         null=True,
@@ -216,6 +250,8 @@ class IncidentRun(models.Model):
     raw_webhook_payload = models.JSONField(default=dict)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.RUNNING)
     classification = models.JSONField(null=True, blank=True)
+    # The alert's exception as fetched from Uptrace (services/uptrace.py); {} when not fetched.
+    telemetry = models.JSONField(default=dict, blank=True)
     matched_playbook = models.ForeignKey(
         Playbook, null=True, blank=True, on_delete=models.SET_NULL, related_name="incident_runs"
     )

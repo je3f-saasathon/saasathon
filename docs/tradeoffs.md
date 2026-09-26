@@ -52,6 +52,26 @@ a cookie).
 - Binding needs a cookie set on the backend's domain before the redirect, which is
   a separate origin from the frontend in dev and in the tunnel. The risk is low and the TTL is short.
 
+## 5. Uptrace telemetry comes from its internal (UI) API
+
+An alert notification only carries the alert's name, so before triage the worker fetches the
+exception from Uptrace (`services/uptrace.py`, behind `SRE_UPTRACE_FETCH_ENABLED`). It uses
+two calls from Uptrace's own UI API, checked against Uptrace 2.1 (`infra/uptrace/`):
+`GET /internal/v1/alerts/{project}/{alert}` gives a sample `traceId`/`spanId` for the alert's
+error group, and `GET /internal/v1/traces/{project}/{trace}/{span}` gives that span's
+`exception_type`, `exception_stacktrace` and `service_name` attributes.
+
+**What's given up**
+- These are `/internal/` routes, not a documented public API, so an Uptrace upgrade can change
+  them. A changed shape means an empty or partial `telemetry`, never a failed incident.
+- The token is user-scoped: it can read every Uptrace project its user can. Stored once per
+  org (`UptraceCredential`), and only ever sent for the project's pinned Uptrace project and
+  host.
+
+**Why not the MCP endpoint or the Spans API**
+- Uptrace Cloud's MCP server (`/mcp/<project>`) has `get_alert`/`list_spans` tools, but it isn't
+  part of the self-hosted instance we run, and the internal routes above are what its UI uses.
+
 ## Future improvements the schema doesn't block
 
 - **Own incident grouping** (if Uptrace's proves wrong): add an `IncidentFingerprint` model (a hash of the normalized stack trace) with a foreign key from `IncidentRun`, and check for a recent open run before starting a workflow. The workflow id can switch from the raw trace id to the fingerprint without touching other models.

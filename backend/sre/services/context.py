@@ -27,14 +27,15 @@ def untrusted(label: str, data) -> str:
 
 
 def incident_context(run: IncidentRun) -> str:
-    return untrusted(
-        "incident",
-        {
-            "trace_id": run.trace_id,
-            "exception_id": run.uptrace_exception_id,
-            "payload": run.raw_webhook_payload,
-        },
-    )
+    incident = {
+        "trace_id": run.trace_id,
+        "exception_id": run.uptrace_exception_id,
+        "payload": run.raw_webhook_payload,
+    }
+    # Only when something was fetched, so prompts are unchanged with the fetch off.
+    if run.telemetry:
+        incident["telemetry"] = run.telemetry
+    return untrusted("incident", incident)
 
 
 def heuristic_keywords(run: IncidentRun, limit: int = 10) -> list[str]:

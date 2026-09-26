@@ -33,6 +33,7 @@ from .models import (
     Project,
     ProjectMembership,
     ProjectRole,
+    UptraceCredential,
 )
 from .orgs import personal_org
 from .permissions import get_membership, get_org_membership, get_project_for, member_project_ids
@@ -67,20 +68,25 @@ from .schemas import (
     ProjectUpdateIn,
     StepOverrideOut,
     StepOverridesIn,
+    UptraceCredentialIn,
+    UptraceCredentialOut,
+    UptraceCredentialUpdateIn,
     UptraceWebhookIn,
     UptraceWebhookOut,
     WebhookSecretOut,
 )
 from .services import github_connect
 from .services.playbooks import clean_steps
+from .services.uptrace import resolve_credential
 from .temporal_types import ApprovalDecision, IncidentInput
-from .validators import UnsafeURLError, validate_llm_base_url
+from .validators import UnsafeURLError, validate_llm_base_url, validate_uptrace_api_url
 
 logger = logging.getLogger(__name__)
 router = Router(tags=["sre"])
 
 GITHUB_REPO_FIELDS = {"github_installation_id", "github_repo_owner", "github_repo_name"}
-OWNER_ONLY_PROJECT_FIELDS = GITHUB_REPO_FIELDS | {"uptrace_source_id", "organization_id"}
+OWNER_ONLY_PROJECT_FIELDS = GITHUB_REPO_FIELDS | {"uptrace_source_id", "organization_id",
+                                                  "uptrace_credential_id"}
 
 
 # ---- helpers ---------------------------------------------------------------
@@ -97,9 +103,10 @@ def _project_out(project: Project, role: str) -> dict:
     return {
         **{f: getattr(project, f) for f in ProjectOut.model_fields
            if f not in ("role", "github_verified", "platform_tokens_this_month",
-                        "organization_name")},
+                        "organization_name", "uptrace_fetch_ready")},
         "role": role,
         "organization_name": project.organization.name if project.organization_id else "",
+        "uptrace_fetch_ready": resolve_credential(project) is not None,
         "github_verified": _github_verified(project),
         "platform_tokens_this_month": platform.tokens_this_month(project),
     }
@@ -342,13 +349,18 @@ def update_project(request: HttpRequest, project_id: int, payload: ProjectUpdate
         _own_config(request.auth, changes["default_llm_config_id"])
     if changes.get("organization_id") is not None:
         _target_org(request.auth, changes["organization_id"])
+    if changes.get("uptrace_credential_id") is not None:
+        org_id = changes.get("organization_id") or project.organization_id
+        if not UptraceCredential.objects.filter(id=changes["uptrace_credential_id"],
+                                                organization_id=org_id).exists():
+            raise HttpError(400, "That Uptrace credential isn't in this project's organization")
     # Existing wiring is grandfathered: only a change to it has to be proven.
     repo = {f: changes.get(f) or getattr(project, f) for f in GITHUB_REPO_FIELDS}
     if any(repo[f] != getattr(project, f) for f in GITHUB_REPO_FIELDS):
         _check_github_repo(request.auth, repo["github_installation_id"],
                            repo["github_repo_owner"], repo["github_repo_name"])
     for field, value in changes.items():
-        if value is None and field != "default_llm_config_id":
+        if value is None and field not in ("default_llm_config_id", "uptrace_credential_id"):
             continue
         setattr(project, field, value)
     project.save()
@@ -602,6 +614,77 @@ def remove_org_member(request: HttpRequest, org_id: int, user_id: int):
         if membership.role == OrgRole.OWNER and _org_owner_count(org) == 1:
             return 409, {"detail": "An organization must keep at least one owner"}
         membership.delete()
+    return 204, None
+
+
+# ---- Uptrace credentials (per organization) --------------------------------------
+
+def _normalize_host(host: str) -> str:
+    host = host.strip().lower()
+    for prefix in ("https://", "http://"):
+        host = host.removeprefix(prefix)
+    return host.split("/", 1)[0]
+
+
+def _check_api_url(url: str) -> None:
+    try:
+        validate_uptrace_api_url(url)
+    except UnsafeURLError as exc:
+        raise HttpError(400, str(exc)) from exc
+
+
+def _credential_for_admin(user, credential_id: int) -> UptraceCredential:
+    credential = get_object_or_404(UptraceCredential, id=credential_id)
+    get_org_membership(user, credential.organization_id, OrgRole.ADMIN)
+    return credential
+
+
+@router.get("/organizations/{org_id}/uptrace-credentials", response=list[UptraceCredentialOut])
+def list_uptrace_credentials(request: HttpRequest, org_id: int):
+    org = get_org_membership(request.auth, org_id, OrgRole.ADMIN).organization
+    return list(org.uptrace_credentials.all())
+
+
+@router.post("/organizations/{org_id}/uptrace-credentials",
+             response={201: UptraceCredentialOut, 409: dict})
+def create_uptrace_credential(request: HttpRequest, org_id: int, payload: UptraceCredentialIn):
+    from .crypto import encrypt
+
+    org = get_org_membership(request.auth, org_id, OrgRole.ADMIN).organization
+    _check_api_url(payload.api_base_url)
+    if org.uptrace_credentials.filter(name=payload.name).exists():
+        return 409, {"detail": "A credential with that name already exists"}
+    credential = UptraceCredential.objects.create(
+        organization=org, name=payload.name, host=_normalize_host(payload.host),
+        api_base_url=payload.api_base_url.rstrip("/"), created_by=request.auth,
+        token_encrypted=encrypt(payload.token) if payload.token else b"",
+    )
+    return 201, credential
+
+
+@router.patch("/uptrace-credentials/{credential_id}", response=UptraceCredentialOut)
+def update_uptrace_credential(request: HttpRequest, credential_id: int,
+                              payload: UptraceCredentialUpdateIn):
+    from .crypto import encrypt
+
+    credential = _credential_for_admin(request.auth, credential_id)
+    changes = payload.dict(exclude_unset=True)
+    if changes.get("api_base_url") is not None:
+        _check_api_url(changes["api_base_url"])
+        credential.api_base_url = changes["api_base_url"].rstrip("/")
+    if changes.get("host") is not None:
+        credential.host = _normalize_host(changes["host"])
+    if changes.get("name") is not None:
+        credential.name = changes["name"]
+    if changes.get("token") is not None:
+        credential.token_encrypted = encrypt(changes["token"]) if changes["token"] else b""
+    credential.save()
+    return credential
+
+
+@router.delete("/uptrace-credentials/{credential_id}", response={204: None})
+def delete_uptrace_credential(request: HttpRequest, credential_id: int):
+    _credential_for_admin(request.auth, credential_id).delete()
     return 204, None
 
 

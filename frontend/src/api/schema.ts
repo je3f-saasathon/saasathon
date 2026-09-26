@@ -476,6 +476,42 @@ export interface paths {
         patch: operations["sre_api_update_org_member"];
         trace?: never;
     };
+    "/api/sre/organizations/{org_id}/uptrace-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Uptrace Credentials */
+        get: operations["sre_api_list_uptrace_credentials"];
+        put?: never;
+        /** Create Uptrace Credential */
+        post: operations["sre_api_create_uptrace_credential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/uptrace-credentials/{credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Uptrace Credential */
+        delete: operations["sre_api_delete_uptrace_credential"];
+        options?: never;
+        head?: never;
+        /** Update Uptrace Credential */
+        patch: operations["sre_api_update_uptrace_credential"];
+        trace?: never;
+    };
     "/api/sre/platform": {
         parameters: {
             query?: never;
@@ -851,6 +887,10 @@ export interface components {
             organization_id: number | null;
             /** Organization Name */
             organization_name: string;
+            /** Uptrace Credential Id */
+            uptrace_credential_id: number | null;
+            /** Uptrace Fetch Ready */
+            uptrace_fetch_ready: boolean;
         };
         /**
          * ProjectRole
@@ -892,6 +932,10 @@ export interface components {
             organization_id: number | null;
             /** Organization Name */
             organization_name: string;
+            /** Uptrace Credential Id */
+            uptrace_credential_id: number | null;
+            /** Uptrace Fetch Ready */
+            uptrace_fetch_ready: boolean;
             /** Webhook Secret */
             webhook_secret: string;
             /** Webhook Url */
@@ -950,6 +994,8 @@ export interface components {
             generate_tests?: boolean | null;
             /** Organization Id */
             organization_id?: number | null;
+            /** Uptrace Credential Id */
+            uptrace_credential_id?: number | null;
         };
         /** WebhookSecretOut */
         WebhookSecretOut: {
@@ -1060,6 +1106,55 @@ export interface components {
         /** OrgMemberUpdateIn */
         OrgMemberUpdateIn: {
             role: components["schemas"]["OrgRole"];
+        };
+        /** UptraceCredentialOut */
+        UptraceCredentialOut: {
+            /** Id */
+            id: number;
+            /** Organization Id */
+            organization_id: number;
+            /** Name */
+            name: string;
+            /** Host */
+            host: string;
+            /** Api Base Url */
+            api_base_url: string;
+            /** Has Token */
+            has_token: boolean;
+            /** Created By Id */
+            created_by_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** UptraceCredentialIn */
+        UptraceCredentialIn: {
+            /** Name */
+            name: string;
+            /** Host */
+            host: string;
+            /** Api Base Url */
+            api_base_url: string;
+            /** Token */
+            token: string;
+        };
+        /** UptraceCredentialUpdateIn */
+        UptraceCredentialUpdateIn: {
+            /** Name */
+            name?: string | null;
+            /** Host */
+            host?: string | null;
+            /** Api Base Url */
+            api_base_url?: string | null;
+            /** Token */
+            token?: string | null;
         };
         /** PlatformOut */
         PlatformOut: {
@@ -2409,6 +2504,111 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    sre_api_list_uptrace_credentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptraceCredentialOut"][];
+                };
+            };
+        };
+    };
+    sre_api_create_uptrace_credential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptraceCredentialIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptraceCredentialOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_delete_uptrace_credential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    sre_api_update_uptrace_credential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UptraceCredentialUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UptraceCredentialOut"];
                 };
             };
         };

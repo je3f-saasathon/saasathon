@@ -5,7 +5,7 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
 from accounts.oauth import find_or_create_user
-from sre.models import Organization, OrganizationMembership, OrgRole, Project
+from sre.models import Organization, OrgRole
 from sre.orgs import personal_org
 
 pytestmark = pytest.mark.django_db
@@ -61,17 +61,21 @@ def test_backfill_gives_projects_their_earliest_owners_org_and_reverses():
 
     executor = MigrationExecutor(connection)
     executor.migrate([("sre", "0007_backfill_personal_orgs")])
-    project = Project.objects.get(id=project.id)
-    assert project.organization.memberships.get().user_id == owner.id
-    assert Organization.objects.filter(is_personal=True).count() == 3  # one per user
+    # Historical models: later migrations add columns the current models expect.
+    apps = executor.loader.project_state([("sre", "0007_backfill_personal_orgs")]).apps
+    Org = apps.get_model("sre", "Organization")
+    OrgMembership = apps.get_model("sre", "OrganizationMembership")
+    project = apps.get_model("sre", "Project").objects.get(id=project.id)
+    assert OrgMembership.objects.get(organization_id=project.organization_id).user_id == owner.id
+    assert Org.objects.filter(is_personal=True).count() == 3  # one per user
     # The viewer can still see the project, but isn't in the owner's org.
-    assert not OrganizationMembership.objects.filter(organization=project.organization,
-                                                     user_id=viewer.id).exists()
+    assert not OrgMembership.objects.filter(organization_id=project.organization_id,
+                                            user_id=viewer.id).exists()
 
     executor = MigrationExecutor(connection)
     executor.migrate([("sre", "0006_organizations")])
-    assert Organization.objects.count() == 0
-    assert Project.objects.get(id=project.id).organization_id is None
+    assert Org.objects.count() == 0
+    assert Project_.objects.get(id=project.id).organization_id is None
 
     executor = MigrationExecutor(connection)
     executor.migrate(executor.loader.graph.leaf_nodes())

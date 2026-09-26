@@ -59,6 +59,9 @@ class IncidentDiagnosisWorkflow:
         return status
 
     async def _run(self, inp: IncidentInput) -> str:
+        # Guarded so workflows started before this activity existed still replay.
+        if workflow.patched("uptrace-telemetry-v1"):
+            await workflow.execute_activity("fetch_incident_telemetry", inp, **READ_ONLY)
         anomaly: AnomalyResult = await workflow.execute_activity(
             "confirm_anomaly", inp, result_type=AnomalyResult, **READ_ONLY
         )

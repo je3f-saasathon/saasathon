@@ -19,6 +19,7 @@ from .services.executor import PlaybookExecutor, pr_title_body
 from .services.github import GitHubRepo
 from .services.playbooks import DiagnosisReporter, PlaybookAuthor, PlaybookJudge, PlaybookSearch
 from .services.triage import AnomalyChecker, BugClassifier
+from .services.uptrace import fetch_telemetry
 from .temporal_types import (
     FAILING_THRESHOLD,
     AnomalyResult,
@@ -68,6 +69,15 @@ def _incident(incident_run_id: int) -> IncidentRun:
     return IncidentRun.objects.select_related("project", "project__default_llm_config").get(
         id=incident_run_id
     )
+
+
+@django_activity
+def fetch_incident_telemetry(inp: IncidentInput) -> None:
+    """Stores the alert's exception from Uptrace on the run (or {}); never raises for a
+    failed fetch, so it can't fail the incident."""
+    run = _incident(inp.incident_run_id)
+    run.telemetry = fetch_telemetry(run)
+    run.save(update_fields=["telemetry", "updated_at"])
 
 
 @django_activity
@@ -232,6 +242,7 @@ def mark_incident_status(inp: StatusUpdate) -> None:
 
 
 ALL_ACTIVITIES = [
+    fetch_incident_telemetry,
     confirm_anomaly,
     classify_bug,
     find_candidate_playbooks,

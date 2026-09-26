@@ -39,9 +39,15 @@ class Scenario:
     feedback_seen: list[str] = field(default_factory=list)
     incident_status: list[tuple[str, str]] = field(default_factory=list)
     run_status: list[str] = field(default_factory=list)
+    telemetry_fetches: int = 0
 
 
 def stub_activities(s: Scenario):
+    @activity.defn(name="fetch_incident_telemetry")
+    async def fetch_incident_telemetry(inp: IncidentInput) -> None:
+        # Not in s.calls, so the call-order assertions stay about the pipeline itself.
+        s.telemetry_fetches += 1
+
     @activity.defn(name="confirm_anomaly")
     async def confirm_anomaly(inp: IncidentInput) -> AnomalyResult:
         s.calls.append("confirm_anomaly")
@@ -108,7 +114,7 @@ def stub_activities(s: Scenario):
     async def mark_incident_status(inp: StatusUpdate) -> None:
         s.incident_status.append((inp.status, inp.error_message))
 
-    return [confirm_anomaly, classify_bug, find_candidate_playbooks, judge_playbook_match,
+    return [fetch_incident_telemetry, confirm_anomaly, classify_bug, find_candidate_playbooks, judge_playbook_match,
             create_playbook, create_playbook_run, run_playbook_attempt, write_diagnosis_report,
             open_pull_request, close_pull_request, set_playbook_run_status, record_playbook_outcome,
             mark_incident_status]
@@ -139,6 +145,7 @@ def test_no_anomaly_stops_early():
     assert run_workflow(s) == "no_anomaly"
     assert s.calls == ["confirm_anomaly"]
     assert s.incident_status == [("no_anomaly", "")]
+    assert s.telemetry_fetches == 1  # before triage, even when triage stops early
 
 
 def test_no_candidates_creates_unconfirmed_playbook_and_stops():
