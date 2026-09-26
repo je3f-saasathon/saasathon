@@ -133,6 +133,34 @@
         ]
       }
     },
+    "/api/auth/tokens": {
+      "post": {
+        "operationId": "accounts_api_issue_token",
+        "summary": "Issue Token",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedTokenOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "A new token for scripts (the API, the SRE lab), shown once. It's separate from the\nbrowser's session, so logging out doesn't end it; it expires like any other token.",
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/auth/logout": {
       "post": {
         "operationId": "accounts_api_logout",
@@ -3385,6 +3413,25 @@
           "user"
         ],
         "title": "MeOut",
+        "type": "object"
+      },
+      "IssuedTokenOut": {
+        "properties": {
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at"
+        ],
+        "title": "IssuedTokenOut",
         "type": "object"
       },
       "OkOut": {

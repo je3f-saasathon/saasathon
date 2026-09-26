@@ -18,6 +18,7 @@ All auth endpoints are public except `/auth/me` and `/auth/logout` (require `Aut
 | GET    | `/auth/google/callback`      | `?code=&state=`                       | 302 redirect to `{FRONTEND_URL}/auth/callback#token=...` |
 | GET    | `/auth/me`                   | Bearer token                          | `{user}` or 401                   |
 | POST   | `/auth/logout`               | Bearer token                          | `{ok: true}`, revokes token       |
+| POST   | `/auth/tokens`               | Bearer token                          | `{token, expires_at}`: a new token for scripts, shown once. Separate from the caller's session (logging out doesn't revoke it); 30-day expiry like any token |
 | GET    | `/auth/providers`            | —                                      | `{password: true, github: bool, google: bool}` |
 
 `user` shape: `{id, email, name, avatar_url, role, created_at}`

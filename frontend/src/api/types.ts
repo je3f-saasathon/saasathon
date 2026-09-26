@@ -6,6 +6,7 @@ export type User = Schemas["UserOut"];
 export type LoginRequest = Schemas["LoginIn"];
 export type RegisterRequest = Schemas["RegisterIn"];
 export type AuthResponse = Schemas["TokenOut"];
+export type IssuedToken = Schemas["IssuedTokenOut"];
 export type AuthProviders = Schemas["ProvidersOut"];
 export type OkResponse = Schemas["OkOut"];
 

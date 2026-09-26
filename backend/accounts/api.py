@@ -22,7 +22,7 @@ from .oauth import (
     make_state,
     verify_state,
 )
-from .schemas import LoginIn, MeOut, OkOut, ProvidersOut, RegisterIn, TokenOut, user_to_out
+from .schemas import IssuedTokenOut, LoginIn, MeOut, OkOut, ProvidersOut, RegisterIn, TokenOut, user_to_out
 
 router = Router(tags=["auth"])
 
@@ -82,6 +82,14 @@ def login(request, payload: LoginIn):
 @router.get("/me", response=MeOut, auth=bearer_auth)
 def me(request):
     return {"user": user_to_out(request.auth)}
+
+
+@router.post("/tokens", response=IssuedTokenOut, auth=bearer_auth)
+def issue_token(request):
+    """A new token for scripts (the API, the SRE lab), shown once. It's separate from the
+    browser's session, so logging out doesn't end it; it expires like any other token."""
+    token, raw = AuthToken.issue(request.auth)
+    return {"token": raw, "expires_at": token.expires_at}
 
 
 @router.post("/logout", response=OkOut, auth=bearer_auth)

@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ApiTokenButton } from "./ApiTokenButton";
 import { HealthIndicator } from "./HealthIndicator";
 import { ThemeToggle } from "./theme";
 
@@ -56,6 +57,7 @@ export function Layout() {
                 </div>
               )}
               <span className="text-sm font-medium">{user.name}</span>
+              <ApiTokenButton />
               <Button variant="outline" size="sm" onClick={handleLogout}>
                 Log out
               </Button>

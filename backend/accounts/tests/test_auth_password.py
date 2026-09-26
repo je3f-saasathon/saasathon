@@ -119,3 +119,23 @@ def test_disabled_provider_returns_helpful_error(client, settings):
     resp = client.get("/api/auth/github/login")
     assert resp.status_code == 400
     assert "docs/AUTH.md" in resp.json()["detail"]
+
+
+def test_issued_token_is_separate_from_the_session(client, make_user):
+    user = make_user()
+    _, session = AuthToken.issue(user)
+    auth = {"HTTP_AUTHORIZATION": f"Bearer {session}"}
+
+    resp = client.post("/api/auth/tokens", **auth)
+    assert resp.status_code == 200
+    issued = resp.json()["token"]
+    assert issued and issued != session and resp.json()["expires_at"]
+    assert client.get("/api/auth/me", HTTP_AUTHORIZATION=f"Bearer {issued}").json()["user"]["id"] == user.id
+
+    # Logging the browser out doesn't end the script's token.
+    assert client.post("/api/auth/logout", **auth).status_code == 200
+    assert client.get("/api/auth/me", HTTP_AUTHORIZATION=f"Bearer {issued}").status_code == 200
+
+
+def test_issuing_a_token_needs_a_login(client):
+    assert client.post("/api/auth/tokens").status_code == 401

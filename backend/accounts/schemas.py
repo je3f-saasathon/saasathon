@@ -32,6 +32,11 @@ class MeOut(Schema):
     user: UserOut
 
 
+class IssuedTokenOut(Schema):
+    token: str
+    expires_at: datetime
+
+
 class OkOut(Schema):
     ok: bool = True
 

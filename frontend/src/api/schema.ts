@@ -72,6 +72,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue Token
+         * @description A new token for scripts (the API, the SRE lab), shown once. It's separate from the
+         *     browser's session, so logging out doesn't end it; it expires like any other token.
+         */
+        post: operations["accounts_api_issue_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/logout": {
         parameters: {
             query?: never;
@@ -972,6 +993,16 @@ export interface components {
         /** MeOut */
         MeOut: {
             user: components["schemas"]["UserOut"];
+        };
+        /** IssuedTokenOut */
+        IssuedTokenOut: {
+            /** Token */
+            token: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /** OkOut */
         OkOut: {
@@ -2283,6 +2314,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeOut"];
+                };
+            };
+        };
+    };
+    accounts_api_issue_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuedTokenOut"];
                 };
             };
         };
