@@ -2,7 +2,7 @@ from datetime import datetime
 
 from ninja import Schema
 
-from .models import ExecutionMode, LLMProvider, PipelineStep, Playbook, ProjectRole
+from .models import ExecutionMode, LLMProvider, OrgRole, PipelineStep, Playbook, ProjectRole
 
 
 class UptraceWebhookIn(Schema):
@@ -40,6 +40,8 @@ class ProjectOut(Schema):
     created_at: datetime
     # True when an owner has proved (via Connect GitHub) access to the installation.
     github_verified: bool
+    organization_id: int | None
+    organization_name: str
 
 
 class ProjectCreatedOut(ProjectOut):
@@ -67,6 +69,8 @@ class ProjectCreateIn(Schema):
     uptrace_source_id: str = ""
     default_execution_mode: ExecutionMode = ExecutionMode.DRAFT_ONLY
     generate_tests: bool = True
+    # Defaults to the caller's personal org.
+    organization_id: int | None = None
 
 
 class ProjectUpdateIn(Schema):
@@ -79,6 +83,35 @@ class ProjectUpdateIn(Schema):
     default_execution_mode: ExecutionMode | None = None
     default_llm_config_id: int | None = None
     generate_tests: bool | None = None
+    organization_id: int | None = None
+
+
+class OrganizationOut(Schema):
+    id: int
+    name: str
+    is_personal: bool
+    role: OrgRole  # the caller's
+    created_at: datetime
+
+
+class OrganizationIn(Schema):
+    name: str
+
+
+class OrgMemberOut(Schema):
+    user_id: int
+    email: str
+    name: str
+    role: OrgRole
+
+
+class OrgMemberAddIn(Schema):
+    email: str
+    role: OrgRole
+
+
+class OrgMemberUpdateIn(Schema):
+    role: OrgRole
 
 
 class MemberOut(Schema):

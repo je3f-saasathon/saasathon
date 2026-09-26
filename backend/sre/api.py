@@ -23,13 +23,17 @@ from .models import (
     LLMProvider,
     LLMProviderConfig,
     LLMStepOverride,
+    Organization,
+    OrganizationMembership,
+    OrgRole,
     Playbook,
     PlaybookRun,
     Project,
     ProjectMembership,
     ProjectRole,
 )
-from .permissions import get_membership, get_project_for, member_project_ids
+from .orgs import personal_org
+from .permissions import get_membership, get_org_membership, get_project_for, member_project_ids
 from .schemas import (
     ApprovePlaybookRunIn,
     GitHubConnectOut,
@@ -44,6 +48,11 @@ from .schemas import (
     MemberAddIn,
     MemberOut,
     MemberUpdateIn,
+    OrganizationIn,
+    OrganizationOut,
+    OrgMemberAddIn,
+    OrgMemberOut,
+    OrgMemberUpdateIn,
     PlatformOut,
     PlaybookCreateIn,
     PlaybookListOut,
@@ -69,7 +78,7 @@ logger = logging.getLogger(__name__)
 router = Router(tags=["sre"])
 
 GITHUB_REPO_FIELDS = {"github_installation_id", "github_repo_owner", "github_repo_name"}
-OWNER_ONLY_PROJECT_FIELDS = GITHUB_REPO_FIELDS | {"uptrace_source_id"}
+OWNER_ONLY_PROJECT_FIELDS = GITHUB_REPO_FIELDS | {"uptrace_source_id", "organization_id"}
 
 
 # ---- helpers ---------------------------------------------------------------
@@ -85,11 +94,21 @@ def _github_verified(project: Project) -> bool:
 def _project_out(project: Project, role: str) -> dict:
     return {
         **{f: getattr(project, f) for f in ProjectOut.model_fields
-           if f not in ("role", "github_verified", "platform_tokens_this_month")},
+           if f not in ("role", "github_verified", "platform_tokens_this_month",
+                        "organization_name")},
         "role": role,
+        "organization_name": project.organization.name if project.organization_id else "",
         "github_verified": _github_verified(project),
         "platform_tokens_this_month": platform.tokens_this_month(project),
     }
+
+
+def _target_org(user, org_id: int | None) -> Organization:
+    """The org a project is created in or moved to: the caller's personal org by default,
+    otherwise one where the caller is at least an admin."""
+    if org_id is None:
+        return personal_org(user)
+    return get_org_membership(user, org_id, OrgRole.ADMIN).organization
 
 
 def _check_github_repo(user, installation_id: str, owner: str, name: str) -> None:
@@ -284,7 +303,9 @@ def uptrace_webhook(request: HttpRequest, project_id: int, payload: UptraceWebho
 
 @router.get("/projects", response=list[ProjectOut])
 def list_projects(request: HttpRequest):
-    memberships = ProjectMembership.objects.filter(user=request.auth).select_related("project")
+    memberships = ProjectMembership.objects.filter(user=request.auth).select_related(
+        "project", "project__organization"
+    )
     return [_project_out(m.project, m.role) for m in memberships.order_by("-project__created_at")]
 
 
@@ -292,8 +313,10 @@ def list_projects(request: HttpRequest):
 def create_project(request: HttpRequest, payload: ProjectCreateIn):
     _check_github_repo(request.auth, payload.github_installation_id,
                        payload.github_repo_owner, payload.github_repo_name)
+    data = payload.dict()
+    data["organization_id"] = _target_org(request.auth, data.pop("organization_id")).id
     with transaction.atomic():
-        project = Project.objects.create(**payload.dict())
+        project = Project.objects.create(**data)
         ProjectMembership.objects.create(project=project, user=request.auth, role=ProjectRole.OWNER)
     return 201, {
         **_project_out(project, ProjectRole.OWNER),
@@ -315,6 +338,8 @@ def update_project(request: HttpRequest, project_id: int, payload: ProjectUpdate
     project = membership.project
     if "default_llm_config_id" in changes and changes["default_llm_config_id"] is not None:
         _own_config(request.auth, changes["default_llm_config_id"])
+    if changes.get("organization_id") is not None:
+        _target_org(request.auth, changes["organization_id"])
     # Existing wiring is grandfathered: only a change to it has to be proven.
     repo = {f: changes.get(f) or getattr(project, f) for f in GITHUB_REPO_FIELDS}
     if any(repo[f] != getattr(project, f) for f in GITHUB_REPO_FIELDS):
@@ -474,6 +499,106 @@ def remove_member(request: HttpRequest, project_id: int, user_id: int):
         if membership.role == ProjectRole.OWNER and _owner_count(project) == 1:
             return 409, {"detail": "A project must keep at least one owner"}
         _detach_user_configs(project, membership.user)
+        membership.delete()
+    return 204, None
+
+
+# ---- organizations -------------------------------------------------------------
+
+def _org_out(m: OrganizationMembership) -> dict:
+    org = m.organization
+    return {"id": org.id, "name": org.name, "is_personal": org.is_personal, "role": m.role,
+            "created_at": org.created_at}
+
+
+def _org_member_out(m: OrganizationMembership) -> dict:
+    return {"user_id": m.user_id, "email": m.user.email, "name": m.user.name, "role": m.role}
+
+
+def _org_owner_count(org: Organization) -> int:
+    return org.memberships.filter(role=OrgRole.OWNER).count()
+
+
+@router.get("/organizations", response=list[OrganizationOut])
+def list_organizations(request: HttpRequest):
+    personal_org(request.auth)  # make sure it exists
+    memberships = OrganizationMembership.objects.filter(user=request.auth).select_related("organization")
+    return [_org_out(m) for m in memberships.order_by("-organization__is_personal", "organization__created_at")]
+
+
+@router.post("/organizations", response={201: OrganizationOut})
+def create_organization(request: HttpRequest, payload: OrganizationIn):
+    with transaction.atomic():
+        org = Organization.objects.create(name=payload.name.strip()[:255] or "Untitled")
+        membership = OrganizationMembership.objects.create(
+            organization=org, user=request.auth, role=OrgRole.OWNER
+        )
+    return 201, _org_out(membership)
+
+
+@router.get("/organizations/{org_id}", response=OrganizationOut)
+def get_organization(request: HttpRequest, org_id: int):
+    return _org_out(get_org_membership(request.auth, org_id, OrgRole.MEMBER))
+
+
+@router.patch("/organizations/{org_id}", response=OrganizationOut)
+def update_organization(request: HttpRequest, org_id: int, payload: OrganizationIn):
+    membership = get_org_membership(request.auth, org_id, OrgRole.OWNER)
+    org = membership.organization
+    org.name = payload.name.strip()[:255] or org.name
+    org.save(update_fields=["name", "updated_at"])
+    return _org_out(membership)
+
+
+@router.get("/organizations/{org_id}/members", response=list[OrgMemberOut])
+def list_org_members(request: HttpRequest, org_id: int):
+    org = get_org_membership(request.auth, org_id, OrgRole.MEMBER).organization
+    return [_org_member_out(m) for m in org.memberships.select_related("user").order_by("created_at")]
+
+
+@router.post("/organizations/{org_id}/members",
+             response={201: OrgMemberOut, 400: dict, 404: dict, 409: dict})
+def add_org_member(request: HttpRequest, org_id: int, payload: OrgMemberAddIn):
+    org = get_org_membership(request.auth, org_id, OrgRole.OWNER).organization
+    if org.is_personal:
+        return 400, {"detail": "A personal organization can't have other members"}
+    user = get_user_model().objects.filter(email=payload.email.lower()).first()
+    if user is None:
+        return 404, {"detail": "No user with that email"}
+    membership, created = OrganizationMembership.objects.get_or_create(
+        organization=org, user=user, defaults={"role": payload.role}
+    )
+    if not created:
+        return 409, {"detail": "Already a member"}
+    return 201, _org_member_out(membership)
+
+
+@router.patch("/organizations/{org_id}/members/{user_id}", response={200: OrgMemberOut, 409: dict})
+def update_org_member(request: HttpRequest, org_id: int, user_id: int, payload: OrgMemberUpdateIn):
+    org = get_org_membership(request.auth, org_id, OrgRole.OWNER).organization
+    with transaction.atomic():
+        membership = get_object_or_404(
+            OrganizationMembership.objects.select_for_update().select_related("user"),
+            organization=org, user_id=user_id,
+        )
+        if (membership.role == OrgRole.OWNER and payload.role != OrgRole.OWNER
+                and _org_owner_count(org) == 1):
+            return 409, {"detail": "An organization must keep at least one owner"}
+        membership.role = payload.role
+        membership.save(update_fields=["role"])
+    return 200, _org_member_out(membership)
+
+
+@router.delete("/organizations/{org_id}/members/{user_id}", response={204: None, 409: dict})
+def remove_org_member(request: HttpRequest, org_id: int, user_id: int):
+    min_role = OrgRole.MEMBER if user_id == request.auth.id else OrgRole.OWNER
+    org = get_org_membership(request.auth, org_id, min_role).organization
+    with transaction.atomic():
+        membership = get_object_or_404(
+            OrganizationMembership.objects.select_for_update(), organization=org, user_id=user_id,
+        )
+        if membership.role == OrgRole.OWNER and _org_owner_count(org) == 1:
+            return 409, {"detail": "An organization must keep at least one owner"}
         membership.delete()
     return 204, None
 

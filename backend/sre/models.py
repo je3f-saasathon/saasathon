@@ -23,6 +23,48 @@ class ProjectRole(models.TextChoices):
 ROLE_RANK = {ProjectRole.VIEWER: 0, ProjectRole.ADMIN: 1, ProjectRole.OWNER: 2}
 
 
+class OrgRole(models.TextChoices):
+    OWNER = "owner", "Owner"
+    ADMIN = "admin", "Admin"
+    MEMBER = "member", "Member"
+
+
+ORG_ROLE_RANK = {OrgRole.MEMBER: 0, OrgRole.ADMIN: 1, OrgRole.OWNER: 2}
+
+
+class Organization(models.Model):
+    """The tenant above projects. Every user gets a personal one (sre/signals.py). Org
+    roles govern org-level things; project access is still decided per project."""
+
+    name = models.CharField(max_length=255)
+    is_personal = models.BooleanField(default=False)
+    members = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, through="OrganizationMembership", related_name="sre_organizations"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "sre_organization"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return self.name
+
+
+class OrganizationMembership(models.Model):
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="memberships")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sre_org_memberships"
+    )
+    role = models.CharField(max_length=16, choices=OrgRole.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "sre_organization_membership"
+        unique_together = [("organization", "user")]
+
+
 class LLMProvider(models.TextChoices):
     ANTHROPIC = "anthropic", "Anthropic"
     OPENAI = "openai", "OpenAI"
@@ -41,6 +83,10 @@ class PipelineStep(models.TextChoices):
 class Project(models.Model):
     members = models.ManyToManyField(
         settings.AUTH_USER_MODEL, through="ProjectMembership", related_name="sre_projects"
+    )
+    # Nullable only so the backfill can run; the API always sets it.
+    organization = models.ForeignKey(
+        Organization, null=True, blank=True, on_delete=models.PROTECT, related_name="projects"
     )
     name = models.CharField(max_length=255)
     github_installation_id = models.CharField(max_length=64)

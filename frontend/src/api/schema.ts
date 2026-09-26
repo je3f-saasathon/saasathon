@@ -404,6 +404,78 @@ export interface paths {
         patch: operations["sre_api_update_member"];
         trace?: never;
     };
+    "/api/sre/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Organizations */
+        get: operations["sre_api_list_organizations"];
+        put?: never;
+        /** Create Organization */
+        post: operations["sre_api_create_organization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/organizations/{org_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Organization */
+        get: operations["sre_api_get_organization"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Organization */
+        patch: operations["sre_api_update_organization"];
+        trace?: never;
+    };
+    "/api/sre/organizations/{org_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Org Members */
+        get: operations["sre_api_list_org_members"];
+        put?: never;
+        /** Add Org Member */
+        post: operations["sre_api_add_org_member"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sre/organizations/{org_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Org Member */
+        delete: operations["sre_api_remove_org_member"];
+        options?: never;
+        head?: never;
+        /** Update Org Member */
+        patch: operations["sre_api_update_org_member"];
+        trace?: never;
+    };
     "/api/sre/platform": {
         parameters: {
             query?: never;
@@ -753,6 +825,10 @@ export interface components {
             created_at: string;
             /** Github Verified */
             github_verified: boolean;
+            /** Organization Id */
+            organization_id: number | null;
+            /** Organization Name */
+            organization_name: string;
         };
         /**
          * ProjectRole
@@ -790,6 +866,10 @@ export interface components {
             created_at: string;
             /** Github Verified */
             github_verified: boolean;
+            /** Organization Id */
+            organization_id: number | null;
+            /** Organization Name */
+            organization_name: string;
             /** Webhook Secret */
             webhook_secret: string;
             /** Webhook Url */
@@ -824,6 +904,8 @@ export interface components {
              * @default true
              */
             generate_tests: boolean;
+            /** Organization Id */
+            organization_id?: number | null;
         };
         /** ProjectUpdateIn */
         ProjectUpdateIn: {
@@ -844,6 +926,8 @@ export interface components {
             default_llm_config_id?: number | null;
             /** Generate Tests */
             generate_tests?: boolean | null;
+            /** Organization Id */
+            organization_id?: number | null;
         };
         /** WebhookSecretOut */
         WebhookSecretOut: {
@@ -909,6 +993,51 @@ export interface components {
         /** MemberUpdateIn */
         MemberUpdateIn: {
             role: components["schemas"]["ProjectRole"];
+        };
+        /**
+         * OrgRole
+         * @enum {string}
+         */
+        OrgRole: "owner" | "admin" | "member";
+        /** OrganizationOut */
+        OrganizationOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Is Personal */
+            is_personal: boolean;
+            role: components["schemas"]["OrgRole"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** OrganizationIn */
+        OrganizationIn: {
+            /** Name */
+            name: string;
+        };
+        /** OrgMemberOut */
+        OrgMemberOut: {
+            /** User Id */
+            user_id: number;
+            /** Email */
+            email: string;
+            /** Name */
+            name: string;
+            role: components["schemas"]["OrgRole"];
+        };
+        /** OrgMemberAddIn */
+        OrgMemberAddIn: {
+            /** Email */
+            email: string;
+            role: components["schemas"]["OrgRole"];
+        };
+        /** OrgMemberUpdateIn */
+        OrgMemberUpdateIn: {
+            role: components["schemas"]["OrgRole"];
         };
         /** PlatformOut */
         PlatformOut: {
@@ -2004,6 +2133,249 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemberOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_list_organizations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationOut"][];
+                };
+            };
+        };
+    };
+    sre_api_create_organization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationOut"];
+                };
+            };
+        };
+    };
+    sre_api_get_organization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationOut"];
+                };
+            };
+        };
+    };
+    sre_api_update_organization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizationIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationOut"];
+                };
+            };
+        };
+    };
+    sre_api_list_org_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMemberOut"][];
+                };
+            };
+        };
+    };
+    sre_api_add_org_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgMemberAddIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMemberOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_remove_org_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    sre_api_update_org_member: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: number;
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgMemberUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMemberOut"];
                 };
             };
             /** @description Conflict */
