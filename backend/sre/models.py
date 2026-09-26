@@ -161,6 +161,9 @@ class IncidentRun(models.Model):
         AWAITING_APPROVAL = "awaiting_approval", "Awaiting human approval"
         SUCCEEDED = "succeeded", "Succeeded"
         FAILED = "failed", "Failed"
+        # A person closed the fix's PR without merging it (draft-only). Not a failure: the
+        # agent produced a fix; it can go back up for review if the PR is reopened.
+        REJECTED = "rejected", "Rejected (PR not merged)"
         ADVISORY_COMPLETE = "advisory_complete", "Advisory complete"
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="incident_runs")

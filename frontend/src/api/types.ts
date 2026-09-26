@@ -23,6 +23,7 @@ export type IncidentStatus =
   | "awaiting_approval"
   | "succeeded"
   | "failed"
+  | "rejected"
   | "advisory_complete";
 export type Playbook = Schemas["PlaybookOut"];
 export type PlaybookRun = Schemas["PlaybookRunOut"];

@@ -22,9 +22,9 @@ Uptrace ─POST /api/sre/webhooks/uptrace/{project_id}─▶ Django (HMAC or sha
             advisory_only ─▶ write_diagnosis_report ─▶ advisory_complete
             else up to 3 attempts of run_playbook_attempt (agent loop in sandbox; each re-plans from the last error)
               autonomous ─▶ ready PR opened ─▶ succeeded
-              draft_only ─▶ GitHub *draft* PR ─▶ wait for approval signal
-                              approve ─▶ open_pull_request (marks ready) ─▶ succeeded
-                              reject  ─▶ close_pull_request ─▶ failed
+              draft_only ─▶ GitHub *draft* PR ─▶ wait for a decision (GitHub webhook, or /approve)
+                              PR merged      ─▶ succeeded
+                              PR closed      ─▶ rejected ─(reopened within 30 days)─▶ back to waiting
             3 failures ─▶ failed; playbook FAILING after 3 failed runs in a row
 ```
 
@@ -163,7 +163,9 @@ pick per-step defaults. The client code exists for all three, but **only OpenAI 
 - Draft-only approval happens on GitHub: `POST /api/sre/github/webhook` (the App's webhook,
   `GITHUB_APP_WEBHOOK_SECRET`, "Pull request" events) signals the workflow when the draft PR
   is merged (approve) or closed unmerged (reject), with `via_github=True` so the workflow
-  doesn't touch the PR again. The dashboard links to the PR ("Review on GitHub"); the in-app
+  doesn't touch the PR again. After a rejection the workflow keeps listening for
+  `REOPEN_WINDOW` (30 days): a `reopened`/`opened` PR event sends `pull_request_reopened`,
+  which puts the run back to pending; signalling a finished workflow gives `WorkflowFinished`. The dashboard links to the PR ("Review on GitHub"); the in-app
   `/approve` endpoint remains as a fallback with no UI. Not yet live-tested against GitHub. `/dashboard` is wired to
   `/api/sre/incident-runs` (PR link, playbook, models, tokens; diagnosis behind a click).
 - LLM usage: each call writes an `LLMUsage` row (tokens, model, step) through `llm/usage.py`'s
