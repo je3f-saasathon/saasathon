@@ -184,10 +184,6 @@ def sync_agent_schedule(agent) -> None:
     async_to_sync(_sync_agent_schedule_now)(agent.id, _agent_cron(agent))
 
 
-def delete_agent_schedule(agent_id: int) -> None:
-    async_to_sync(_sync_agent_schedule_now)(agent_id, "")
-
-
 async def _start_scan(workflow_id: str, inp: ScanInput) -> None:
     client = await _connect()
     try:

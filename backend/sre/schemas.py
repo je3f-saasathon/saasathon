@@ -440,6 +440,11 @@ class IncidentRunOut(Schema):
     playbook_run_status: str | None
     execution_mode: ExecutionMode | None
     generate_tests: bool | None  # frozen on the playbook run; None without one
+    # Why the run stopped at a diagnosis although its mode allowed a PR ("" = it didn't),
+    # and the open PR (or run still writing one) that already fixes the same bug.
+    mode_note: str
+    covered_by_incident_run_id: int | None
+    covered_by_pr_url: str
     usage: UsageOut
     matched_runbook_id: int | None
     runbook: PlaybookBriefOut | None  # matched, else saved from this incident's fix
@@ -545,6 +550,8 @@ class AgentIn(Schema):
     playbook_ids: list[int] = []  # playbook_sweep; [] = every visible playbook
     execution_mode: ExecutionMode | None = None  # default depends on kind
     max_findings_per_repo: int = 3
+    # Let findings from the code alone (every playbook_sweep finding) open draft PRs.
+    code_findings_open_prs: bool = False
     monthly_token_budget: int = 0
     enabled: bool = True
 
@@ -559,6 +566,7 @@ class AgentUpdateIn(Schema):
     playbook_ids: list[int] | None = None
     execution_mode: ExecutionMode | None = None
     max_findings_per_repo: int | None = None
+    code_findings_open_prs: bool | None = None
     monthly_token_budget: int | None = None
     enabled: bool | None = None
 
@@ -575,6 +583,7 @@ class AgentOut(Schema):
     playbook_ids: list[int]
     execution_mode: ExecutionMode
     max_findings_per_repo: int
+    code_findings_open_prs: bool
     monthly_token_budget: int
     tokens_this_month: int
     tokens_by_model_this_month: list[ModelTokensOut]  # tokens_this_month split per model
@@ -585,12 +594,21 @@ class AgentOut(Schema):
     last_scan_run_id: int | None
 
 
+class ScanFindingOut(Schema):
+    """A finding's incident and how far its fix got."""
+    incident_run_id: int
+    status: str  # the incident's
+    pr_url: str  # "" until a PR is opened
+    mode_note: str  # why it stopped at a diagnosis although a PR was allowed; "" otherwise
+
+
 class ScanRepoOut(Schema):
     project_id: int
     project_name: str
     status: str
     finding_count: int
     incident_run_ids: list[int]
+    findings: list[ScanFindingOut]
     error: str
 
 

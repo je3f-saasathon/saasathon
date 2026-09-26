@@ -6478,6 +6478,25 @@
             ],
             "title": "Generate Tests"
           },
+          "mode_note": {
+            "title": "Mode Note",
+            "type": "string"
+          },
+          "covered_by_incident_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Covered By Incident Run Id"
+          },
+          "covered_by_pr_url": {
+            "title": "Covered By Pr Url",
+            "type": "string"
+          },
           "usage": {
             "$ref": "#/components/schemas/UsageOut"
           },
@@ -6564,6 +6583,9 @@
           "playbook_run_status",
           "execution_mode",
           "generate_tests",
+          "mode_note",
+          "covered_by_incident_run_id",
+          "covered_by_pr_url",
           "usage",
           "matched_runbook_id",
           "runbook",
@@ -6978,6 +7000,10 @@
             "title": "Max Findings Per Repo",
             "type": "integer"
           },
+          "code_findings_open_prs": {
+            "title": "Code Findings Open Prs",
+            "type": "boolean"
+          },
           "monthly_token_budget": {
             "title": "Monthly Token Budget",
             "type": "integer"
@@ -7042,6 +7068,7 @@
           "playbook_ids",
           "execution_mode",
           "max_findings_per_repo",
+          "code_findings_open_prs",
           "monthly_token_budget",
           "tokens_this_month",
           "tokens_by_model_this_month",
@@ -7125,6 +7152,11 @@
             "default": 3,
             "title": "Max Findings Per Repo",
             "type": "integer"
+          },
+          "code_findings_open_prs": {
+            "default": false,
+            "title": "Code Findings Open Prs",
+            "type": "boolean"
           },
           "monthly_token_budget": {
             "default": 0,
@@ -7247,6 +7279,17 @@
             ],
             "title": "Max Findings Per Repo"
           },
+          "code_findings_open_prs": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Findings Open Prs"
+          },
           "monthly_token_budget": {
             "anyOf": [
               {
@@ -7271,6 +7314,35 @@
           }
         },
         "title": "AgentUpdateIn",
+        "type": "object"
+      },
+      "ScanFindingOut": {
+        "description": "A finding's incident and how far its fix got.",
+        "properties": {
+          "incident_run_id": {
+            "title": "Incident Run Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "pr_url": {
+            "title": "Pr Url",
+            "type": "string"
+          },
+          "mode_note": {
+            "title": "Mode Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "incident_run_id",
+          "status",
+          "pr_url",
+          "mode_note"
+        ],
+        "title": "ScanFindingOut",
         "type": "object"
       },
       "ScanRepoOut": {
@@ -7298,6 +7370,13 @@
             "title": "Incident Run Ids",
             "type": "array"
           },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ScanFindingOut"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
           "error": {
             "title": "Error",
             "type": "string"
@@ -7309,6 +7388,7 @@
           "status",
           "finding_count",
           "incident_run_ids",
+          "findings",
           "error"
         ],
         "title": "ScanRepoOut",

@@ -19,10 +19,14 @@ def agents_on(settings):
 
 @pytest.fixture
 def temporal(monkeypatch):
-    calls = {"schedules": [], "deleted": [], "scans": []}
+    calls = {"schedules": [], "deleted": [], "scans": [], "cancelled": []}
     monkeypatch.setattr(temporal_client, "sync_agent_schedule",
                         lambda agent: calls["schedules"].append((agent.id, temporal_client._agent_cron(agent))))
-    monkeypatch.setattr(temporal_client, "delete_agent_schedule", lambda agent_id: calls["deleted"].append(agent_id))
+    def stop(workflow_ids, agent_ids, reason):
+        calls["cancelled"].extend(workflow_ids)
+        calls["deleted"].extend(agent_ids)
+
+    monkeypatch.setattr(temporal_client, "stop_project_work", stop)
     monkeypatch.setattr(temporal_client, "start_scan", lambda wid, scan_run_id: calls["scans"].append((wid, scan_run_id)))
     return calls
 
@@ -52,6 +56,7 @@ def test_create_defaults_and_schedule_sync(org, api_for, temporal):
     body = _create(api_for(org.owner), org).json()
     assert (body["kind"], body["trigger"], body["execution_mode"]) == ("playbook_sweep", "on_merge", "advisory_only")
     assert body["project_ids"] == [] and body["enabled"] is True and body["last_scan_run_id"] is None
+    assert body["code_findings_open_prs"] is False
     assert temporal["schedules"] == [(body["id"], "")]  # no schedule for on_merge
 
     body = _create(api_for(org.owner), org, name="nightly", kind="runbook_variant", trigger="schedule",
@@ -131,10 +136,37 @@ def test_roles_and_visibility(org, api_for, temporal, make_user, settings):
     assert api_for(org.owner).get(f"/organizations/{org.id}/agents").status_code == 404
 
 
-def test_delete_removes_the_schedule(org, api_for, temporal):
-    agent = _create(api_for(org.owner), org).json()
-    assert api_for(org.owner).delete(f"/agents/{agent['id']}").status_code == 204
+def test_code_findings_can_be_let_open_prs(org, api_for, temporal):
+    api = api_for(org.owner)
+    agent = _create(api, org, execution_mode="draft_only", code_findings_open_prs=True).json()
+    assert agent["code_findings_open_prs"] is True
+    assert api.patch(f"/agents/{agent['id']}", {"code_findings_open_prs": False}).json()[
+        "code_findings_open_prs"] is False
+    assert RemediationAgent.objects.get(id=agent["id"]).code_findings_open_prs is False
+
+
+def test_delete_removes_the_schedule_and_stops_running_scans(org, api_for, temporal):
+    _project(org)
+    api = api_for(org.owner)
+    agent = _create(api, org).json()
+    scan = api.post(f"/agents/{agent['id']}/run").json()
+    finished = ScanRun.objects.create(agent_id=agent["id"], trigger="manual", status="succeeded",
+                                      temporal_workflow_id="done")
+    running_wid = ScanRun.objects.get(id=scan["id"]).temporal_workflow_id
+    assert api.delete(f"/agents/{agent['id']}").status_code == 204
     assert temporal["deleted"] == [agent["id"]] and not RemediationAgent.objects.exists()
+    assert temporal["cancelled"] == [running_wid] and finished.temporal_workflow_id not in temporal["cancelled"]
+
+
+def test_delete_keeps_the_agent_when_temporal_is_down(org, api_for, temporal, monkeypatch):
+    agent = _create(api_for(org.owner), org).json()
+
+    def down(*args):
+        raise RuntimeError("temporal down")
+
+    monkeypatch.setattr(temporal_client, "stop_project_work", down)
+    assert api_for(org.owner).delete(f"/agents/{agent['id']}").status_code == 503
+    assert RemediationAgent.objects.filter(id=agent["id"]).exists()
 
 
 # ---- running -----------------------------------------------------------------------------
@@ -190,6 +222,8 @@ def test_scan_run_shows_findings_and_usage(org, api_for, temporal):
 
     body = api.get(f"/scan-runs/{scan_id}").json()
     assert body["repos"][0]["incident_run_ids"] == [incident.id]
+    assert body["repos"][0]["findings"] == [{"incident_run_id": incident.id, "status": "running",
+                                            "pr_url": "", "mode_note": ""}]
     assert body["finding_count"] == 1 and body["usage"]["total_tokens"] == 12
     listing = api.get(f"/agents/{agent['id']}/scan-runs").json()
     assert listing["total"] == 1 and listing["scan_runs"][0]["id"] == scan_id

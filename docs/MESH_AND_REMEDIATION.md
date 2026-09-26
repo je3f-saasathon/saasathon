@@ -176,10 +176,17 @@ Each finding starts an `IncidentDiagnosisWorkflow`:
 |---|---|
 | `runbook_variant` match | `draft_only` (a draft PR) |
 | `find_quiet` finding backed by a real trace | `draft_only` |
-| `playbook_sweep` finding, or anything without concrete evidence | `advisory_only` (a diagnosis only) |
+| `playbook_sweep` finding, or anything without concrete evidence | `advisory_only` (a diagnosis only), or `draft_only` when the agent's `code_findings_open_prs` is on |
 
 A scan incident **never** runs `autonomous`, even with a confirmed runbook, because no production
 alert confirmed the bug.
+
+**One PR per bug.** Before a fix starts, an open run in the same repo (from any project using
+it) that fixes the same bug holds the new one to a diagnosis that links it: the same alert, the
+same finding, or the same playbook in the same file. Agent findings also stop at
+`SRE_AGENT_MAX_OPEN_PRS_PER_REPO` (default 3) open PRs per repo. Findings are keyed by playbook,
+file and enclosing function, so a later scan finding the same bug at another line adds nothing,
+and a scheduled scan skips a commit the agent already scanned.
 
 **Limits.** Each agent has `max_findings_per_repo` (default 3) and an optional
 `monthly_token_budget`. Scans use a new pipeline step, `repository_scan`, which can have its own
@@ -221,7 +228,7 @@ didn't, and why.
 | Proactive discovery | Three agent **kinds** the user starts: `playbook_sweep` (default), `runbook_variant`, `find_quiet` | One fixed discovery strategy | Kinds trade coverage against precision differently. Users pick per agent. |
 | Parallelism | One scan activity per repo, at most 2 at once per scan run, limited inside the workflow | A worker-wide concurrency limit | A worker-wide limit would also slow down alert handling. |
 | What a finding becomes | An incident, `source: "scan"`, through the existing incident workflow | A separate findings pipeline and a `Finding` table | Reuses verification (`confirm_anomaly`), matching, approvals, runbooks, dedup, usage and the dashboard. The scanner only has to produce the context. |
-| Output | Execution mode capped by evidence; never `autonomous` | Everything advisory; everything a draft PR; promote from the dashboard | Strong evidence earns a draft PR. A weak sweep finding shouldn't open PRs across ten repos. |
+| Output | Execution mode capped by evidence; never `autonomous`. Code-only findings can open draft PRs per agent (`code_findings_open_prs`), one per bug per repo and at most a few per repo | Everything advisory; everything a draft PR; promote from the dashboard | Strong evidence earns a draft PR. A weak sweep finding shouldn't open PRs across ten repos unless the agent's owner opts in, and then the per-bug and per-repo limits keep it to a few reviewable ones. |
 | Triggers | Per agent: `on_merge` (default, diff only), `branch_watch`, `schedule`, plus manual | Schedule only | Merges are when new bugs arrive, and scanning only the diff is cheap. |
 | Agent scope | Owned by an org, covering some or all of its projects | One agent per project | Cross-repo kinds need to see several repos at once. |
 | Build order | Mesh first, then agents | Agents first; both together | `runbook_variant` ordering and `find_quiet` need the mesh. |

@@ -9,6 +9,7 @@ Each finding becomes an incident (source=scan) that the usual pipeline verifies,
 fixes, with its execution mode capped by how strong the finding's evidence is.
 """
 
+import ast
 import hashlib
 import logging
 import shutil
@@ -25,7 +26,7 @@ from ..llm.clients import LLMError, client_for, parse_json
 from ..llm.resolve import get_llm_config
 from ..models import (
     AgentKind, ExecutionMode, IncidentRun, LLMUsage, PipelineStep, Playbook, Project, Runbook,
-    ScanRepo, ServiceGraph, ServiceNode, latest_incident_run, next_incident_key,
+    ScanRepo, ScanTrigger, ServiceGraph, ServiceNode, latest_incident_run, next_incident_key,
     rejected_fix_recurred,
 )
 from . import mesh
@@ -54,8 +55,20 @@ EVIDENCE_CAP = {
 }
 
 
+def evidence_cap(evidence_kind: str, agent) -> str:
+    """How far a finding may go on its evidence. An agent can let code-only findings reach
+    draft PRs (code_findings_open_prs): a person still reviews every one."""
+    if evidence_kind == "code" and agent.code_findings_open_prs:
+        return ExecutionMode.DRAFT_ONLY
+    return EVIDENCE_CAP[evidence_kind]
+
+
 class ScanError(Exception):
     pass
+
+
+class ScanSkipped(Exception):
+    """Nothing to scan (e.g. no new commits since this agent last scanned the repo)."""
 
 
 def lower_mode(a: str, b: str) -> str:
@@ -206,12 +219,44 @@ class Finding:
     playbook_id: int | None = None
     runbook_id: int | None = None
     group: dict | None = None
+    symbol: str = ""  # the function or class around the finding's line, when found
 
     @property
     def fingerprint(self) -> str:
+        """The same bug found by a later scan keeps the same fingerprint (and so the same
+        incident): the scanner's line numbers and categories drift between scans, so it's
+        the playbook (else the category), the file and the enclosing function."""
         if self.group:
             return self.group["group_id"]
-        return hashlib.sha1(f"{self.category}|{self.location}".encode()).hexdigest()[:16]
+        anchor = f"p{self.playbook_id}" if self.playbook_id else self.category
+        path = self.location.split(":", 1)[0]
+        return hashlib.sha1(f"{anchor}|{path}|{self.symbol}".encode()).hexdigest()[:16]
+
+
+def enclosing_symbol(file: Path, location: str) -> str:
+    """"Class.method" or "function" around the location's line in a Python file ("" if
+    there's no line, the file isn't Python or doesn't parse, or the line is at module level).
+    Parsed, never run."""
+    _, _, line = location.partition(":")
+    line_no = _int_or_none(line.split(":", 1)[0].split("-", 1)[0].strip())
+    if not line_no or file.suffix != ".py":
+        return ""
+    try:
+        tree = ast.parse(file.read_text(errors="replace"))
+    except (SyntaxError, ValueError, OSError):
+        return ""
+    names: list[str] = []
+
+    def visit(node, prefix: list[str]) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                end = getattr(child, "end_lineno", None) or child.lineno
+                if child.lineno <= line_no <= end:
+                    names[:] = prefix + [child.name]
+                    visit(child, names[:])
+
+    visit(tree, [])
+    return ".".join(names)
 
 
 def _int_or_none(value) -> int | None:
@@ -249,8 +294,11 @@ def clean_findings(raw, material: Material, kind: str, work_tree: Path, limit: i
             message=str(item.get("message") or "")[:2000], location=location[:500],
             evidence=str(item.get("evidence") or "")[:4000], evidence_kind=evidence_kind,
             playbook_id=playbook_id, runbook_id=runbook_id, group=group,
+            symbol=enclosing_symbol(target, location),
         ))
-    return findings[:limit]
+    # The scanner can report the same bug twice in one reply (two lines of one function).
+    unique = {f.fingerprint: f for f in reversed(findings)}
+    return [f for f in findings if unique.get(f.fingerprint) is f][:limit]
 
 
 class RepositoryScanner:
@@ -284,6 +332,8 @@ class RepositoryScanner:
             diff = repo.compare(self.scan_repo.base_sha, self.scan_repo.head_sha)
             if not diff:
                 return []
+        elif self.scan_run.trigger == ScanTrigger.SCHEDULE:
+            self._skip_if_scanned(repo)
         workdir = Path(settings.SRE_WORKDIR) / f"scan-{self.scan_repo.id}"
         shutil.rmtree(workdir, ignore_errors=True)
         try:
@@ -299,6 +349,19 @@ class RepositoryScanner:
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
         return self.record(findings)
+
+    def _skip_if_scanned(self, repo: GitHubRepo) -> None:
+        """A scheduled whole-repo scan of a commit this agent already scanned would only
+        find the same bugs again: records the commit and skips it."""
+        branch = self.scan_repo.branch or self.project.github_default_branch
+        head = repo.head_sha(branch)
+        ScanRepo.objects.filter(id=self.scan_repo.id).update(head_sha=head[:64])
+        earlier = ScanRepo.objects.filter(
+            scan_run__agent=self.agent, project=self.project, branch=self.scan_repo.branch,
+            base_sha="", head_sha=head[:64], status=ScanRepo.Status.SUCCEEDED,
+        ).exclude(id=self.scan_repo.id).order_by("-id").first()
+        if earlier is not None:
+            raise ScanSkipped(f"No new commits on {branch} since scan run {earlier.scan_run_id}")
 
     def _kickoff(self, material: Material, diff: list[dict] | None) -> str:
         repo = f"{self.project.github_repo_owner}/{self.project.github_repo_name}"
@@ -354,7 +417,7 @@ class RepositoryScanner:
             base = f"scan-{self.agent.kind}-{finding.fingerprint}"
             latest, count = latest_incident_run(self.project, base)
             key = next_incident_key(base, count) if rejected_fix_recurred(latest) else base
-            cap = lower_mode(self.agent.execution_mode, EVIDENCE_CAP[finding.evidence_kind])
+            cap = lower_mode(self.agent.execution_mode, evidence_cap(finding.evidence_kind, self.agent))
             group = finding.group or {}
             run, is_new = IncidentRun.objects.get_or_create(
                 temporal_workflow_id=f"sre-incident-{self.project.id}-{key}",
@@ -392,6 +455,10 @@ def scan_repository(scan_repo: ScanRepo, heartbeat=lambda *a: None) -> list[Inci
     ScanRepo.objects.filter(id=scan_repo.id).update(status=ScanRepo.Status.RUNNING, updated_at=timezone.now())
     try:
         created = RepositoryScanner(scan_repo, heartbeat).scan()
+    except ScanSkipped as exc:
+        ScanRepo.objects.filter(id=scan_repo.id).update(
+            status=ScanRepo.Status.SKIPPED, error=str(exc)[:5000], updated_at=timezone.now())
+        return []
     except (ScanError, GitError, SandboxError, LLMError) as exc:
         ScanRepo.objects.filter(id=scan_repo.id).update(
             status=ScanRepo.Status.FAILED, error=str(exc)[:5000], updated_at=timezone.now())

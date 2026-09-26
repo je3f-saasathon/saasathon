@@ -55,11 +55,19 @@ def _agent_out(agent: RemediationAgent) -> dict:
 
 
 def _scan_run_out(scan_run: ScanRun) -> dict:
-    incidents: dict[int, list[int]] = {}
-    for run_id, project_id in IncidentRun.objects.filter(scan_run=scan_run).values_list("id", "project_id"):
-        incidents.setdefault(project_id, []).append(run_id)
+    findings: dict[int, list[dict]] = {}
+    runs = IncidentRun.objects.filter(scan_run=scan_run).select_related("playbook_run").order_by("id")
+    for run in runs:
+        playbook_run = getattr(run, "playbook_run", None)
+        findings.setdefault(run.project_id, []).append({
+            "incident_run_id": run.id, "status": run.status,
+            "pr_url": playbook_run.pr_url if playbook_run else "",
+            "mode_note": playbook_run.mode_note if playbook_run else "",
+        })
     repos = [{"project_id": r.project_id, "project_name": r.project.name, "status": r.status,
-              "finding_count": r.finding_count, "incident_run_ids": incidents.get(r.project_id, []),
+              "finding_count": r.finding_count,
+              "incident_run_ids": [f["incident_run_id"] for f in findings.get(r.project_id, [])],
+              "findings": findings.get(r.project_id, []),
               "error": r.error} for r in scan_run.repos.select_related("project")]
     return {
         **{f: getattr(scan_run, f) for f in ("id", "agent_id", "trigger", "trigger_ref", "status",
@@ -162,10 +170,14 @@ def update_agent(request: HttpRequest, agent_id: int, payload: AgentUpdateIn):
 @router.delete("/agents/{agent_id}", response={204: None, 503: dict})
 def delete_agent(request: HttpRequest, agent_id: int):
     agent = _agent_for(request.auth, agent_id, OrgRole.ADMIN)
+    # Deleting the agent deletes its scan runs: stop the running ones first, or their
+    # workflows fail looking for them.
+    running = list(agent.scan_runs.filter(status=ScanRun.Status.RUNNING)
+                   .values_list("temporal_workflow_id", flat=True))
     try:
-        temporal_client.delete_agent_schedule(agent.id)
+        temporal_client.stop_project_work(running, [agent.id], f"remediation agent {agent.id} deleted")
     except Exception:
-        return 503, {"detail": "Could not remove the agent's schedule in Temporal; try again"}
+        return 503, {"detail": "Could not stop the agent's scans in Temporal; try again"}
     agent.delete()
     return 204, None
 

@@ -2111,6 +2111,12 @@ export interface components {
             execution_mode: components["schemas"]["ExecutionMode"] | null;
             /** Generate Tests */
             generate_tests: boolean | null;
+            /** Mode Note */
+            mode_note: string;
+            /** Covered By Incident Run Id */
+            covered_by_incident_run_id: number | null;
+            /** Covered By Pr Url */
+            covered_by_pr_url: string;
             usage: components["schemas"]["UsageOut"];
             /** Matched Runbook Id */
             matched_runbook_id: number | null;
@@ -2282,6 +2288,8 @@ export interface components {
             execution_mode: components["schemas"]["ExecutionMode"];
             /** Max Findings Per Repo */
             max_findings_per_repo: number;
+            /** Code Findings Open Prs */
+            code_findings_open_prs: boolean;
             /** Monthly Token Budget */
             monthly_token_budget: number;
             /** Tokens This Month */
@@ -2345,6 +2353,11 @@ export interface components {
              */
             max_findings_per_repo: number;
             /**
+             * Code Findings Open Prs
+             * @default false
+             */
+            code_findings_open_prs: boolean;
+            /**
              * Monthly Token Budget
              * @default 0
              */
@@ -2372,10 +2385,26 @@ export interface components {
             execution_mode?: components["schemas"]["ExecutionMode"] | null;
             /** Max Findings Per Repo */
             max_findings_per_repo?: number | null;
+            /** Code Findings Open Prs */
+            code_findings_open_prs?: boolean | null;
             /** Monthly Token Budget */
             monthly_token_budget?: number | null;
             /** Enabled */
             enabled?: boolean | null;
+        };
+        /**
+         * ScanFindingOut
+         * @description A finding's incident and how far its fix got.
+         */
+        ScanFindingOut: {
+            /** Incident Run Id */
+            incident_run_id: number;
+            /** Status */
+            status: string;
+            /** Pr Url */
+            pr_url: string;
+            /** Mode Note */
+            mode_note: string;
         };
         /** ScanRepoOut */
         ScanRepoOut: {
@@ -2389,6 +2418,8 @@ export interface components {
             finding_count: number;
             /** Incident Run Ids */
             incident_run_ids: number[];
+            /** Findings */
+            findings: components["schemas"]["ScanFindingOut"][];
             /** Error */
             error: string;
         };

@@ -315,6 +315,7 @@ def _own_config(user, config_id: int) -> LLMProviderConfig:
 INCIDENT_EXTRA_FIELDS = {
     "created_playbook_id", "playbook_run_id", "project_name", "playbook", "pr_url",
     "playbook_run_status", "execution_mode", "generate_tests", "usage", "runbook",
+    "mode_note", "covered_by_incident_run_id", "covered_by_pr_url",
 }
 
 
@@ -362,6 +363,7 @@ def _usage_out(rows) -> dict:
 def _incident_out(run: IncidentRun) -> dict:
     created = getattr(run, "created_playbook", None)
     playbook_run = getattr(run, "playbook_run", None)
+    covered = playbook_run.covered_by if playbook_run else None
     playbook, source = (run.matched_playbook, "matched") if run.matched_playbook else (created, "created")
     return {
         **{f: getattr(run, f) for f in IncidentRunOut.model_fields if f not in INCIDENT_EXTRA_FIELDS},
@@ -374,6 +376,9 @@ def _incident_out(run: IncidentRun) -> dict:
         "playbook_run_status": playbook_run.status if playbook_run else None,
         "execution_mode": playbook_run.execution_mode if playbook_run else None,
         "generate_tests": playbook_run.generate_tests if playbook_run else None,
+        "mode_note": playbook_run.mode_note if playbook_run else "",
+        "covered_by_incident_run_id": covered.incident_run_id if covered else None,
+        "covered_by_pr_url": covered.pr_url if covered else "",
         "usage": _usage_out(run.llm_usage.all()),
         "runbook": _runbook_brief(run, playbook_run),
     }
@@ -393,7 +398,7 @@ def _runbook_brief(run: IncidentRun, playbook_run) -> dict | None:
 def _incident_runs():
     return IncidentRun.objects.select_related(
         "project", "matched_playbook", "created_playbook", "playbook_run",
-        "matched_runbook", "playbook_run__created_runbook",
+        "matched_runbook", "playbook_run__created_runbook", "playbook_run__covered_by",
     ).prefetch_related("llm_usage")
 
 

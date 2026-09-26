@@ -496,6 +496,12 @@ class PlaybookRun(models.Model):
     approved_at = models.DateTimeField(null=True, blank=True)
     pr_url = models.URLField(blank=True, default="")
     branch_name = models.CharField(max_length=255, blank=True, default="")
+    # Why the run was held to a diagnosis when its mode would have allowed a PR ("" = it
+    # wasn't), and the open run in the same repo that already fixes the same bug, if any.
+    mode_note = models.CharField(max_length=255, blank=True, default="")
+    covered_by = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -618,6 +624,9 @@ class RemediationAgent(models.Model):
         max_length=32, choices=ExecutionMode.choices, default=ExecutionMode.ADVISORY_ONLY
     )
     max_findings_per_repo = models.PositiveSmallIntegerField(default=3)
+    # Findings backed only by the scanner's reading of the code (every playbook_sweep finding)
+    # get a diagnosis unless this is on; then they can reach execution_mode like the others.
+    code_findings_open_prs = models.BooleanField(default=False)
     monthly_token_budget = models.PositiveIntegerField(default=0)  # 0 = no limit
     enabled = models.BooleanField(default=True)
     created_by = models.ForeignKey(
