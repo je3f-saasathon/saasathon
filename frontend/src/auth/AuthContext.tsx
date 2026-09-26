@@ -32,8 +32,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const data = await api.get<{ user: User }>("/auth/me");
       setUser(data.user);
-    } catch {
-      clearToken();
+    } catch (err) {
+      // Only a 401 means the token is bad. Anything else (a request cut off by a reload,
+      // the backend restarting, a 5xx) keeps the token, or reloading logs the user out.
+      if (err instanceof ApiError && err.status === 401) {
+        clearToken();
+      }
       setUser(null);
     } finally {
       setIsLoading(false);
