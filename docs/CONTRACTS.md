@@ -19,6 +19,9 @@ All auth endpoints are public except `/auth/me` and `/auth/logout` (require `Aut
 | GET    | `/auth/me`                   | Bearer token                          | `{user}` or 401                   |
 | POST   | `/auth/logout`               | Bearer token                          | `{ok: true}`, revokes token       |
 | POST   | `/auth/tokens`               | Bearer token                          | `{token, expires_at}`: a new token for scripts, shown once. Separate from the caller's session (logging out doesn't revoke it); 30-day expiry like any token |
+| POST   | `/auth/cli/start`            | —                                      | `{device_code, user_code, verification_url, expires_in, interval}`: starts a CLI login (`buggly login`). `verification_url` is `{FRONTEND_URL}/cli?code={user_code}`; both codes expire after 10 minutes |
+| POST   | `/auth/cli/approve`          | Bearer token, `{user_code}`           | `{ok: true}`: the signed-in user approves that CLI login. `404` unknown or expired code, `409` already approved |
+| POST   | `/auth/cli/poll`             | `{device_code}`                       | `200 {token, user}` once approved (only once; the login is then used up), `202 {status: "pending"}` until then, `410 {detail}` unknown or expired. Poll every `interval` seconds |
 | GET    | `/auth/providers`            | —                                      | `{password: true, github: bool, google: bool}` |
 
 `user` shape: `{id, email, name, avatar_url, role, created_at}`
@@ -142,6 +145,16 @@ An Uptrace API token is user-scoped (it reaches every Uptrace project that user 
 | GET | `/sre/github/installations/{id}/repos` | user (own) | — | `[{owner, name, default_branch, private}]`; `502` if GitHub fails |
 
 `GitHubInstallation`: `{id, installation_id, account_login, account_type}`. `id` is ours; `installation_id` is GitHub's (what projects store).
+
+**Projects on install** (with `SRE_GITHUB_AUTO_PROJECTS=true`): connecting an installation creates a project for each repo it can reach, so installing the App is the whole setup. Each gets: the repo's name and default branch, the caller's personal org, the caller as owner, `default_execution_mode: draft_only`, `service_names: [repo name]` (unless the org already uses that name), and managed Uptrace when it's configured. It happens in two places: `GET /sre/github/callback`, for installations the caller hadn't connected before (its redirect adds `&projects=N`); and the GitHub webhook's `installation` (`created`) and `installation_repositories` (`added`) events, for the connected user whose GitHub account sent the event, or the only connected user if there's one. A repo that already has a project on that installation is skipped, so deleting an auto-created project doesn't bring it back unless the repo is removed from the App and added again.
+
+### CLI (`buggly run`)
+
+| Method | Path | Auth | Body / Params | Returns |
+|---|---|---|---|---|
+| GET | `/sre/cli/project` | user (admin) | `?repo=owner/name` (from `git remote`) and optional `&project_id=` | `CliProject`; `404 {detail}` if the caller administers no project for that repo; `409 {detail, projects: [{id, name}]}` if several match and no `project_id` was given |
+
+`CliProject`: `{project_id, name, repo, service_name, uptrace_status, dsn, otlp_endpoint}`. `service_name` is the first of the project's `service_names`, else the repo name. `dsn` and `otlp_endpoint` (the DSN's `scheme://host[:port]`, where OTLP/HTTP goes: `/v1/traces`, `/v1/logs`, `/v1/metrics`) are `""` until managed Uptrace is `ready`; the CLI then runs the command without telemetry and says why.
 
 ### LLM configs (owned by a user, attached to projects by reference)
 
@@ -277,6 +290,8 @@ Agents an org admin starts to look for bugs across the org's repos before they a
 The PR must be in the project's repo and on the run's `branch_name`.
 
 With `SRE_REMEDIATION_AGENTS_ENABLED=true` the same endpoint also starts remediation agents (subscribe the App to the **Pull request** and **Push** events): a `pull_request` `closed` + **merged** into a project's default branch starts every enabled `on_merge` agent covering that project, and a `push` event on a branch matching an enabled `branch_watch` agent's `branch_pattern` starts that agent, each for that one repo and diff. This applies to any merge or push, not just the agent's own branches, and returns `200 {detail}` naming the scan runs started. A merge is scanned as the merge commit against its first parent (`<sha>^1`); a push as `before..after`, or against the default branch for a new branch. Branch deletions and pushes with no commits are ignored (`202`). A redelivery starts nothing new. `503 {detail}` if Temporal is unreachable: redeliver the webhook.
+
+With `SRE_GITHUB_AUTO_PROJECTS=true` it also handles `installation` `created` and `installation_repositories` `added` (GitHub always sends these to an App; there is nothing to subscribe to): see "Projects on install" above. Returns `200 {detail}` naming the projects created, else `202`.
 
 Returns `200 {detail}` when it changed a run; `202 {detail}` for anything ignored (other events or actions, PRs the agent isn't waiting on, autonomous runs, an event that doesn't fit the run's state — so redeliveries are harmless — or a workflow that has already finished); `401 {detail}` for a bad signature; `503 {detail}` if `GITHUB_APP_WEBHOOK_SECRET` isn't set, or if the workflow can't be reached (the change is released; redeliver the webhook from the App's settings).
 

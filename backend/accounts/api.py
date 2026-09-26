@@ -7,7 +7,7 @@ from ninja import Router
 from ninja.errors import HttpError
 
 from .auth import bearer_auth
-from .models import AuthToken, User
+from .models import CLI_LOGIN_TTL, AuthToken, CliLogin, User
 from .oauth import (
     OAuthError,
     find_or_create_user,
@@ -22,7 +22,20 @@ from .oauth import (
     make_state,
     verify_state,
 )
-from .schemas import IssuedTokenOut, LoginIn, MeOut, OkOut, ProvidersOut, RegisterIn, TokenOut, user_to_out
+from .schemas import (
+    CliApproveIn,
+    CliPendingOut,
+    CliPollIn,
+    CliStartOut,
+    IssuedTokenOut,
+    LoginIn,
+    MeOut,
+    OkOut,
+    ProvidersOut,
+    RegisterIn,
+    TokenOut,
+    user_to_out,
+)
 
 router = Router(tags=["auth"])
 
@@ -90,6 +103,54 @@ def issue_token(request):
     browser's session, so logging out doesn't end it; it expires like any other token."""
     token, raw = AuthToken.issue(request.auth)
     return {"token": raw, "expires_at": token.expires_at}
+
+
+# ---- CLI login (device code) ---------------------------------------------------
+
+CLI_POLL_INTERVAL_SECONDS = 2
+
+
+def _normalize_user_code(code: str) -> str:
+    raw = "".join(c for c in code.upper() if c.isalnum())
+    return f"{raw[:4]}-{raw[4:]}" if len(raw) == 8 else code.strip().upper()
+
+
+@router.post("/cli/start", response=CliStartOut, auth=None)
+def cli_start(request):
+    """`buggly login`: the CLI shows the user code and opens verification_url, then polls."""
+    login, device_code = CliLogin.start()
+    return {
+        "device_code": device_code,
+        "user_code": login.user_code,
+        "verification_url": f"{settings.FRONTEND_URL}/cli?code={login.user_code}",
+        "expires_in": int(CLI_LOGIN_TTL.total_seconds()),
+        "interval": CLI_POLL_INTERVAL_SECONDS,
+    }
+
+
+@router.post("/cli/approve", response={200: OkOut, 404: dict, 409: dict}, auth=bearer_auth)
+def cli_approve(request, payload: CliApproveIn):
+    login = CliLogin.objects.filter(user_code=_normalize_user_code(payload.user_code)).first()
+    if login is None or login.is_expired:
+        return 404, {"detail": "That code is unknown or has expired: run `buggly login` again"}
+    # Conditional update: a code can only be approved once, by one user.
+    if not CliLogin.objects.filter(id=login.id, user__isnull=True).update(user=request.auth):
+        return 409, {"detail": "That code has already been approved"}
+    return 200, {"ok": True}
+
+
+@router.post("/cli/poll", response={200: TokenOut, 202: CliPendingOut, 410: dict}, auth=None)
+def cli_poll(request, payload: CliPollIn):
+    login = CliLogin.by_device_code(payload.device_code)
+    if login is None or login.is_expired:
+        return 410, {"detail": "This login has expired: run `buggly login` again"}
+    if login.user is None:
+        return 202, {"status": "pending"}
+    # Delete first, so two polls racing can't both get a token.
+    if not CliLogin.objects.filter(id=login.id).delete()[0]:
+        return 410, {"detail": "This login has already been used"}
+    _, raw_token = AuthToken.issue(login.user)
+    return 200, {"token": raw_token, "user": user_to_out(login.user)}
 
 
 @router.post("/logout", response=OkOut, auth=bearer_auth)

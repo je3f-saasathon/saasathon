@@ -47,6 +47,26 @@ class ProvidersOut(Schema):
     google: bool
 
 
+class CliStartOut(Schema):
+    device_code: str
+    user_code: str
+    verification_url: str
+    expires_in: int
+    interval: int
+
+
+class CliApproveIn(Schema):
+    user_code: str
+
+
+class CliPollIn(Schema):
+    device_code: str
+
+
+class CliPendingOut(Schema):
+    status: str
+
+
 class ErrorOut(Schema):
     detail: str
 
