@@ -1,5 +1,7 @@
 # saasathon
 
+> **Archived.** This project is no longer maintained or hosted: buggly.dev and its API are offline, and the `buggly` CLI no longer works against it. The code is kept here for reference and can still be run locally with the steps below.
+
 A full-stack starter: React/Vite frontend, Django/django-ninja backend, working auth (email+password, GitHub, Google), and dev tooling for native, Docker, and remote-tunnel workflows.
 
 ## Quickstart
