@@ -165,6 +165,16 @@ describe("AgentsPage", () => {
     );
   });
 
+  it("shows a scan started by a merged fix with the PR it came from", async () => {
+    routes["GET /api/sre/agents/4/scan-runs"] = {
+      scan_runs: [{ ...scanRun, trigger: "fix_merged", trigger_ref: "https://github.com/acme/jira-lite/pull/1" }],
+      total: 1,
+    };
+    renderAt("/agents");
+    expect(await screen.findByText("Fix merged")).toBeInTheDocument();
+    expect(screen.getByText("jira-lite#1")).toBeInTheDocument();
+  });
+
   it("runs an agent by hand", async () => {
     renderAt("/agents");
     fireEvent.click(await screen.findByRole("button", { name: "Run Nightly sweep now" }));

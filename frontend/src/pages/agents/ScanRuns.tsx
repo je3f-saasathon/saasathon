@@ -29,6 +29,9 @@ function duration(run: ScanRun): string {
 
 /** What started the run: a SHA is shortened, a scheduled time is shown as is. */
 function triggerRef(run: ScanRun): string {
+  // A merged fix's PR, e.g. https://github.com/acme/jira-lite/pull/1 → jira-lite#1.
+  const pr = run.trigger_ref.match(/^https:\/\/github\.com\/[^/]+\/([^/]+)\/pull\/(\d+)/);
+  if (pr) return `${pr[1]}#${pr[2]}`;
   return /^[0-9a-f]{40}$/.test(run.trigger_ref) ? run.trigger_ref.slice(0, 7) : run.trigger_ref;
 }
 

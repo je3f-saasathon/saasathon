@@ -155,6 +155,12 @@ through **the same pipeline as an Uptrace alert**.
 
 Any agent can also be run by hand (`POST /api/sre/agents/{id}/run`).
 
+**A merged fix spreads.** When a person accepts a fix (its PR merged) and its runbook is saved,
+every `runbook_variant` agent on `on_merge` that covers the fixed repo scans its other repos on
+the same GitHub account, whole repo, for that runbook only (`trigger: fix_merged`). It starts from
+recording the fix's outcome, not the merge webhook, so the runbook it needs already exists. A fix
+that was itself a variant finding doesn't start another round.
+
 **What happens to a finding.** The scanner reports each finding in the same shape as Uptrace
 telemetry: category, message, location, evidence, service, and a suggested playbook or runbook.
 Each finding starts an `IncidentDiagnosisWorkflow`:

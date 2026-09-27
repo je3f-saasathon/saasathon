@@ -21,6 +21,7 @@ from .models import (
 )
 from .services.executor import PlaybookExecutor, pr_title_body
 from .services.github import GitHubRepo
+from .services import agents as agent_service
 from .services import mesh, pr_guard, scanning, uptrace_admin
 from .services import runbooks as runbook_outcomes
 from .services.knowledge import GenericPlaybookAuthor, KnowledgeJudge, KnowledgeSearch
@@ -361,9 +362,12 @@ def set_playbook_run_status(inp: PlaybookRunStatus) -> None:
 @django_activity
 def record_playbook_outcome(playbook_run_id: int) -> None:
     """Recomputes the playbook's streak from run history, so a retry can't double-count."""
-    playbook_run = PlaybookRun.objects.select_related("playbook").get(id=playbook_run_id)
+    playbook_run = PlaybookRun.objects.select_related("playbook", "incident_run__project").get(id=playbook_run_id)
     if settings.SRE_RUNBOOKS_ENABLED:
         runbook_outcomes.record_outcome(playbook_run)
+        if settings.SRE_REMEDIATION_AGENTS_ENABLED:
+            # The fix's runbook exists now: related repos can hunt for the same bug.
+            agent_service.on_fix_merged(playbook_run)
         return
     with transaction.atomic():
         playbook = Playbook.objects.select_for_update().get(id=playbook_run.playbook_id)
